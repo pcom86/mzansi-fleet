@@ -16,6 +16,7 @@ export interface LoginResponse {
   role: string;
   tenantId: string;
   expiresAt: string;
+  fullName?: string;
 }
 
 export interface UserInfo {
@@ -23,6 +24,7 @@ export interface UserInfo {
   email: string;
   role: string;
   tenantId: string;
+  fullName?: string;
 }
 
 export interface RegisterServiceProviderDto {
@@ -110,7 +112,8 @@ export class AuthService {
       userId: authResult.userId,
       email: authResult.email,
       role: authResult.role,
-      tenantId: authResult.tenantId
+      tenantId: authResult.tenantId,
+      fullName: authResult.fullName
     };
     localStorage.setItem('user', JSON.stringify(userInfo));
     this.currentUserSubject.next(userInfo);

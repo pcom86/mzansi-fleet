@@ -196,121 +196,131 @@
             
             <div class="step-content">
               <h3>Taxi Rank Assignment</h3>
-              <p class="step-description">Choose the taxi rank you will be working at</p>
+              <p class="step-description">Choose your taxi association and the rank you will be working at</p>
 
-              <!-- Mode Selection -->
-              <mat-radio-group formControlName="mode" class="mode-selection">
-                <mat-radio-button value="existing">Select Existing Rank</mat-radio-button>
-                <mat-radio-button value="new">Create New Rank</mat-radio-button>
-              </mat-radio-group>
+              <!-- Step 1: Select Taxi Association First -->
+              <div class="association-section">
+                <h4><mat-icon>business</mat-icon> Step 1: Taxi Association</h4>
+                
+                <mat-radio-group formControlName="tenantMode" class="mode-selection">
+                  <mat-radio-button value="existing">Select Existing Association</mat-radio-button>
+                  <mat-radio-button value="new">Create New Association</mat-radio-button>
+                </mat-radio-group>
 
-              <!-- Existing Rank Selection -->
-              <div *ngIf="!isCreatingNewRank" class="existing-rank-section">
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Taxi Rank</mat-label>
-                  <mat-select formControlName="taxiRankId" (selectionChange)="onTaxiRankChange()" required>
-                    <mat-option *ngFor="let rank of taxiRanks" [value]="rank.id">
-                      {{ rank.name }} - {{ rank.city }} ({{ rank.code }})
-                    </mat-option>
-                  </mat-select>
-                  <mat-icon matPrefix>location_on</mat-icon>
-                  <mat-error *ngIf="taxiRankForm.get('taxiRankId')?.hasError('required')">
-                    Please select a taxi rank
-                  </mat-error>
-                </mat-form-field>
+                <!-- Existing Association Selection -->
+                <div *ngIf="!isCreatingNewTenant">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Taxi Association *</mat-label>
+                    <mat-select formControlName="tenantId" (selectionChange)="onTenantChange()" required>
+                      <mat-option *ngFor="let tenant of tenants" [value]="tenant.id">
+                        {{ tenant.name }} ({{ tenant.code }})
+                      </mat-option>
+                    </mat-select>
+                    <mat-icon matPrefix>business</mat-icon>
+                    <mat-error *ngIf="taxiRankForm.get('tenantId')?.hasError('required')">
+                      Please select a taxi association
+                    </mat-error>
+                  </mat-form-field>
+                </div>
 
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Tenant ID</mat-label>
-                  <input matInput formControlName="tenantId" readonly required>
-                  <mat-icon matPrefix>business</mat-icon>
-                  <mat-hint>Auto-filled based on selected taxi rank</mat-hint>
-                </mat-form-field>
-              </div>
+                <!-- New Association Creation -->
+                <div *ngIf="isCreatingNewTenant" [formGroup]="newTenantForm" class="new-tenant-section">
+                  <mat-card class="info-card secondary">
+                    <mat-icon class="info-icon">info</mat-icon>
+                    <p>Creating a new taxi association. All fields marked with * are required.</p>
+                  </mat-card>
 
-              <!-- New Rank Creation -->
-              <div *ngIf="isCreatingNewRank" class="new-rank-section">
-                <mat-card class="info-card">
-                  <mat-icon class="info-icon">info</mat-icon>
-                  <p>Creating a new taxi rank. First, select or create a Taxi Association.</p>
-                </mat-card>
-
-                <!-- Taxi Association (Tenant) Selection -->
-                <div class="tenant-section">
-                  <h4>Taxi Association</h4>
-                  
-                  <mat-radio-group formControlName="tenantMode" class="mode-selection">
-                    <mat-radio-button value="existing">Select Existing Association</mat-radio-button>
-                    <mat-radio-button value="new">Create New Association</mat-radio-button>
-                  </mat-radio-group>
-
-                  <!-- Existing Tenant Selection -->
-                  <div *ngIf="!isCreatingNewTenant">
+                  <div class="form-row">
                     <mat-form-field appearance="outline" class="full-width">
-                      <mat-label>Taxi Association</mat-label>
-                      <mat-select formControlName="tenantId" required>
-                        <mat-option *ngFor="let tenant of tenants" [value]="tenant.id">
-                          {{ tenant.name }} ({{ tenant.code }})
-                        </mat-option>
-                      </mat-select>
+                      <mat-label>Association Name *</mat-label>
+                      <input matInput formControlName="name" placeholder="e.g., Johannesburg Taxi Association" required>
                       <mat-icon matPrefix>business</mat-icon>
-                      <mat-error *ngIf="taxiRankForm.get('tenantId')?.hasError('required')">
-                        Please select a taxi association
+                      <mat-error *ngIf="newTenantForm.get('name')?.hasError('required')">
+                        Association name is required
                       </mat-error>
+                    </mat-form-field>
+
+                    <mat-form-field appearance="outline" class="full-width">
+                      <mat-label>Association Type *</mat-label>
+                      <mat-select formControlName="tenantType" required>
+                        <mat-option value="Taxi Association">Taxi Association</mat-option>
+                        <mat-option value="Fleet Owner">Fleet Owner</mat-option>
+                        <mat-option value="Transport Company">Transport Company</mat-option>
+                      </mat-select>
+                      <mat-icon matPrefix>category</mat-icon>
+                      <mat-hint>Type of organization</mat-hint>
                     </mat-form-field>
                   </div>
 
-                  <!-- New Tenant Creation -->
-                  <div *ngIf="isCreatingNewTenant" [formGroup]="newTenantForm" class="new-tenant-section">
-                    <mat-card class="info-card secondary">
-                      <mat-icon class="info-icon">info</mat-icon>
-                      <p>Creating a new taxi association. All fields marked with * are required.</p>
-                    </mat-card>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline" class="full-width">
+                      <mat-label>Association Code (Auto-generated)</mat-label>
+                      <input matInput formControlName="code" placeholder="Auto-generated from name" readonly>
+                      <mat-icon matPrefix>qr_code</mat-icon>
+                      <mat-hint>Automatically generated unique identifier</mat-hint>
+                    </mat-form-field>
+                  </div>
 
-                    <div class="form-row">
-                      <mat-form-field appearance="outline" class="full-width">
-                        <mat-label>Association Name *</mat-label>
-                        <input matInput formControlName="name" placeholder="e.g., Johannesburg Taxi Association" required>
-                        <mat-icon matPrefix>business</mat-icon>
-                        <mat-error *ngIf="newTenantForm.get('name')?.hasError('required')">
-                          Association name is required
-                        </mat-error>
-                      </mat-form-field>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline" class="full-width">
+                      <mat-label>Contact Email *</mat-label>
+                      <input matInput formControlName="contactEmail" type="email" placeholder="info@association.co.za" required>
+                      <mat-icon matPrefix>email</mat-icon>
+                      <mat-error *ngIf="newTenantForm.get('contactEmail')?.hasError('required')">
+                        Contact email is required
+                      </mat-error>
+                      <mat-error *ngIf="newTenantForm.get('contactEmail')?.hasError('email')">
+                        Please enter a valid email
+                      </mat-error>
+                    </mat-form-field>
 
-                      <mat-form-field appearance="outline" class="full-width">
-                        <mat-label>Association Code (Auto-generated)</mat-label>
-                        <input matInput formControlName="code" placeholder="Auto-generated from name" readonly>
-                        <mat-icon matPrefix>qr_code</mat-icon>
-                        <mat-hint>Automatically generated unique identifier</mat-hint>
-                      </mat-form-field>
-                    </div>
-
-                    <div class="form-row">
-                      <mat-form-field appearance="outline" class="full-width">
-                        <mat-label>Contact Email *</mat-label>
-                        <input matInput formControlName="contactEmail" type="email" placeholder="info@association.co.za" required>
-                        <mat-icon matPrefix>email</mat-icon>
-                        <mat-error *ngIf="newTenantForm.get('contactEmail')?.hasError('required')">
-                          Contact email is required
-                        </mat-error>
-                        <mat-error *ngIf="newTenantForm.get('contactEmail')?.hasError('email')">
-                          Please enter a valid email
-                        </mat-error>
-                      </mat-form-field>
-
-                      <mat-form-field appearance="outline" class="full-width">
-                        <mat-label>Contact Phone *</mat-label>
-                        <input matInput formControlName="contactPhone" placeholder="+27 11 123 4567" required>
-                        <mat-icon matPrefix>phone</mat-icon>
-                        <mat-error *ngIf="newTenantForm.get('contactPhone')?.hasError('required')">
-                          Contact phone is required
-                        </mat-error>
-                      </mat-form-field>
-                    </div>
+                    <mat-form-field appearance="outline" class="full-width">
+                      <mat-label>Contact Phone *</mat-label>
+                      <input matInput formControlName="contactPhone" placeholder="+27 11 123 4567" required>
+                      <mat-icon matPrefix>phone</mat-icon>
+                      <mat-error *ngIf="newTenantForm.get('contactPhone')?.hasError('required')">
+                        Contact phone is required
+                      </mat-error>
+                    </mat-form-field>
                   </div>
                 </div>
+              </div>
 
-                <!-- Taxi Rank Details -->
-                <div [formGroup]="newRankForm" class="rank-details-section">
+              <mat-divider></mat-divider>
+
+              <!-- Step 2: Select or Create Taxi Rank -->
+              <div class="rank-section" *ngIf="taxiRankForm.get('tenantId')?.value || isCreatingNewTenant">
+                <h4><mat-icon>location_on</mat-icon> Step 2: Taxi Rank</h4>
+
+                <mat-radio-group formControlName="mode" class="mode-selection">
+                  <mat-radio-button value="existing">Select Existing Rank</mat-radio-button>
+                  <mat-radio-button value="new">Create New Rank</mat-radio-button>
+                </mat-radio-group>
+
+                <!-- Existing Rank Selection -->
+                <div *ngIf="!isCreatingNewRank">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Taxi Rank *</mat-label>
+                    <mat-select formControlName="taxiRankId" required>
+                      <mat-option *ngFor="let rank of filteredTaxiRanks" [value]="rank.id">
+                        {{ rank.name }} - {{ rank.city }} ({{ rank.code }})
+                      </mat-option>
+                    </mat-select>
+                    <mat-icon matPrefix>location_on</mat-icon>
+                    <mat-hint *ngIf="filteredTaxiRanks.length === 0">No taxi ranks available for this association</mat-hint>
+                    <mat-error *ngIf="taxiRankForm.get('taxiRankId')?.hasError('required')">
+                      Please select a taxi rank
+                    </mat-error>
+                  </mat-form-field>
+                </div>
+
+                <!-- New Rank Creation -->
+                <div *ngIf="isCreatingNewRank" [formGroup]="newRankForm" class="rank-details-section">
+                  <mat-card class="info-card">
+                    <mat-icon class="info-icon">info</mat-icon>
+                    <p>Creating a new taxi rank for the selected association.</p>
+                  </mat-card>
+
                   <h4>Taxi Rank Details</h4>
 
                 <div class="form-row">

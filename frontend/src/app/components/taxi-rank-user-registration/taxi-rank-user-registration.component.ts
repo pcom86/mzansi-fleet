@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
@@ -12,6 +12,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatSelectModule } from '@angular/material/select';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatDividerModule } from '@angular/material/divider';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 
@@ -27,6 +29,7 @@ interface Tenant {
   id: string;
   name: string;
   code: string;
+  tenantType: string;
   contactEmail: string;
   contactPhone: string;
 }
@@ -47,7 +50,9 @@ interface Tenant {
     MatIconModule,
     MatCardModule,
     MatSnackBarModule,
-    MatSelectModule
+    MatSelectModule,
+    MatChipsModule,
+    MatDividerModule
   ],
   templateUrl: './taxi-rank-user-registration.component.html',
   styleUrls: ['./taxi-rank-user-registration.component.scss']
@@ -61,6 +66,7 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
   selectedRole: 'TaxiRankAdmin' | 'TaxiMarshal' | null = null;
   loading = false;
   taxiRanks: TaxiRank[] = [];
+  filteredTaxiRanks: TaxiRank[] = [];
   tenants: Tenant[] = [];
   isCreatingNewRank = false;
   isCreatingNewTenant = false;
@@ -71,13 +77,18 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
     private fb: FormBuilder,
     private http: HttpClient,
     private router: Router,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
     this.initializeForms();
-    this.loadTaxiRanks();
-    this.loadTenants();
+    
+    // Defer loading to avoid ExpressionChangedAfterItHasBeenCheckedError
+    setTimeout(() => {
+      this.loadTaxiRanks();
+      this.loadTenants();
+    });
   }
 
   initializeForms(): void {
@@ -135,6 +146,7 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
     this.newTenantForm = this.fb.group({
       name: ['', Validators.required],
       code: [''],  // Auto-generated from name
+      tenantType: ['Taxi Association', Validators.required],
       contactEmail: ['', [Validators.required, Validators.email]],
       contactPhone: ['', Validators.required]
     });
@@ -151,12 +163,14 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
     this.taxiRankForm.get('mode')?.valueChanges.subscribe(mode => {
       this.isCreatingNewRank = mode === 'new';
       this.updateTaxiRankValidators();
+      this.cdr.detectChanges();
     });
 
     // Watch for tenant mode changes
     this.taxiRankForm.get('tenantMode')?.valueChanges.subscribe(mode => {
       this.isCreatingNewTenant = mode === 'new';
       this.updateTenantValidators();
+      this.cdr.detectChanges();
     });
 
     // Step 4: Role-Specific Details
@@ -233,7 +247,8 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
     this.http.get<Tenant[]>(`${environment.apiUrl}/Tenants`)
       .subscribe({
         next: (tenants) => {
-          this.tenants = tenants;
+          // Only show Taxi Associations, not Fleet Owners or Transport Companies
+          this.tenants = tenants.filter(t => t.tenantType === 'Taxi Association');
         },
         error: (error) => {
           console.error('Error loading tenants:', error);
@@ -247,6 +262,7 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
       .subscribe({
         next: (ranks) => {
           this.taxiRanks = ranks.filter(r => r.status === 'Active');
+          // Don't filter yet - will be filtered when tenant is selected
         },
         error: (error) => {
           console.error('Error loading taxi ranks:', error);
@@ -379,6 +395,11 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
     if (!newTenantData.code) {
       newTenantData.code = this.generateTenantCode(newTenantData.name);
     }
+    
+    // Ensure tenantType is set
+    if (!newTenantData.tenantType) {
+      newTenantData.tenantType = 'Taxi Association';
+    }
 
     return new Promise((resolve, reject) => {
       this.http.post(`${environment.apiUrl}/Tenants`, newTenantData)
@@ -419,36 +440,105 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
 
   createNewTaxiRank(tenantId: string): Promise<any> {
     const formValue = this.newRankForm.value;
-    const newRankData = {
-      tenantId: tenantId,
+    
+    // When onboarding a new Taxi Rank, first create it as a Tenant (Association)
+    const tenantData = {
       name: formValue.name,
       code: formValue.code || this.generateRankCode(formValue.name),
-      address: formValue.address,
-      city: formValue.city,
-      province: formValue.province,
-      latitude: formValue.latitude || null,
-      longitude: formValue.longitude || null,
-      capacity: formValue.capacity || null,
-      operatingHours: formValue.operatingHours || null,
-      notes: null,
-      status: 'Active'
+      tenantType: 'Taxi Association',
+      contactEmail: this.userDetailsForm.value.email, // Use admin's email
+      contactPhone: this.userDetailsForm.value.phoneNumber // Use admin's phone
     };
 
-    console.log('Creating taxi rank with data:', newRankData);
+    console.log('Creating taxi rank as tenant with data:', tenantData);
 
     return new Promise((resolve, reject) => {
-      this.http.post(`${environment.apiUrl}/TaxiRanks`, newRankData)
+      // First create the Tenant
+      this.http.post(`${environment.apiUrl}/Tenants`, tenantData)
         .subscribe({
-          next: (response) => {
-            this.snackBar.open('Taxi rank created successfully!', 'Close', { duration: 3000 });
-            resolve(response);
+          next: (tenant: any) => {
+            console.log('Tenant created:', tenant);
+            
+            // Then create the TaxiRank linked to this tenant
+            const newRankData = {
+              tenantId: tenant.id, // Link to the newly created tenant
+              name: formValue.name,
+              code: formValue.code || this.generateRankCode(formValue.name),
+              address: formValue.address,
+              city: formValue.city,
+              province: formValue.province,
+              latitude: formValue.latitude || null,
+              longitude: formValue.longitude || null,
+              capacity: formValue.capacity || null,
+              operatingHours: formValue.operatingHours || null,
+              notes: null,
+              status: 'Active'
+            };
+
+            this.http.post(`${environment.apiUrl}/TaxiRanks`, newRankData)
+              .subscribe({
+                next: (rank) => {
+                  this.snackBar.open('Taxi rank and association created successfully!', 'Close', { duration: 3000 });
+                  resolve(rank);
+                },
+                error: (rankError) => {
+                  console.error('Error creating taxi rank:', rankError);
+                  const errorMessage = rankError.error?.message || rankError.error?.title || rankError.message || 'Failed to create taxi rank';
+                  this.snackBar.open(`Failed to create taxi rank: ${errorMessage}`, 'Close', { duration: 5000 });
+                  reject(rankError);
+                }
+              });
           },
-          error: (error) => {
-            console.error('Error creating taxi rank:', error);
-            console.error('Error details:', error.error);
-            const errorMessage = error.error?.message || error.error?.title || error.message || 'Failed to create taxi rank';
-            this.snackBar.open(`Failed to create taxi rank: ${errorMessage}`, 'Close', { duration: 5000 });
-            reject(error);
+          error: (tenantError) => {
+            console.error('Error creating tenant for taxi rank:', tenantError);
+            
+            // If it's a duplicate code error, retry with new code
+            if (tenantError.status === 400 && (tenantError.error?.message?.includes('duplicate') || tenantError.error?.message?.includes('IX_Tenants_Code'))) {
+              tenantData.code = this.generateRankCode(formValue.name);
+              
+              this.http.post(`${environment.apiUrl}/Tenants`, tenantData)
+                .subscribe({
+                  next: (tenant: any) => {
+                    // Create the taxi rank with the new tenant
+                    const newRankData = {
+                      tenantId: tenant.id,
+                      name: formValue.name,
+                      code: tenantData.code,
+                      address: formValue.address,
+                      city: formValue.city,
+                      province: formValue.province,
+                      latitude: formValue.latitude || null,
+                      longitude: formValue.longitude || null,
+                      capacity: formValue.capacity || null,
+                      operatingHours: formValue.operatingHours || null,
+                      notes: null,
+                      status: 'Active'
+                    };
+
+                    this.http.post(`${environment.apiUrl}/TaxiRanks`, newRankData)
+                      .subscribe({
+                        next: (rank) => {
+                          this.snackBar.open('Taxi rank and association created successfully!', 'Close', { duration: 3000 });
+                          resolve(rank);
+                        },
+                        error: (rankError) => {
+                          const errorMessage = rankError.error?.message || 'Failed to create taxi rank after retry';
+                          this.snackBar.open(errorMessage, 'Close', { duration: 5000 });
+                          reject(rankError);
+                        }
+                      });
+                  },
+                  error: (retryError) => {
+                    const errorMessage = retryError.error?.message || 'Failed to create association after retry';
+                    this.snackBar.open(errorMessage, 'Close', { duration: 5000 });
+                    reject(retryError);
+                  }
+                });
+            } else {
+              const errorMessage = tenantError.error?.message || tenantError.message || 'Failed to create taxi association';
+              this.snackBar.open(`Failed to create taxi association: ${errorMessage}`, 'Close', { duration: 5000 });
+              reject(tenantError);
+            }
           }
         });
     });
@@ -536,6 +626,33 @@ export class TaxiRankUserRegistrationComponent implements OnInit {
             console.error('Error loading taxi rank details:', error);
           }
         });
+    }
+  }
+
+  onTenantChange(): void {
+    const selectedTenantId = this.taxiRankForm.get('tenantId')?.value;
+    console.log('Tenant changed to:', selectedTenantId);
+    if (selectedTenantId) {
+      // Filter taxi ranks by selected tenant
+      const url = `${environment.apiUrl}/TaxiRanks?tenantId=${selectedTenantId}`;
+      console.log('Fetching taxi ranks from:', url);
+      this.http.get<TaxiRank[]>(url)
+        .subscribe({
+          next: (ranks) => {
+            console.log('Received ranks:', ranks);
+            this.filteredTaxiRanks = ranks.filter(r => r.status === 'Active');
+            console.log('Filtered active ranks:', this.filteredTaxiRanks);
+            // Reset taxi rank selection when tenant changes
+            this.taxiRankForm.patchValue({ taxiRankId: '' });
+          },
+          error: (error) => {
+            console.error('Error loading filtered taxi ranks:', error);
+            this.filteredTaxiRanks = [];
+          }
+        });
+    } else {
+      console.log('No tenant selected, clearing filtered ranks');
+      this.filteredTaxiRanks = [];
     }
   }
 }

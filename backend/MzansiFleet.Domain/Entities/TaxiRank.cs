@@ -39,6 +39,9 @@ namespace MzansiFleet.Domain.Entities
         public ICollection<TaxiRankAdminProfile> Admins { get; set; } = new List<TaxiRankAdminProfile>();
         public ICollection<VehicleTaxiRank> AssignedVehicles { get; set; } = new List<VehicleTaxiRank>();
         public ICollection<TripSchedule> Schedules { get; set; } = new List<TripSchedule>();
+        
+        // Many-to-many relationship with Associations (Tenants)
+        public ICollection<TaxiRankAssociation> Associations { get; set; } = new List<TaxiRankAssociation>();
     }
 
     /// <summary>

@@ -27,33 +27,32 @@ import { MatMenuModule } from '@angular/material/menu';
   styleUrls: ['./admin-dashboard.component.scss']
 })
 export class AdminDashboardComponent implements OnInit {
-  userFullName = '';
+  userData: any;
   taxiRankName = '';
   
   menuItems = [
+    { title: 'Overview', icon: 'dashboard', route: '/admin/overview' },
     { title: 'Route Management', icon: 'route', route: '/admin/routes' },
     { title: 'Owner Assignment', icon: 'person_add', route: '/admin/owners' },
     { title: 'Vehicle Assignment', icon: 'local_taxi', route: '/admin/vehicles' },
     { title: 'Marshal Management', icon: 'security', route: '/admin/marshals' },
     { title: 'Trip Schedule', icon: 'schedule', route: '/admin/schedule' },
     { title: 'Trip Details', icon: 'receipt_long', route: '/admin/trip-details' },
-    { title: 'Reports', icon: 'assessment', route: '/admin/reports' }
+    { title: 'Trip Revenue', icon: 'monetization_on', route: '/admin/trip-revenue' }
   ];
 
   constructor(private router: Router) {}
 
   ngOnInit(): void {
-    // Get user info from local storage or auth service
-    const user = localStorage.getItem('currentUser');
+    // Get user info from local storage
+    const user = localStorage.getItem('user');
     if (user) {
-      const userData = JSON.parse(user);
-      this.userFullName = `${userData.firstName} ${userData.lastName}`;
-      this.taxiRankName = userData.taxiRankName || 'Taxi Rank';
+      this.userData = JSON.parse(user);
     }
   }
 
   logout(): void {
-    localStorage.removeItem('currentUser');
+    localStorage.removeItem('user');
     localStorage.removeItem('token');
     this.router.navigate(['/login']);
   }

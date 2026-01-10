@@ -1,0 +1,103 @@
+<div class="marshal-trip-history">
+  <mat-toolbar color="primary" class="page-toolbar">
+    <button mat-icon-button (click)="goToDashboard()">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <span>Trip History</span>
+    <span class="spacer"></span>
+    <button mat-raised-button color="accent" (click)="goToDashboard()">
+      <mat-icon>dashboard</mat-icon>
+      Dashboard
+    </button>
+  </mat-toolbar>
+
+  <div class="content-container">
+    <mat-card>
+      <mat-card-header>
+        <mat-card-title>Recorded Trips for Your Rank</mat-card-title>
+        <mat-card-subtitle>View all trips captured at your assigned taxi rank</mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        <div *ngIf="loading" class="loading-container">
+          <mat-spinner></mat-spinner>
+          <p>Loading trips...</p>
+        </div>
+
+        <div *ngIf="!loading && trips.length === 0" class="no-data">
+          <mat-icon>info</mat-icon>
+          <p>No trips recorded yet</p>
+        </div>
+
+        <div *ngIf="!loading && trips.length > 0" class="table-container">
+          <table mat-table [dataSource]="trips" class="trips-table">
+            <!-- Date Column -->
+            <ng-container matColumnDef="tripDate">
+              <th mat-header-cell *matHeaderCellDef>Date</th>
+              <td mat-cell *matCellDef="let trip">{{ formatDate(trip.tripDate) }}</td>
+            </ng-container>
+
+            <!-- Vehicle Column -->
+            <ng-container matColumnDef="vehicle">
+              <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+              <td mat-cell *matCellDef="let trip">{{ trip.vehicleRegistration }}</td>
+            </ng-container>
+
+            <!-- Route Column -->
+            <ng-container matColumnDef="route">
+              <th mat-header-cell *matHeaderCellDef>Route</th>
+              <td mat-cell *matCellDef="let trip">{{ trip.routeName }}</td>
+            </ng-container>
+
+            <!-- Driver Column -->
+            <ng-container matColumnDef="driver">
+              <th mat-header-cell *matHeaderCellDef>Driver</th>
+              <td mat-cell *matCellDef="let trip">{{ trip.driverName }}</td>
+            </ng-container>
+
+            <!-- Departure Column -->
+            <ng-container matColumnDef="departure">
+              <th mat-header-cell *matHeaderCellDef>Departure</th>
+              <td mat-cell *matCellDef="let trip">{{ trip.departureTime }}</td>
+            </ng-container>
+
+            <!-- Passengers Column -->
+            <ng-container matColumnDef="passengers">
+              <th mat-header-cell *matHeaderCellDef>Passengers</th>
+              <td mat-cell *matCellDef="let trip">{{ trip.passengerCount }}</td>
+            </ng-container>
+
+            <!-- Fare Column -->
+            <ng-container matColumnDef="fare">
+              <th mat-header-cell *matHeaderCellDef>Total Fare</th>
+              <td mat-cell *matCellDef="let trip">R {{ trip.totalFare | number:'1.2-2' }}</td>
+            </ng-container>
+
+            <!-- Status Column -->
+            <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef>Status</th>
+              <td mat-cell *matCellDef="let trip">
+                <span class="status-badge" [class.completed]="trip.status === 'Completed'">
+                  {{ trip.status }}
+                </span>
+              </td>
+            </ng-container>
+
+            <!-- Actions Column -->
+            <ng-container matColumnDef="actions">
+              <th mat-header-cell *matHeaderCellDef>Actions</th>
+              <td mat-cell *matCellDef="let trip">
+                <button mat-icon-button color="primary" (click)="viewTripDetails(trip)" matTooltip="View Details">
+                  <mat-icon>visibility</mat-icon>
+                </button>
+              </td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+            <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+          </table>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </div>
+</div>

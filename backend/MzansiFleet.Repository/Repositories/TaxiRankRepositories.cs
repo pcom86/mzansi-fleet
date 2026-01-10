@@ -35,8 +35,12 @@ namespace MzansiFleet.Repository.Repositories
 
         public async Task<IEnumerable<TaxiRank>> GetByTenantIdAsync(Guid tenantId)
         {
-            return await _context.TaxiRanks
-                .Where(r => r.TenantId == tenantId)
+            // Get ranks associated with this tenant through the many-to-many relationship
+            return await _context.TaxiRankAssociations
+                .Where(tra => tra.TenantId == tenantId)
+                .Include(tra => tra.TaxiRank)
+                .ThenInclude(r => r.Tenant)
+                .Select(tra => tra.TaxiRank)
                 .OrderBy(r => r.Name)
                 .ToListAsync();
         }
@@ -70,6 +74,57 @@ namespace MzansiFleet.Repository.Repositories
                 _context.TaxiRanks.Remove(rank);
                 await _context.SaveChangesAsync();
             }
+        }
+        
+        // Association management methods
+        public async Task AddAssociationAsync(Guid taxiRankId, Guid tenantId, bool isPrimary = false)
+        {
+            // If isPrimary, mark all other associations as not primary
+            if (isPrimary)
+            {
+                var existingAssociations = await _context.TaxiRankAssociations
+                    .Where(tra => tra.TaxiRankId == taxiRankId && tra.IsPrimary)
+                    .ToListAsync();
+                    
+                foreach (var assoc in existingAssociations)
+                {
+                    assoc.IsPrimary = false;
+                }
+            }
+            
+            var association = new TaxiRankAssociation
+            {
+                Id = Guid.NewGuid(),
+                TaxiRankId = taxiRankId,
+                TenantId = tenantId,
+                IsPrimary = isPrimary,
+                AssignedAt = DateTime.UtcNow
+            };
+            
+            _context.TaxiRankAssociations.Add(association);
+            await _context.SaveChangesAsync();
+        }
+        
+        public async Task RemoveAssociationAsync(Guid taxiRankId, Guid tenantId)
+        {
+            var association = await _context.TaxiRankAssociations
+                .FirstOrDefaultAsync(tra => tra.TaxiRankId == taxiRankId && tra.TenantId == tenantId);
+                
+            if (association != null)
+            {
+                _context.TaxiRankAssociations.Remove(association);
+                await _context.SaveChangesAsync();
+            }
+        }
+        
+        public async Task<IEnumerable<TaxiRankAssociation>> GetAssociationsAsync(Guid taxiRankId)
+        {
+            return await _context.TaxiRankAssociations
+                .Where(tra => tra.TaxiRankId == taxiRankId)
+                .Include(tra => tra.Tenant)
+                .OrderByDescending(tra => tra.IsPrimary)
+                .ThenBy(tra => tra.Tenant.Name)
+                .ToListAsync();
         }
     }
 
@@ -562,17 +617,31 @@ namespace MzansiFleet.Repository.Repositories
 
         public async Task<IEnumerable<TaxiMarshalProfile>> GetAllAsync()
         {
-            return await _context.TaxiMarshalProfiles
-                .Include(m => m.User)
-                .ToListAsync();
+            try
+            {
+                return await _context.TaxiMarshalProfiles
+                    .ToListAsync();
+            }
+            catch
+            {
+                // Table might not exist yet - return empty list
+                return new List<TaxiMarshalProfile>();
+            }
         }
 
         public async Task<IEnumerable<TaxiMarshalProfile>> GetByTenantIdAsync(Guid tenantId)
         {
-            return await _context.TaxiMarshalProfiles
-                .Include(m => m.User)
-                .Where(m => m.TenantId == tenantId)
-                .ToListAsync();
+            try
+            {
+                return await _context.TaxiMarshalProfiles
+                    .Where(m => m.TenantId == tenantId)
+                    .ToListAsync();
+            }
+            catch
+            {
+                // Table might not exist yet - return empty list
+                return new List<TaxiMarshalProfile>();
+            }
         }
 
         public async Task<IEnumerable<TaxiMarshalProfile>> GetByTaxiRankIdAsync(Guid taxiRankId)

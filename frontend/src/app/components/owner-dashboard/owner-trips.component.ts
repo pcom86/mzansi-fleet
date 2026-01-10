@@ -33,6 +33,8 @@ interface Trip {
   notes?: string;
   status: string;
   createdAt: string;
+  passengerListFileName?: string;
+  passengerListFileData?: string;
 }
 
 interface Passenger {
@@ -167,24 +169,47 @@ export class OwnerTripsComponent implements OnInit {
       // Get vehicle IDs to filter trips
       const vehicleIds = this.vehicles.map(v => v.id).join(',');
       
-      // Load all data in parallel, filtering trips by owner's vehicles
-      const [tripsData, driversData, routesData] = await Promise.all([
+      // Load trips and routes
+      const [tripsData, routesData] = await Promise.all([
         this.http.get<Trip[]>(`${environment.apiUrl}/TripDetails?vehicleIds=${vehicleIds}`).toPromise(),
-        this.http.get<any[]>(`${environment.apiUrl}/Identity/driverprofiles`).toPromise(),
         this.http.get<Route[]>(`${environment.apiUrl}/Routes`).toPromise()
       ]);
 
       this.trips = tripsData || [];
       this.routes = routesData || [];
       
-      // Map driver profiles to driver list
-      // Note: Trip.DriverId refers to User.Id, so we use profile.userId as the key
-      this.drivers = (driversData || []).map((profile: any) => ({
-        id: profile.userId,  // Use userId to match Trip.DriverId
-        firstName: profile.name ? profile.name.split(' ')[0] : '',
-        lastName: profile.name ? profile.name.split(' ').slice(1).join(' ') : '',
-        licenseNumber: profile.category || ''
-      }));
+      // Get unique driver IDs from trips
+      const uniqueDriverIds = [...new Set(this.trips.map(t => t.driverId).filter(id => id))];
+      
+      console.log('Unique driver IDs from trips:', uniqueDriverIds);
+      
+      // Load each driver by their ID using the Drivers endpoint
+      const driverPromises = uniqueDriverIds.map(driverId => 
+        this.http.get<any>(`${environment.apiUrl}/Drivers/${driverId}`).toPromise()
+          .catch(err => {
+            console.warn(`Failed to load driver ${driverId}:`, err);
+            return null;
+          })
+      );
+      
+      const driversData = await Promise.all(driverPromises);
+      
+      // Map loaded drivers to the correct format
+      this.drivers = driversData
+        .filter(driver => driver !== null)
+        .map((driver: any) => ({
+          id: driver.id,
+          firstName: driver.name || driver.firstName || `${driver.user?.firstName || ''} ${driver.user?.lastName || ''}`.trim() || 'Unknown',
+          lastName: '',
+          licenseNumber: driver.licenseNumber || driver.category || ''
+        }));
+
+      console.log('Loaded drivers:', this.drivers);
+      console.log('Sample trips with driver IDs:', this.trips.slice(0, 3).map(t => ({ 
+        tripId: t.id, 
+        driverId: t.driverId,
+        matchedDriver: this.drivers.find(d => d.id === t.driverId)
+      })));
 
       this.applyFilters();
       this.calculateStats();
@@ -224,8 +249,16 @@ export class OwnerTripsComponent implements OnInit {
   }
 
   getDriverName(driverId: string): string {
+    if (!driverId) {
+      return 'No Driver Assigned';
+    }
     const driver = this.drivers.find(d => d.id === driverId);
-    return driver ? `${driver.firstName} ${driver.lastName}` : 'Unknown Driver';
+    if (!driver) {
+      console.warn('Driver not found for ID:', driverId);
+      return 'Unknown Driver';
+    }
+    const fullName = `${driver.firstName} ${driver.lastName}`.trim();
+    return fullName || driver.firstName || 'Unknown Driver';
   }
 
   getRouteName(routeId: string): string {
@@ -313,7 +346,8 @@ export class OwnerTripsComponent implements OnInit {
     MatIconModule,
     MatTableModule,
     MatCardModule,
-    MatChipsModule
+    MatChipsModule,
+    MatTooltipModule
   ],
   template: `
     <h2 mat-dialog-title>
@@ -372,8 +406,17 @@ export class OwnerTripsComponent implements OnInit {
         <mat-card-header>
           <mat-icon mat-card-avatar>people</mat-icon>
           <mat-card-title>Passengers ({{ data.trip.passengers.length }})</mat-card-title>
+          <button mat-icon-button *ngIf="data.trip.passengerListFileName" 
+                  (click)="downloadPassengerList()" 
+                  matTooltip="Download Passenger List">
+            <mat-icon>download</mat-icon>
+          </button>
         </mat-card-header>
         <mat-card-content>
+          <div *ngIf="data.trip.passengerListFileName" class="file-info">
+            <mat-icon>attach_file</mat-icon>
+            <span>{{ data.trip.passengerListFileName }}</span>
+          </div>
           <table mat-table [dataSource]="data.trip.passengers" class="passengers-table">
             <ng-container matColumnDef="name">
               <th mat-header-cell *matHeaderCellDef>Name</th>
@@ -577,6 +620,29 @@ export class OwnerTripsComponent implements OnInit {
     .mb-3 {
       margin-bottom: 16px;
     }
+
+    .file-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f5f5f5;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+
+    .file-info mat-icon {
+      color: #666;
+    }
+
+    .download-btn {
+      margin-left: auto;
+    }
+
+    mat-card-header {
+      display: flex;
+      align-items: center;
+    }
   `]
 })
 export class TripDetailsDialogComponent {
@@ -595,6 +661,15 @@ export class TripDetailsDialogComponent {
   ) {
     // Calculate total expenses
     this.totalExpenses = (data.expenses || []).reduce((sum, exp) => sum + exp.amount, 0);
+  }
+
+  downloadPassengerList(): void {
+    if (this.data.trip.passengerListFileData && this.data.trip.passengerListFileName) {
+      const link = document.createElement('a');
+      link.href = this.data.trip.passengerListFileData;
+      link.download = this.data.trip.passengerListFileName;
+      link.click();
+    }
   }
 
   printDetails(): void {

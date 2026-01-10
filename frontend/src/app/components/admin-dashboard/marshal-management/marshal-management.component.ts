@@ -15,8 +15,7 @@ import { environment } from '../../../../environments/environment';
 
 interface Marshal {
   id: string;
-  firstName: string;
-  lastName: string;
+  fullName: string;
   marshalCode: string;
   email: string;
   phoneNumber: string;
@@ -102,9 +101,24 @@ export class MarshalManagementComponent implements OnInit {
 
   loadMarshals(): void {
     this.loading = true;
-    this.http.get<Marshal[]>(`${environment.apiUrl}/Marshals`)
+    
+    // Get tenantId from localStorage
+    const user = localStorage.getItem('user');
+    let tenantId = '';
+    if (user) {
+      const userData = JSON.parse(user);
+      tenantId = userData.tenantId;
+    }
+    
+    // Use the correct endpoint with tenantId filter
+    const url = tenantId 
+      ? `${environment.apiUrl}/TaxiRankUsers/marshals?tenantId=${tenantId}`
+      : `${environment.apiUrl}/TaxiRankUsers/marshals`;
+    
+    this.http.get<Marshal[]>(url)
       .subscribe({
         next: (marshals) => {
+          console.log('Marshals loaded:', marshals);
           this.marshals = marshals;
           this.loading = false;
         },
@@ -123,7 +137,19 @@ export class MarshalManagementComponent implements OnInit {
     }
 
     this.loading = true;
-    const marshalData = this.marshalForm.value;
+    
+    // Get tenantId from localStorage
+    const user = localStorage.getItem('user');
+    let tenantId = '';
+    if (user) {
+      const userData = JSON.parse(user);
+      tenantId = userData.tenantId;
+    }
+    
+    const marshalData = {
+      ...this.marshalForm.value,
+      tenantId: tenantId
+    };
 
     const request = this.editMode
       ? this.http.put(`${environment.apiUrl}/Marshals/${this.editingMarshalId}`, marshalData)
@@ -142,7 +168,8 @@ export class MarshalManagementComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error saving marshal:', error);
-        this.snackBar.open('Failed to save marshal', 'Close', { duration: 3000 });
+        const errorMessage = error.error?.message || 'Failed to save marshal';
+        this.snackBar.open(errorMessage, 'Close', { duration: 5000 });
         this.loading = false;
       }
     });
@@ -152,9 +179,14 @@ export class MarshalManagementComponent implements OnInit {
     this.editMode = true;
     this.editingMarshalId = marshal.id;
     
+    // Split fullName into firstName and lastName
+    const nameParts = marshal.fullName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    
     this.marshalForm.patchValue({
-      firstName: marshal.firstName,
-      lastName: marshal.lastName,
+      firstName: firstName,
+      lastName: lastName,
       marshalCode: marshal.marshalCode,
       email: marshal.email,
       phoneNumber: marshal.phoneNumber,
@@ -195,7 +227,7 @@ export class MarshalManagementComponent implements OnInit {
   }
 
   getMarshalFullName(marshal: Marshal): string {
-    return `${marshal.firstName} ${marshal.lastName}`;
+    return marshal.fullName || '';
   }
 
   getShiftDisplay(marshal: Marshal): string {

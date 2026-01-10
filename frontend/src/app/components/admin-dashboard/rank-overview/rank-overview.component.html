@@ -1,0 +1,228 @@
+<div class="rank-overview-container">
+  <!-- Header -->
+  <div class="page-header">
+    <h1>
+      <mat-icon>account_tree</mat-icon>
+      Association Hierarchy Overview
+    </h1>
+    <p class="subtitle">View the complete structure: Association → Taxi Ranks → Routes → Vehicles</p>
+  </div>
+
+  <!-- Loading Spinner -->
+  <div *ngIf="loading" class="loading-container">
+    <mat-spinner></mat-spinner>
+    <p>Loading association data...</p>
+  </div>
+
+  <!-- Association Card -->
+  <mat-card *ngIf="association && !loading" class="association-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon class="association-icon">business</mat-icon>
+        {{ association.name }}
+      </mat-card-title>
+      <mat-card-subtitle>Taxi Association</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="association-details">
+        <div class="detail-item">
+          <mat-icon>qr_code</mat-icon>
+          <span>Code: {{ association.code }}</span>
+        </div>
+        <div class="detail-item">
+          <mat-icon>email</mat-icon>
+          <span>{{ association.contactEmail }}</span>
+        </div>
+        <div class="detail-item">
+          <mat-icon>phone</mat-icon>
+          <span>{{ association.contactPhone }}</span>
+        </div>
+        <div class="detail-item">
+          <mat-icon>location_city</mat-icon>
+          <span>{{ taxiRanks.length }} Taxi Rank(s)</span>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Taxi Ranks Hierarchy -->
+  <div *ngIf="!loading && taxiRanks.length === 0" class="empty-state">
+    <mat-icon>info</mat-icon>
+    <p>No taxi ranks found for this association</p>
+  </div>
+
+  <div *ngIf="!loading && taxiRanks.length > 0" class="hierarchy-container">
+    <!-- Each Taxi Rank -->
+    <mat-card *ngFor="let rank of taxiRanks" class="rank-card">
+      <mat-card-header (click)="toggleRank(rank.id)" class="clickable-header">
+        <div class="rank-header-content">
+          <div class="rank-title">
+            <mat-icon class="expand-icon">{{ isRankExpanded(rank.id) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+            <mat-icon class="rank-icon">location_on</mat-icon>
+            <span class="rank-name">{{ rank.name }}</span>
+            <mat-chip class="rank-chip">{{ rank.city }}</mat-chip>
+          </div>
+          <div class="rank-stats">
+            <span class="stat">
+              <mat-icon>route</mat-icon>
+              {{ rank.routes?.length || 0 }} routes
+            </span>
+          </div>
+        </div>
+      </mat-card-header>
+
+      <!-- Rank Details (expanded) -->
+      <mat-card-content *ngIf="isRankExpanded(rank.id)">
+        <div class="rank-info">
+          <div class="info-item">
+            <mat-icon>qr_code</mat-icon>
+            <span>Code: {{ rank.code }}</span>
+          </div>
+          <div class="info-item">
+            <mat-icon>place</mat-icon>
+            <span>{{ rank.address }}</span>
+          </div>
+          <div class="info-item">
+            <mat-icon>local_taxi</mat-icon>
+            <span>Capacity: {{ rank.capacity }} vehicles</span>
+          </div>
+          <div class="info-item">
+            <mat-chip [color]="rank.status === 'Active' ? 'primary' : 'warn'">{{ rank.status }}</mat-chip>
+          </div>
+        </div>
+
+        <!-- Routes under this Rank -->
+        <div *ngIf="rank.routes && rank.routes.length === 0" class="empty-state-inline">
+          <mat-icon>info</mat-icon>
+          <span>No routes defined for this taxi rank</span>
+        </div>
+
+        <div *ngIf="rank.routes && rank.routes.length > 0" class="routes-container">
+          <h4 class="section-title">
+            <mat-icon>route</mat-icon>
+            Routes
+          </h4>
+
+          <!-- Each Route -->
+          <mat-card *ngFor="let route of rank.routes" class="route-card">
+            <mat-card-header (click)="toggleRoute(route.id, route)" class="clickable-header">
+              <div class="route-header-content">
+                <div class="route-title">
+                  <mat-icon class="expand-icon">{{ isRouteExpanded(route.id) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+                  <mat-icon class="route-icon">directions</mat-icon>
+                  <span class="route-name">{{ route.name }}</span>
+                  <mat-chip class="route-chip">{{ route.code }}</mat-chip>
+                </div>
+                <div class="route-stats">
+                  <span class="stat">
+                    <mat-icon>payments</mat-icon>
+                    {{ formatCurrency(route.fareAmount) }}
+                  </span>
+                  <span class="stat">
+                    <mat-icon>local_taxi</mat-icon>
+                    {{ route.vehicles?.length || 0 }} vehicles
+                  </span>
+                </div>
+              </div>
+            </mat-card-header>
+
+            <!-- Route Details (expanded) -->
+            <mat-card-content *ngIf="isRouteExpanded(route.id)">
+              <div class="route-info">
+                <div class="info-row">
+                  <mat-icon>trip_origin</mat-icon>
+                  <span><strong>Origin:</strong> {{ route.origin }}</span>
+                </div>
+                <div class="info-row">
+                  <mat-icon>location_on</mat-icon>
+                  <span><strong>Destination:</strong> {{ route.destination }}</span>
+                </div>
+                <div class="info-row" *ngIf="route.stops && route.stops.length > 0">
+                  <mat-icon>pin_drop</mat-icon>
+                  <span><strong>Stops:</strong> {{ route.stops.join(', ') }}</span>
+                </div>
+                <div class="info-row">
+                  <mat-icon>straighten</mat-icon>
+                  <span><strong>Distance:</strong> {{ route.distance }} km</span>
+                </div>
+                <div class="info-row">
+                  <mat-icon>schedule</mat-icon>
+                  <span><strong>Duration:</strong> {{ route.estimatedDuration }} minutes</span>
+                </div>
+              </div>
+
+              <!-- Vehicles under this Route -->
+              <div *ngIf="!route.vehicles" class="loading-inline">
+                <mat-spinner diameter="30"></mat-spinner>
+                <span>Loading vehicles...</span>
+              </div>
+
+              <div *ngIf="route.vehicles && route.vehicles.length === 0" class="empty-state-inline">
+                <mat-icon>info</mat-icon>
+                <span>No vehicles assigned to this route</span>
+              </div>
+
+              <div *ngIf="route.vehicles && route.vehicles.length > 0" class="vehicles-container">
+                <h5 class="subsection-title">
+                  <mat-icon>local_taxi</mat-icon>
+                  Vehicles on this Route
+                </h5>
+
+                <div class="table-container">
+                  <table mat-table [dataSource]="route.vehicles" class="vehicles-table">
+                    <!-- Registration Number -->
+                    <ng-container matColumnDef="registrationNumber">
+                      <th mat-header-cell *matHeaderCellDef>Registration</th>
+                      <td mat-cell *matCellDef="let vehicle">
+                        <strong>{{ vehicle.registrationNumber }}</strong>
+                      </td>
+                    </ng-container>
+
+                    <!-- Make -->
+                    <ng-container matColumnDef="make">
+                      <th mat-header-cell *matHeaderCellDef>Make</th>
+                      <td mat-cell *matCellDef="let vehicle">{{ vehicle.make }}</td>
+                    </ng-container>
+
+                    <!-- Model -->
+                    <ng-container matColumnDef="model">
+                      <th mat-header-cell *matHeaderCellDef>Model</th>
+                      <td mat-cell *matCellDef="let vehicle">{{ vehicle.model }}</td>
+                    </ng-container>
+
+                    <!-- Year -->
+                    <ng-container matColumnDef="year">
+                      <th mat-header-cell *matHeaderCellDef>Year</th>
+                      <td mat-cell *matCellDef="let vehicle">{{ vehicle.year }}</td>
+                    </ng-container>
+
+                    <!-- Capacity -->
+                    <ng-container matColumnDef="capacity">
+                      <th mat-header-cell *matHeaderCellDef>Capacity</th>
+                      <td mat-cell *matCellDef="let vehicle">
+                        <mat-chip>{{ vehicle.capacity }} seats</mat-chip>
+                      </td>
+                    </ng-container>
+
+                    <!-- Status -->
+                    <ng-container matColumnDef="status">
+                      <th mat-header-cell *matHeaderCellDef>Status</th>
+                      <td mat-cell *matCellDef="let vehicle">
+                        <mat-chip [color]="vehicle.isActive ? 'primary' : 'warn'">
+                          {{ vehicle.status }}
+                        </mat-chip>
+                      </td>
+                    </ng-container>
+
+                    <tr mat-header-row *matHeaderRowDef="vehicleColumns"></tr>
+                    <tr mat-row *matRowDef="let row; columns: vehicleColumns;"></tr>
+                  </table>
+                </div>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </div>
+</div>

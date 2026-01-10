@@ -1,7 +1,10 @@
+#nullable enable
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MzansiFleet.Application.DTOs;
 using MzansiFleet.Domain.Entities;
+using MzansiFleet.Domain.Interfaces.IRepositories;
 using MzansiFleet.Repository;
 using System;
 using System.Collections.Generic;
@@ -71,15 +74,15 @@ namespace MzansiFleet.Api.Controllers
 
             if (dto.TenantId.HasValue)
                 route.TenantId = dto.TenantId.Value;
-            route.Code = dto.Code;
-            route.Name = dto.Name;
-            route.Origin = dto.Origin;
-            route.Destination = dto.Destination;
-            route.Stops = dto.Stops;
-            route.Distance = dto.Distance ?? 0;
-            route.EstimatedDuration = dto.EstimatedDuration ?? 0;
-            route.FareAmount = dto.FareAmount ?? 0;
-            route.Status = dto.Status;
+            route.Code = dto.Code ?? route.Code;
+            route.Name = dto.Name ?? route.Name;
+            route.Origin = dto.Origin ?? route.Origin;
+            route.Destination = dto.Destination ?? route.Destination;
+            route.Stops = dto.Stops ?? route.Stops;
+            route.Distance = dto.Distance ?? route.Distance;
+            route.EstimatedDuration = dto.EstimatedDuration ?? route.EstimatedDuration;
+            route.FareAmount = dto.FareAmount ?? route.FareAmount;
+            route.Status = dto.Status ?? route.Status;
 
             await _context.SaveChangesAsync();
             return NoContent();
@@ -114,7 +117,7 @@ namespace MzansiFleet.Api.Controllers
         {
             var assignments = await _context.OwnerAssignments
                 .Include(a => a.Owner)
-                    .ThenInclude(o => o.User)
+                    .ThenInclude(o => o!.User)
                 .Include(a => a.TaxiRank)
                 .ToListAsync();
             
@@ -139,7 +142,7 @@ namespace MzansiFleet.Api.Controllers
             // Reload with related entities
             var created = await _context.OwnerAssignments
                 .Include(a => a.Owner)
-                    .ThenInclude(o => o.User)
+                    .ThenInclude(o => o!.User)
                 .Include(a => a.TaxiRank)
                 .FirstOrDefaultAsync(a => a.Id == assignment.Id);
             
@@ -279,33 +282,207 @@ namespace MzansiFleet.Api.Controllers
     [Route("api/[controller]")]
     public class MarshalsController : ControllerBase
     {
+        private readonly MzansiFleetDbContext _context;
+        private readonly ITaxiMarshalRepository _marshalRepository;
+        private readonly IUserRepository _userRepository;
+
+        public MarshalsController(
+            MzansiFleetDbContext context,
+            ITaxiMarshalRepository marshalRepository,
+            IUserRepository userRepository)
+        {
+            _context = context;
+            _marshalRepository = marshalRepository;
+            _userRepository = userRepository;
+        }
+
         [HttpGet]
         public async Task<ActionResult<IEnumerable<object>>> GetAll()
         {
-            // TODO: Implement - Return marshal users with TaxiMarshal role
+            // Redirect to the proper endpoint
             return Ok(new List<object>());
         }
 
         [HttpPost]
         public async Task<ActionResult> Create([FromBody] CreateMarshalDto dto)
         {
-            // TODO: Implement - Create user with TaxiMarshal role
-            return Ok();
+            try
+            {
+                // Get tenantId from logged-in user or from dto
+                var tenantId = dto.TenantId;
+                if (tenantId == Guid.Empty)
+                {
+                    return BadRequest(new { message = "TenantId is required" });
+                }
+
+                // Validate tenant exists
+                var tenant = await _context.Tenants.FindAsync(tenantId);
+                if (tenant == null)
+                    return BadRequest(new { message = "Invalid tenant" });
+
+                // Check if email already exists
+                var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+                if (existingUser != null)
+                {
+                    return BadRequest(new { message = "Email already registered" });
+                }
+
+                // Check if marshal code already exists
+                if (!string.IsNullOrEmpty(dto.MarshalCode))
+                {
+                    var existingMarshal = await _marshalRepository.GetByMarshalCodeAsync(dto.MarshalCode);
+                    if (existingMarshal != null)
+                        return BadRequest(new { message = "Marshal code already in use" });
+                }
+
+                // Create User account
+                var userId = Guid.NewGuid();
+                var user = new User
+                {
+                    Id = userId,
+                    TenantId = tenantId,
+                    Email = dto.Email,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                    Role = "TaxiMarshal",
+                    IsActive = true
+                };
+
+                _userRepository.Add(user);
+
+                // Get taxi rank - use first available if not specified
+                Guid taxiRankId;
+                if (dto.TaxiRankId.HasValue && dto.TaxiRankId.Value != Guid.Empty)
+                {
+                    taxiRankId = dto.TaxiRankId.Value;
+                }
+                else
+                {
+                    // Get first taxi rank for this tenant
+                    var taxiRank = await _context.TaxiRanks
+                        .Where(tr => tr.TenantId == tenantId)
+                        .FirstOrDefaultAsync();
+                    
+                    if (taxiRank == null)
+                        return BadRequest(new { message = "No taxi rank found for this tenant" });
+                    
+                    taxiRankId = taxiRank.Id;
+                }
+
+                // Create TaxiMarshalProfile
+                var marshalProfile = new TaxiMarshalProfile
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    TenantId = tenantId,
+                    TaxiRankId = taxiRankId,
+                    MarshalCode = dto.MarshalCode,
+                    FullName = $"{dto.FirstName} {dto.LastName}",
+                    PhoneNumber = dto.PhoneNumber,
+                    Email = dto.Email,
+                    HireDate = DateTime.UtcNow,
+                    Status = dto.Status ?? "Active",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _marshalRepository.AddAsync(marshalProfile);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Marshal created successfully",
+                    userId = userId,
+                    profileId = marshalProfile.Id,
+                    marshalCode = marshalProfile.MarshalCode
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error creating marshal", error = ex.Message });
+            }
         }
 
         [HttpPut("{id}")]
         public async Task<ActionResult> Update(Guid id, [FromBody] UpdateMarshalDto dto)
         {
-            // TODO: Implement
-            return NoContent();
+            try
+            {
+                var marshal = await _marshalRepository.GetByIdAsync(id);
+                if (marshal == null)
+                    return NotFound();
+
+                // Update marshal profile
+                marshal.FullName = !string.IsNullOrEmpty(dto.FirstName) && !string.IsNullOrEmpty(dto.LastName)
+                    ? $"{dto.FirstName} {dto.LastName}"
+                    : marshal.FullName;
+                marshal.PhoneNumber = dto.PhoneNumber ?? marshal.PhoneNumber;
+                marshal.Email = dto.Email ?? marshal.Email;
+                marshal.Status = dto.Status ?? marshal.Status;
+                marshal.UpdatedAt = DateTime.UtcNow;
+
+                await _marshalRepository.UpdateAsync(marshal);
+
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error updating marshal", error = ex.Message });
+            }
         }
 
         [HttpDelete("{id}")]
         public async Task<ActionResult> Delete(Guid id)
         {
-            // TODO: Implement
-            return NoContent();
+            try
+            {
+                var marshal = await _marshalRepository.GetByIdAsync(id);
+                if (marshal == null)
+                    return NotFound();
+
+                await _marshalRepository.DeleteAsync(id);
+
+                // Also delete the user account
+                if (marshal.UserId != Guid.Empty)
+                {
+                    var user = _userRepository.GetById(marshal.UserId);
+                    if (user != null)
+                    {
+                        _userRepository.Delete(user.Id);
+                    }
+                }
+
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error deleting marshal", error = ex.Message });
+            }
         }
+    }
+
+    public class CreateMarshalDto
+    {
+        public Guid TenantId { get; set; }
+        public Guid? TaxiRankId { get; set; }
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string MarshalCode { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string? ShiftStartTime { get; set; }
+        public string? ShiftEndTime { get; set; }
+        public string? Status { get; set; }
+    }
+
+    public class UpdateMarshalDto
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? ShiftStartTime { get; set; }
+        public string? ShiftEndTime { get; set; }
+        public string? Status { get; set; }
     }
 
     [ApiController]
@@ -341,6 +518,104 @@ namespace MzansiFleet.Api.Controllers
             
             var trips = await query.OrderByDescending(t => t.TripDate).ToListAsync();
             return Ok(trips);
+        }
+
+        [HttpGet("revenue")]
+        public async Task<ActionResult<IEnumerable<object>>> GetRevenue(
+            [FromQuery] Guid tenantId,
+            [FromQuery] Guid? taxiRankId,
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate)
+        {
+            try
+            {
+                // Convert dates to UTC if they're not already
+                var utcStartDate = startDate.Kind == DateTimeKind.Unspecified 
+                    ? DateTime.SpecifyKind(startDate, DateTimeKind.Utc) 
+                    : startDate.ToUniversalTime();
+                
+                var utcEndDate = endDate.Kind == DateTimeKind.Unspecified 
+                    ? DateTime.SpecifyKind(endDate, DateTimeKind.Utc) 
+                    : endDate.ToUniversalTime();
+
+                var query = _context.Set<Trip>()
+                    .Include(t => t.Passengers)
+                    .AsQueryable();
+
+                // Filter by date range
+                query = query.Where(t => t.TripDate >= utcStartDate && t.TripDate <= utcEndDate);
+
+                // Filter by tenantId through Vehicle
+                var vehicleIds = await _context.Set<Vehicle>()
+                    .Where(v => v.TenantId == tenantId)
+                    .Select(v => v.Id)
+                    .ToListAsync();
+                
+                query = query.Where(t => vehicleIds.Contains(t.VehicleId));
+
+                // Optionally filter by taxiRankId if provided
+                if (taxiRankId.HasValue)
+                {
+                    var rankVehicleIds = await _context.Set<VehicleTaxiRank>()
+                        .Where(vtr => vtr.TaxiRankId == taxiRankId.Value)
+                        .Select(vtr => vtr.VehicleId)
+                        .ToListAsync();
+                    
+                    query = query.Where(t => rankVehicleIds.Contains(t.VehicleId));
+                }
+
+                var trips = await query
+                    .OrderByDescending(t => t.TripDate)
+                    .ToListAsync();
+
+                // Get related data
+                var routeIds = trips.Select(t => t.RouteId).Distinct().ToList();
+                var routes = await _context.Set<Route>()
+                    .Where(r => routeIds.Contains(r.Id))
+                    .ToDictionaryAsync(r => r.Id, r => r.Name);
+
+                var driverIds = trips.Select(t => t.DriverId).Distinct().ToList();
+                var drivers = await _context.Set<DriverProfile>()
+                    .Where(d => driverIds.Contains(d.Id))
+                    .ToDictionaryAsync(d => d.Id, d => d.Name);
+
+                var tripVehicleIds = trips.Select(t => t.VehicleId).Distinct().ToList();
+                var vehicles = await _context.Set<Vehicle>()
+                    .Where(v => tripVehicleIds.Contains(v.Id))
+                    .ToDictionaryAsync(v => v.Id, v => v.Registration);
+
+                // Get vehicle earnings for these trips
+                var tripIds = trips.Select(t => t.Id).ToList();
+                var vehicleEarnings = await _context.VehicleEarningRecords
+                    .Where(ve => ve.TripId.HasValue && tripIds.Contains(ve.TripId.Value))
+                    .GroupBy(ve => ve.TripId)
+                    .ToDictionaryAsync(
+                        g => g.Key!.Value,
+                        g => g.Sum(ve => ve.Amount)
+                    );
+
+                // Map to response
+                var result = trips.Select(t => new
+                {
+                    tripId = t.Id.ToString(),
+                    tripDate = t.TripDate.ToString("yyyy-MM-dd"),
+                    vehicleRegistration = vehicles.ContainsKey(t.VehicleId) ? vehicles[t.VehicleId] : "Unknown",
+                    routeName = routes.ContainsKey(t.RouteId) ? routes[t.RouteId] : "Unknown",
+                    driverName = drivers.ContainsKey(t.DriverId) ? drivers[t.DriverId] : "Unknown",
+                    departureTime = t.DepartureTime,
+                    arrivalTime = t.ArrivalTime ?? "",
+                    passengerCount = t.PassengerCount,
+                    totalFare = t.TotalFare,
+                    vehicleEarnings = vehicleEarnings.ContainsKey(t.Id) ? vehicleEarnings[t.Id] : 0,
+                    driverEarnings = t.TotalFare - (vehicleEarnings.ContainsKey(t.Id) ? vehicleEarnings[t.Id] : 0)
+                }).ToList();
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Error retrieving revenue data", error = ex.Message });
+            }
         }
 
         [HttpGet("{id}")]

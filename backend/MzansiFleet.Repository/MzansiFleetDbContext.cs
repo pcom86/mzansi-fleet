@@ -59,6 +59,7 @@ namespace MzansiFleet.Repository
         public DbSet<TaxiRankAdminProfile> TaxiRankAdmins { get; set; }
         public DbSet<VehicleTaxiRank> VehicleTaxiRanks { get; set; }
         public DbSet<TripSchedule> TripSchedules { get; set; }
+        public DbSet<TaxiRankAssociation> TaxiRankAssociations { get; set; }
         
         // Admin Dashboard Module
         public DbSet<Route> Routes { get; set; }
@@ -116,6 +117,23 @@ namespace MzansiFleet.Repository
             modelBuilder.Entity<TripPassenger>().Property(t => t.Id).ValueGeneratedNever();
             modelBuilder.Entity<TripCost>().Property(t => t.Id).ValueGeneratedNever();
             modelBuilder.Entity<TaxiMarshalProfile>().Property(t => t.Id).ValueGeneratedNever();
+            
+            // Configure TaxiRankAssociation many-to-many relationship
+            modelBuilder.Entity<TaxiRankAssociation>()
+                .HasOne(tra => tra.TaxiRank)
+                .WithMany(tr => tr.Associations)
+                .HasForeignKey(tra => tra.TaxiRankId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            modelBuilder.Entity<TaxiRankAssociation>()
+                .HasOne(tra => tra.Tenant)
+                .WithMany()
+                .HasForeignKey(tra => tra.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            modelBuilder.Entity<TaxiRankAssociation>()
+                .HasIndex(tra => new { tra.TaxiRankId, tra.TenantId })
+                .IsUnique();
         }
     }
 }

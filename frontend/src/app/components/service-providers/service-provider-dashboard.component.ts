@@ -100,6 +100,10 @@ interface ServiceProviderProfile {
       <div class="page-header">
         <div class="header-content">
           <h1><mat-icon>dashboard</mat-icon> Service Provider Dashboard</h1>
+          <div class="user-info" *ngIf="userData">
+            <span class="user-name">{{ userData.fullName || userData.email }}</span>
+            <span class="user-role">{{ userData.role }}</span>
+          </div>
           <button mat-raised-button color="warn" (click)="logout()">
             <mat-icon>logout</mat-icon>
             Logout
@@ -395,6 +399,23 @@ interface ServiceProviderProfile {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 20px;
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+
+      .user-name {
+        font-weight: 500;
+        font-size: 14px;
+      }
+
+      .user-role {
+        font-size: 12px;
+        opacity: 0.8;
+      }
     }
 
     .page-header h1 {
@@ -921,6 +942,7 @@ interface ServiceProviderProfile {
   `]
 })
 export class ServiceProviderDashboardComponent implements OnInit {
+  userData: any;
   profile: ServiceProviderProfile | null = null;
   scheduledAppointments: ScheduledAppointment[] = [];
   completedMaintenance: CompletedMaintenance[] = [];
@@ -934,6 +956,11 @@ export class ServiceProviderDashboardComponent implements OnInit {
   ) {}
 
   async ngOnInit(): Promise<void> {
+    // Get user info from local storage
+    const user = localStorage.getItem('user');
+    if (user) {
+      this.userData = JSON.parse(user);
+    }
     await this.loadDashboardData();
   }
 

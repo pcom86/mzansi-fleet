@@ -2,7 +2,7 @@
   <mat-sidenav #sidenav mode="side" opened class="dashboard-sidenav">
     <div class="sidenav-header">
       <h2>{{ taxiRankName }}</h2>
-      <p class="admin-name">{{ userFullName }}</p>
+      <p class="admin-name" *ngIf="userData">{{ userData.fullName || userData.email }}</p>
     </div>
     
     <mat-nav-list>
@@ -19,6 +19,10 @@
     <mat-toolbar color="primary" class="dashboard-toolbar">
       <span>Taxi Rank Admin Dashboard</span>
       <span class="spacer"></span>
+      <div class="user-info" *ngIf="userData">
+        <span class="user-name">{{ userData.fullName || userData.email }}</span>
+        <span class="user-role">{{ userData.role }}</span>
+      </div>
       <button mat-icon-button [matMenuTriggerFor]="menu">
         <mat-icon>account_circle</mat-icon>
       </button>

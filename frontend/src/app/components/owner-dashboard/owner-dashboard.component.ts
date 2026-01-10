@@ -35,7 +35,10 @@ import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component'
           <span class="title-text">Owner Dashboard</span>
         </span>
         <span class="spacer"></span>
-        <span class="user-info">{{ userDisplayName }}</span>
+        <div class="user-info" *ngIf="userData">
+          <span class="user-name">{{ userData.fullName || userData.email }}</span>
+          <span class="user-role">{{ userData.role }}</span>
+        </div>
         <button mat-icon-button [matMenuTriggerFor]="menu">
           <mat-icon>account_circle</mat-icon>
         </button>
@@ -233,9 +236,22 @@ import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component'
     }
 
     .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
       margin-right: 1rem;
-      font-size: 0.95rem;
-      color: #FFFFFF;
+
+      .user-name {
+        font-weight: 500;
+        font-size: 14px;
+        color: #FFFFFF;
+      }
+
+      .user-role {
+        font-size: 12px;
+        opacity: 0.8;
+        color: #FFFFFF;
+      }
     }
 
     .content {
@@ -413,7 +429,7 @@ import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component'
   `]
 })
 export class OwnerDashboardComponent implements OnInit {
-  userDisplayName: string = '';
+  userData: any;
   tomorrowMaintenanceCount: number = 0;
   private apiUrl = 'http://localhost:5000/api';
 
@@ -424,51 +440,12 @@ export class OwnerDashboardComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.loadUserInfo();
-    this.loadMaintenanceAlerts();
-  }
-
-  loadUserInfo(): void {
-    const user = this.authService.getCurrentUser();
-    if (!user) return;
-
-    // Get user info from localStorage
-    const userInfoStr = localStorage.getItem('user');
-    if (!userInfoStr) return;
-
-    try {
-      const userInfo = JSON.parse(userInfoStr);
-
-      // Load owner profile to get contact name
-      this.identityService.getUserById(userInfo.userId).subscribe({
-        next: (user) => {
-          if (userInfo.role === 'Owner') {
-            this.identityService.getAllOwnerProfiles().subscribe({
-              next: (profiles) => {
-                const ownerProfile = profiles.find(p => p.userId === userInfo.userId);
-                if (ownerProfile && ownerProfile.contactName) {
-                  this.userDisplayName = ownerProfile.contactName;
-                } else if (user.email) {
-                  this.userDisplayName = user.email.split('@')[0];
-                }
-              },
-              error: () => {
-                if (user.email) {
-                  this.userDisplayName = user.email.split('@')[0];
-                }
-              }
-            });
-          } else if (user.email) {
-            this.userDisplayName = user.email.split('@')[0];
-          }
-        },
-        error: () => {
-          this.userDisplayName = user.email || 'User';
-        }
-      });
-    } catch (error) {
-      console.error('Error loading user info:', error);
+    // Get user info from local storage
+    const user = localStorage.getItem('user');
+    if (user) {
+      this.userData = JSON.parse(user);
     }
+    this.loadMaintenanceAlerts();
   }
 
   logout(): void {

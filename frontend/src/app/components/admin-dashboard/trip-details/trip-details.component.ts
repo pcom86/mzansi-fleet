@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, FormArray } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -13,6 +14,9 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatRadioModule } from '@angular/material/radio';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { environment } from '../../../../environments/environment';
 
 interface Vehicle {
@@ -56,7 +60,10 @@ interface Driver {
     MatNativeDateModule,
     MatSnackBarModule,
     MatTableModule,
-    MatDividerModule
+    MatDividerModule,
+    MatRadioModule,
+    MatProgressSpinnerModule,
+    MatTooltipModule
   ],
   templateUrl: './trip-details.component.html',
   styleUrls: ['./trip-details.component.scss']
@@ -67,13 +74,19 @@ export class TripDetailsComponent implements OnInit {
   routes: Route[] = [];
   drivers: Driver[] = [];
   loading = false;
+  uploadingFile = false;
   passengerColumns: string[] = ['name', 'contact', 'nextOfKin', 'nextOfKinContact', 'address', 'destination', 'fare', 'actions'];
   routeDestinations: string[] = [];
+  passengerEntryMode: 'manual' | 'file' = 'manual';
+  selectedFile: File | null = null;
+  passengerListFileName: string | null = null;
+  passengerListFileData: string | null = null;
 
   constructor(
     private fb: FormBuilder,
     private http: HttpClient,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -87,11 +100,13 @@ export class TripDetailsComponent implements OnInit {
     this.tripForm = this.fb.group({
       vehicleId: ['', Validators.required],
       routeId: ['', Validators.required],
+      totalAmountCollected: [null],
+      totalPassengerCount: [null],
       driverId: ['', Validators.required],
       tripDate: [new Date(), Validators.required],
       departureTime: [''],
       arrivalTime: [''],
-      passengers: this.fb.array([]),
+      passengers: this.fb.array([this.createPassengerFormGroup()]),
       notes: ['']
     });
 
@@ -99,28 +114,14 @@ export class TripDetailsComponent implements OnInit {
     this.tripForm.get('vehicleId')?.valueChanges.subscribe(vehicleId => {
       this.onVehicleChange(vehicleId);
     });
-
-    // Add initial passenger row
-    this.addPassenger();
   }
 
-  get passengers(): FormArray {
-    return this.tripForm.get('passengers') as FormArray;
-  }
-
-  get totalFare(): number {
-    return this.passengers.controls.reduce((total, passenger) => {
-      return total + (parseFloat(passenger.get('fareAmount')?.value) || 0);
-    }, 0);
-  }
-
-  get passengerCount(): number {
-    return this.passengers.length;
-  }
-
-  addPassenger(): void {
-    const passengerGroup = this.fb.group({
-      name: ['', Validators.required],
+  createPassengerFormGroup(): FormGroup {
+    // Name is only required if no file is uploaded
+    const nameValidators = this.selectedFile ? [] : [Validators.required];
+    
+    return this.fb.group({
+      name: ['', nameValidators],
       contactNumber: [''],
       nextOfKin: [''],
       nextOfKinContact: [''],
@@ -128,8 +129,35 @@ export class TripDetailsComponent implements OnInit {
       destination: [''],
       fareAmount: [0, [Validators.required, Validators.min(0)]]
     });
+  }
 
-    this.passengers.push(passengerGroup);
+  get passengers(): FormArray {
+    return this.tripForm.get('passengers') as FormArray;
+  }
+
+  get totalFare(): number {
+    // If manual amount is provided, use it; otherwise calculate from passengers
+    const manualAmount = this.tripForm.get('totalAmountCollected')?.value;
+    if (manualAmount !== null && manualAmount !== undefined && manualAmount !== '') {
+      return parseFloat(manualAmount) || 0;
+    }
+    
+    return this.passengers.controls.reduce((total, passenger) => {
+      return total + (parseFloat(passenger.get('fareAmount')?.value) || 0);
+    }, 0);
+  }
+
+  get passengerCount(): number {
+    // If manual count is provided, use it; otherwise count from form array
+    const manualCount = this.tripForm.get('totalPassengerCount')?.value;
+    if (manualCount !== null && manualCount !== undefined && manualCount !== '') {
+      return parseInt(manualCount) || 0;
+    }
+    return this.passengers.length;
+  }
+
+  addPassenger(): void {
+    this.passengers.push(this.createPassengerFormGroup());
   }
 
   removePassenger(index: number): void {
@@ -171,10 +199,28 @@ export class TripDetailsComponent implements OnInit {
 
   onVehicleChange(vehicleId: string): void {
     if (vehicleId && this.drivers.length > 0) {
+      console.log('Vehicle changed to:', vehicleId);
+      
       // Find driver assigned to this vehicle
       const assignedDriver = this.drivers.find(d => d.assignedVehicleId === vehicleId);
+      
       if (assignedDriver) {
+        console.log('Found assigned driver:', assignedDriver);
         this.tripForm.patchValue({ driverId: assignedDriver.id }, { emitEvent: false });
+        this.snackBar.open(
+          `Driver ${assignedDriver.firstName} ${assignedDriver.lastName} auto-selected for this vehicle`,
+          'OK',
+          { duration: 3000 }
+        );
+      } else {
+        console.log('No driver assigned to this vehicle');
+        // Clear driver selection if no driver is assigned to the vehicle
+        this.tripForm.patchValue({ driverId: '' }, { emitEvent: false });
+        this.snackBar.open(
+          'No driver assigned to this vehicle. Please select a driver manually.',
+          'OK',
+          { duration: 3000 }
+        );
       }
     }
   }
@@ -209,13 +255,17 @@ export class TripDetailsComponent implements OnInit {
     this.http.get<any[]>(`${environment.apiUrl}/Drivers`)
       .subscribe({
         next: (drivers) => {
+          console.log('Loaded drivers:', drivers);
+          
           this.drivers = drivers.map(d => ({
             id: d.id,
             firstName: d.user?.firstName || d.name?.split(' ')[0] || 'Unknown',
             lastName: d.user?.lastName || d.name?.split(' ').slice(1).join(' ') || '',
             userCode: d.user?.userCode || d.idNumber || '',
-            assignedVehicleId: d.assignedVehicleId
+            assignedVehicleId: d.assignedVehicleId || null
           }));
+          
+          console.log('Mapped drivers with vehicle assignments:', this.drivers);
           
           // If a vehicle is already selected, set the driver
           const currentVehicleId = this.tripForm.get('vehicleId')?.value;
@@ -246,7 +296,9 @@ export class TripDetailsComponent implements OnInit {
       ...this.tripForm.value,
       totalFare: this.totalFare,
       passengerCount: this.passengerCount,
-      status: 'Completed'
+      status: 'Completed',
+      passengerListFileName: this.passengerListFileName,
+      passengerListFileData: this.passengerListFileData
     };
 
     this.http.post(`${environment.apiUrl}/TripDetails`, tripData)
@@ -300,5 +352,75 @@ export class TripDetailsComponent implements OnInit {
 
   getDriverDisplayName(driver: Driver): string {
     return `${driver.firstName} ${driver.lastName} (${driver.userCode})`;
+  }
+
+  isDriverAssignedToSelectedVehicle(driver: Driver): boolean {
+    const selectedVehicleId = this.tripForm.get('vehicleId')?.value;
+    return driver.assignedVehicleId === selectedVehicleId;
+  }
+
+  onFileSelected(event: any): void {
+    const file = event.target.files[0];
+    if (file) {
+      this.selectedFile = file;
+      this.passengerListFileName = file.name;
+      
+      // Convert file to base64 for storage
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.passengerListFileData = reader.result as string;
+        // Update passenger name validators when file is selected
+        this.updatePassengerNameValidators();
+        this.snackBar.open(`File "${file.name}" attached successfully`, 'Close', { duration: 2000 });
+      };
+      reader.onerror = () => {
+        this.snackBar.open('Error reading file', 'Close', { duration: 3000 });
+        this.removeFile();
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  removeFile(): void {
+    this.selectedFile = null;
+    this.passengerListFileName = null;
+    this.passengerListFileData = null;
+    // Update passenger name validators when file is removed
+    this.updatePassengerNameValidators();
+    this.snackBar.open('File removed', 'Close', { duration: 2000 });
+  }
+
+  updatePassengerNameValidators(): void {
+    // Update validators for all existing passengers
+    const nameValidators = this.selectedFile ? [] : [Validators.required];
+    this.passengers.controls.forEach(passenger => {
+      const nameControl = passenger.get('name');
+      nameControl?.clearValidators();
+      nameControl?.setValidators(nameValidators);
+      nameControl?.updateValueAndValidity();
+    });
+  }
+
+  downloadPassengerList(): void {
+    if (this.passengerListFileData && this.passengerListFileName) {
+      // Create a link element and trigger download
+      const link = document.createElement('a');
+      link.href = this.passengerListFileData;
+      link.download = this.passengerListFileName;
+      link.click();
+    }
+  }
+
+  isMarshal(): boolean {
+    const user = localStorage.getItem('user');
+    if (user) {
+      const userData = JSON.parse(user);
+      return userData.role === 'TaxiMarshal';
+    }
+    return false;
+  }
+
+  goToDashboard(): void {
+    this.router.navigate(['/marshal-dashboard']);
   }
 }

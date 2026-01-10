@@ -7,6 +7,7 @@ namespace MzansiFleet.Domain.Entities
     {
         public Guid Id { get; set; }
         public Guid TenantId { get; set; }
+        public Guid? TaxiRankId { get; set; }
         public string Code { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string Origin { get; set; } = string.Empty;
@@ -63,6 +64,8 @@ namespace MzansiFleet.Domain.Entities
         public string? Notes { get; set; }
         public string Status { get; set; } = "Completed";
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public string? PassengerListFileName { get; set; }
+        public string? PassengerListFileData { get; set; }
     }
 
     public class Passenger

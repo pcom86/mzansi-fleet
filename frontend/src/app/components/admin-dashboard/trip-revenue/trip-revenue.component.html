@@ -1,0 +1,160 @@
+<div class="trip-revenue-container">
+  <mat-card class="summary-card">
+    <mat-card-header>
+      <mat-card-title>Trip Revenue & Analysis</mat-card-title>
+      <mat-card-subtitle>View and analyze trip revenue for your taxi rank</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <!-- Filter Section -->
+      <form [formGroup]="filterForm" class="filter-form">
+        <div class="filter-row">
+          <mat-form-field appearance="outline">
+            <mat-label>Start Date</mat-label>
+            <input matInput [matDatepicker]="startPicker" formControlName="startDate">
+            <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+            <mat-datepicker #startPicker></mat-datepicker>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>End Date</mat-label>
+            <input matInput [matDatepicker]="endPicker" formControlName="endDate">
+            <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+            <mat-datepicker #endPicker></mat-datepicker>
+          </mat-form-field>
+
+          <button mat-raised-button color="primary" (click)="onFilter()" [disabled]="loading">
+            <mat-icon>search</mat-icon>
+            Filter
+          </button>
+
+          <button mat-raised-button color="accent" (click)="exportToCSV()" [disabled]="loading || trips.length === 0">
+            <mat-icon>download</mat-icon>
+            Export CSV
+          </button>
+        </div>
+      </form>
+
+      <!-- Summary Cards -->
+      <div class="summary-cards">
+        <mat-card class="metric-card">
+          <mat-card-content>
+            <div class="metric-icon">
+              <mat-icon>directions_car</mat-icon>
+            </div>
+            <div class="metric-value">{{ periodSummary.totalTrips }}</div>
+            <div class="metric-label">Total Trips</div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="metric-card">
+          <mat-card-content>
+            <div class="metric-icon">
+              <mat-icon>attach_money</mat-icon>
+            </div>
+            <div class="metric-value">R{{ periodSummary.totalRevenue.toFixed(2) }}</div>
+            <div class="metric-label">Total Revenue</div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="metric-card">
+          <mat-card-content>
+            <div class="metric-icon">
+              <mat-icon>local_taxi</mat-icon>
+            </div>
+            <div class="metric-value">R{{ periodSummary.totalVehicleEarnings.toFixed(2) }}</div>
+            <div class="metric-label">Vehicle Earnings</div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="metric-card">
+          <mat-card-content>
+            <div class="metric-icon">
+              <mat-icon>person</mat-icon>
+            </div>
+            <div class="metric-value">R{{ periodSummary.totalDriverEarnings.toFixed(2) }}</div>
+            <div class="metric-label">Driver Earnings</div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="metric-card">
+          <mat-card-content>
+            <div class="metric-icon">
+              <mat-icon>people</mat-icon>
+            </div>
+            <div class="metric-value">{{ periodSummary.totalPassengers }}</div>
+            <div class="metric-label">Total Passengers</div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Trips Table -->
+  <mat-card class="table-card">
+    <mat-card-header>
+      <mat-card-title>Trip Details</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <div *ngIf="loading" class="loading-spinner">
+        <mat-spinner></mat-spinner>
+      </div>
+
+      <div *ngIf="!loading && trips.length === 0" class="no-data">
+        <mat-icon>info</mat-icon>
+        <p>No trips found for the selected period</p>
+      </div>
+
+      <div *ngIf="!loading && trips.length > 0" class="table-container">
+        <table mat-table [dataSource]="trips" class="trips-table">
+          <ng-container matColumnDef="tripDate">
+            <th mat-header-cell *matHeaderCellDef>Date</th>
+            <td mat-cell *matCellDef="let trip">{{ trip.tripDate | date:'short' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="vehicleRegistration">
+            <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+            <td mat-cell *matCellDef="let trip">{{ trip.vehicleRegistration }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="routeName">
+            <th mat-header-cell *matHeaderCellDef>Route</th>
+            <td mat-cell *matCellDef="let trip">{{ trip.routeName }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="driverName">
+            <th mat-header-cell *matHeaderCellDef>Driver</th>
+            <td mat-cell *matCellDef="let trip">{{ trip.driverName }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="departureTime">
+            <th mat-header-cell *matHeaderCellDef>Departure</th>
+            <td mat-cell *matCellDef="let trip">{{ trip.departureTime }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="passengerCount">
+            <th mat-header-cell *matHeaderCellDef>Passengers</th>
+            <td mat-cell *matCellDef="let trip">{{ trip.passengerCount }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="totalFare">
+            <th mat-header-cell *matHeaderCellDef>Total Fare</th>
+            <td mat-cell *matCellDef="let trip">R{{ trip.totalFare.toFixed(2) }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="vehicleEarnings">
+            <th mat-header-cell *matHeaderCellDef>Vehicle Earnings</th>
+            <td mat-cell *matCellDef="let trip">R{{ trip.vehicleEarnings.toFixed(2) }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="driverEarnings">
+            <th mat-header-cell *matHeaderCellDef>Driver Earnings</th>
+            <td mat-cell *matCellDef="let trip">R{{ trip.driverEarnings.toFixed(2) }}</td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+        </table>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</div>

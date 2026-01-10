@@ -1,0 +1,103 @@
+<div class="marshal-dashboard">
+  <mat-toolbar color="primary" class="dashboard-toolbar">
+    <span>Marshal Dashboard</span>
+    <span class="spacer"></span>
+    <div class="user-info" *ngIf="userData">
+      <span class="user-name">{{ userData.fullName || userData.email }}</span>
+      <span class="user-role">{{ userData.role }}</span>
+    </div>
+    <button mat-icon-button (click)="logout()">
+      <mat-icon>logout</mat-icon>
+    </button>
+  </mat-toolbar>
+
+  <div class="dashboard-content">
+    <div class="dashboard-cards">
+      <mat-card (click)="navigateToTripCapture()">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>add_circle</mat-icon>
+            Capture Trip Details
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <p>Record new trips, passenger counts, and departure times.</p>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card (click)="navigateToTripHistory()">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>history</mat-icon>
+            Trip History
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <p>View all trips recorded for your assigned rank.</p>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card>
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>schedule</mat-icon>
+            Today's Schedule
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <p>Your shift and scheduled tasks will appear here.</p>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card>
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>directions_bus</mat-icon>
+            Active Vehicles
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div *ngIf="loadingVehicles" class="loading-text">
+            <p>Loading vehicles...</p>
+          </div>
+          <div *ngIf="!loadingVehicles && activeVehicles.length === 0" class="no-data">
+            <p>No vehicles assigned to this rank</p>
+          </div>
+          <div *ngIf="!loadingVehicles && activeVehicles.length > 0" class="vehicle-list">
+            <p><strong>{{ activeVehicles.length }}</strong> vehicle(s) assigned</p>
+            <div class="vehicle-items">
+              <div *ngFor="let vehicle of activeVehicles" class="vehicle-item">
+                <mat-icon>directions_car</mat-icon>
+                <span>{{ vehicle.registration }} - {{ vehicle.make }} {{ vehicle.model }}</span>
+              </div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card>
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>people</mat-icon>
+            Passenger Management
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <p>Manage passenger queues and boarding.</p>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card>
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>report_problem</mat-icon>
+            Incidents
+          </mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <p>Report and track incidents at your rank.</p>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  </div>
+</div>

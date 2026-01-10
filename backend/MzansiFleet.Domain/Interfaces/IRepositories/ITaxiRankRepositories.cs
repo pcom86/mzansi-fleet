@@ -14,6 +14,11 @@ namespace MzansiFleet.Domain.Interfaces.IRepositories
         Task<TaxiRank> AddAsync(TaxiRank rank);
         Task<TaxiRank> UpdateAsync(TaxiRank rank);
         Task DeleteAsync(Guid id);
+        
+        // Association management methods
+        Task AddAssociationAsync(Guid taxiRankId, Guid tenantId, bool isPrimary = false);
+        Task RemoveAssociationAsync(Guid taxiRankId, Guid tenantId);
+        Task<IEnumerable<TaxiRankAssociation>> GetAssociationsAsync(Guid taxiRankId);
     }
     public interface ITaxiRankAdminRepository
     {

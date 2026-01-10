@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using MzansiFleet.Domain.Entities;
@@ -64,7 +65,7 @@ namespace MzansiFleet.Api.Controllers
                 var rank = new TaxiRank
                 {
                     Id = Guid.NewGuid(),
-                    TenantId = dto.TenantId,
+                    TenantId = dto.TenantId ?? (dto.TenantIds?.FirstOrDefault() ?? Guid.Empty), // Backward compatibility
                     Name = dto.Name,
                     Code = dto.Code,
                     Address = dto.Address,
@@ -80,11 +81,70 @@ namespace MzansiFleet.Api.Controllers
                 };
 
                 await _rankRepository.AddAsync(rank);
+                
+                // Add associations if TenantIds provided
+                if (dto.TenantIds != null && dto.TenantIds.Any())
+                {
+                    foreach (var tenantId in dto.TenantIds)
+                    {
+                        await _rankRepository.AddAssociationAsync(rank.Id, tenantId, dto.TenantIds.First() == tenantId);
+                    }
+                }
+                
                 return CreatedAtAction(nameof(GetById), new { id = rank.Id }, rank);
             }
             catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message, innerMessage = ex.InnerException?.Message, fullError = ex.ToString() });
+            }
+        }
+        
+        // POST: api/TaxiRanks/{id}/associations/{tenantId}
+        [HttpPost("{id}/associations/{tenantId}")]
+        public async Task<ActionResult> AddAssociation(Guid id, Guid tenantId, [FromQuery] bool isPrimary = false)
+        {
+            try
+            {
+                var rank = await _rankRepository.GetByIdAsync(id);
+                if (rank == null)
+                    return NotFound("Taxi rank not found");
+                    
+                await _rankRepository.AddAssociationAsync(id, tenantId, isPrimary);
+                return Ok(new { message = "Association added successfully" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+        
+        // DELETE: api/TaxiRanks/{id}/associations/{tenantId}
+        [HttpDelete("{id}/associations/{tenantId}")]
+        public async Task<ActionResult> RemoveAssociation(Guid id, Guid tenantId)
+        {
+            try
+            {
+                await _rankRepository.RemoveAssociationAsync(id, tenantId);
+                return Ok(new { message = "Association removed successfully" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+        
+        // GET: api/TaxiRanks/{id}/associations
+        [HttpGet("{id}/associations")]
+        public async Task<ActionResult> GetAssociations(Guid id)
+        {
+            try
+            {
+                var associations = await _rankRepository.GetAssociationsAsync(id);
+                return Ok(associations);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -127,7 +187,8 @@ namespace MzansiFleet.Api.Controllers
     // DTOs
     public class CreateTaxiRankDto
     {
-        public Guid TenantId { get; set; }
+        public Guid? TenantId { get; set; } // Backward compatibility - single association
+        public List<Guid>? TenantIds { get; set; } // New - multiple associations
         public string Name { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;

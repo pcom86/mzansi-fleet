@@ -372,9 +372,10 @@ export class LoginComponent {
       console.log('  - Is Driver?', response.role === 'Driver');
       console.log('  - Is ServiceProvider?', response.role === 'ServiceProvider');
 
-      // Show success message
-      this.snackBar.open('Login successful!', 'Close', {
-        duration: 2000,
+      // Show success message with user's full name
+      const displayName = response.fullName || response.email;
+      this.snackBar.open(`Welcome back, ${displayName}!`, 'Close', {
+        duration: 3000,
         panelClass: ['success-snackbar']
       });
 
@@ -391,7 +392,7 @@ export class LoginComponent {
         navigationPromise = this.router.navigate(['/service-provider-dashboard']);
       } else if (response.role === 'TaxiRankAdmin') {
         console.log('Redirecting to admin dashboard');
-        navigationPromise = this.router.navigate(['/admin/routes']);
+        navigationPromise = this.router.navigate(['/admin/overview']);
       } else if (response.role === 'TaxiMarshal') {
         console.log('Redirecting to marshal dashboard');
         navigationPromise = this.router.navigate(['/marshal-dashboard']);

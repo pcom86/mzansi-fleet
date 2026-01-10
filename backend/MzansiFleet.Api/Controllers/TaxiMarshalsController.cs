@@ -215,14 +215,17 @@ namespace MzansiFleet.Api.Controllers
             if (marshal == null)
                 return NotFound();
 
-            marshal.FullName = dto.FullName ?? marshal.FullName;
+            // Update FullName from FirstName + LastName
+            if (!string.IsNullOrEmpty(dto.FirstName) || !string.IsNullOrEmpty(dto.LastName))
+            {
+                var firstName = dto.FirstName ?? marshal.FullName.Split(' ')[0];
+                var lastName = dto.LastName ?? (marshal.FullName.Contains(' ') ? marshal.FullName.Split(' ')[1] : "");
+                marshal.FullName = $"{firstName} {lastName}".Trim();
+            }
+
             marshal.PhoneNumber = dto.PhoneNumber ?? marshal.PhoneNumber;
             marshal.Email = dto.Email ?? marshal.Email;
-            if (dto.TaxiRankId.HasValue)
-                marshal.TaxiRankId = dto.TaxiRankId.Value;
             marshal.Status = dto.Status ?? marshal.Status;
-            marshal.IdNumber = dto.IdNumber ?? marshal.IdNumber;
-            marshal.Address = dto.Address ?? marshal.Address;
 
             await _marshalRepository.UpdateAsync(marshal);
             return Ok(marshal);
@@ -286,17 +289,6 @@ namespace MzansiFleet.Api.Controllers
         public bool? CanManageVehicles { get; set; }
         public bool? CanManageSchedules { get; set; }
         public bool? CanViewReports { get; set; }
-    }
-
-    public class UpdateMarshalDto
-    {
-        public string FullName { get; set; }
-        public string PhoneNumber { get; set; }
-        public string Email { get; set; }
-        public Guid? TaxiRankId { get; set; }
-        public string Status { get; set; }
-        public string IdNumber { get; set; }
-        public string Address { get; set; }
     }
 
     public class UpdateMarshalStatusDto

@@ -25,6 +25,7 @@ import { MarshalRegistrationComponent } from './components/marshal/marshal-regis
 import { TaxiRankUserRegistrationComponent } from './components/taxi-rank-user-registration/taxi-rank-user-registration.component';
 import { AdminDashboardComponent } from './components/admin-dashboard/admin-dashboard.component';
 import { OwnerTripsComponent } from './components/owner-dashboard/owner-trips.component';
+import { MarshalDashboardComponent } from './components/marshal-dashboard/marshal-dashboard.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/login', pathMatch: 'full' },
@@ -40,6 +41,26 @@ export const routes: Routes = [
   { path: 'driver-maintenance', component: DriverMaintenanceRequestComponent },
   { path: 'driver-dashboard', component: DriverDashboardComponent },
   { path: 'service-provider-dashboard', component: ServiceProviderDashboardComponent },
+  { path: 'marshal-dashboard', component: MarshalDashboardComponent },
+  { 
+    path: 'marshal', 
+    children: [
+      { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
+      { path: 'dashboard', component: MarshalDashboardComponent },
+      { 
+        path: 'trip-details', 
+        loadComponent: () => import('./components/admin-dashboard/trip-details/trip-details.component').then(m => m.TripDetailsComponent)
+      },
+      { 
+        path: 'trip-details/:id', 
+        loadComponent: () => import('./components/admin-dashboard/trip-details/trip-details.component').then(m => m.TripDetailsComponent)
+      },
+      { 
+        path: 'trip-history', 
+        loadComponent: () => import('./components/marshal-dashboard/marshal-trip-history/marshal-trip-history.component').then(m => m.MarshalTripHistoryComponent)
+      }
+    ]
+  },
   { path: 'dashboard', component: DashboardComponent },
   { path: 'drivers', component: DriversComponent },
   { path: 'drivers/create', component: CreateDriverProfileComponent },
@@ -57,7 +78,11 @@ export const routes: Routes = [
     path: 'admin', 
     component: AdminDashboardComponent,
     children: [
-      { path: '', redirectTo: 'routes', pathMatch: 'full' },
+      { path: '', redirectTo: 'overview', pathMatch: 'full' },
+      { 
+        path: 'overview', 
+        loadComponent: () => import('./components/admin-dashboard/rank-overview/rank-overview.component').then(m => m.RankOverviewComponent)
+      },
       { 
         path: 'routes', 
         loadComponent: () => import('./components/admin-dashboard/route-management/route-management.component').then(m => m.RouteManagementComponent)
@@ -81,6 +106,10 @@ export const routes: Routes = [
       { 
         path: 'trip-details', 
         loadComponent: () => import('./components/admin-dashboard/trip-details/trip-details.component').then(m => m.TripDetailsComponent)
+      },
+      { 
+        path: 'trip-revenue', 
+        loadComponent: () => import('./components/admin-dashboard/trip-revenue/trip-revenue.component').then(m => m.TripRevenueComponent)
       }
     ]
   },

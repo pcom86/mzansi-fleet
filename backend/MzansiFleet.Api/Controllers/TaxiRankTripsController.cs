@@ -82,6 +82,14 @@ namespace MzansiFleet.Api.Controllers
             return Ok(trips);
         }
 
+        // GET: api/TaxiRankTrips/rank/{taxiRankId}
+        [HttpGet("rank/{taxiRankId}")]
+        public async Task<ActionResult<IEnumerable<TaxiRankTrip>>> GetByTaxiRank(Guid taxiRankId)
+        {
+            var trips = await _tripRepository.GetByTaxiRankIdAsync(taxiRankId);
+            return Ok(trips);
+        }
+
         // POST: api/TaxiRankTrips
         [HttpPost]
         public async Task<ActionResult<TaxiRankTrip>> Create([FromBody] CreateTripDto dto)
@@ -174,6 +182,14 @@ namespace MzansiFleet.Api.Controllers
             }
 
             return CreatedAtAction(nameof(GetById), new { id = trip.Id }, passenger);
+        }
+
+        // GET: api/TaxiRankTrips/{id}/passengers
+        [HttpGet("{id}/passengers")]
+        public async Task<ActionResult<IEnumerable<TripPassenger>>> GetPassengers(Guid id)
+        {
+            var passengers = await _passengerRepository.GetByTripIdAsync(id);
+            return Ok(passengers);
         }
 
         // POST: api/TaxiRankTrips/{id}/costs

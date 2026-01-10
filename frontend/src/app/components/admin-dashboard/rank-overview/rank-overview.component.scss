@@ -1,0 +1,468 @@
+.rank-overview-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 24px;
+
+  h1 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 8px 0;
+    font-size: 2rem;
+    font-weight: 500;
+    color: #333;
+
+    mat-icon {
+      font-size: 2rem;
+      width: 2rem;
+      height: 2rem;
+      color: #667eea;
+    }
+  }
+
+  .subtitle {
+    margin: 0;
+    color: #666;
+    font-size: 1rem;
+  }
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  gap: 16px;
+
+  p {
+    color: #666;
+    margin: 0;
+  }
+}
+
+// Association Card
+.association-card {
+  margin-bottom: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+
+  ::ng-deep mat-card-header {
+    color: white !important;
+
+    .mat-mdc-card-title,
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.75rem;
+      color: white !important;
+
+      .association-icon {
+        font-size: 2rem;
+        width: 2rem;
+        height: 2rem;
+        color: white !important;
+      }
+    }
+
+    .mat-mdc-card-subtitle,
+    mat-card-subtitle {
+      color: rgba(255, 255, 255, 0.8) !important;
+      font-size: 1rem;
+    }
+  }
+
+  ::ng-deep mat-card-content,
+  ::ng-deep .mat-mdc-card-content {
+    color: white !important;
+  }
+
+  .association-details {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+
+    .detail-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: white !important;
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: white !important;
+      }
+
+      span {
+        color: white !important;
+      }
+    }
+  }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #999;
+
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 16px;
+  }
+
+  p {
+    margin: 0;
+    font-size: 1rem;
+  }
+}
+
+.empty-state-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: #999;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  margin: 16px 0;
+
+  mat-icon {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  color: #666;
+}
+
+// Hierarchy Container
+.hierarchy-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+// Rank Card
+.rank-card {
+  border-left: 4px solid #667eea;
+  transition: all 0.3s ease;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .clickable-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+
+    &:hover {
+      background-color: #f5f5f5;
+    }
+  }
+
+  .rank-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 8px 0;
+
+    .rank-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .expand-icon {
+        color: #667eea;
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      .rank-icon {
+        color: #667eea;
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      .rank-name {
+        font-size: 1.5rem;
+        font-weight: 500;
+        color: #333;
+      }
+
+      .rank-chip {
+        background-color: #667eea;
+        color: white;
+      }
+    }
+
+    .rank-stats {
+      display: flex;
+      gap: 16px;
+
+      .stat {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #666;
+
+        mat-icon {
+          font-size: 20px;
+          width: 20px;
+          height: 20px;
+          color: #667eea;
+        }
+      }
+    }
+  }
+
+  .rank-info {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding: 16px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    margin-bottom: 16px;
+
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #666;
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: #667eea;
+      }
+    }
+  }
+}
+
+// Routes Container
+.routes-container {
+  margin-top: 16px;
+  padding-left: 24px;
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 16px;
+
+    mat-icon {
+      color: #764ba2;
+    }
+  }
+}
+
+// Route Card
+.route-card {
+  margin-bottom: 16px;
+  border-left: 4px solid #764ba2;
+  background-color: #fafafa;
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .clickable-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+
+    &:hover {
+      background-color: #f0f0f0;
+    }
+  }
+
+  .route-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 4px 0;
+
+    .route-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .expand-icon {
+        color: #764ba2;
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      .route-icon {
+        color: #764ba2;
+        font-size: 22px;
+        width: 22px;
+        height: 22px;
+      }
+
+      .route-name {
+        font-size: 1.2rem;
+        font-weight: 500;
+        color: #333;
+      }
+
+      .route-chip {
+        background-color: #764ba2;
+        color: white;
+        font-size: 0.8rem;
+      }
+    }
+
+    .route-stats {
+      display: flex;
+      gap: 12px;
+
+      .stat {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.9rem;
+        color: #666;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+          color: #764ba2;
+        }
+      }
+    }
+  }
+
+  .route-info {
+    padding: 16px;
+    background-color: white;
+    border-radius: 4px;
+    margin-bottom: 16px;
+
+    .info-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+      color: #666;
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: #764ba2;
+        margin-top: 2px;
+      }
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
+// Vehicles Container
+.vehicles-container {
+  margin-top: 16px;
+
+  .subsection-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 12px;
+
+    mat-icon {
+      color: #667eea;
+    }
+  }
+}
+
+.table-container {
+  overflow-x: auto;
+  margin-top: 8px;
+
+  table {
+    width: 100%;
+    background-color: white;
+
+    th {
+      font-weight: 600;
+      color: #333;
+      background-color: #f5f5f5;
+      padding: 12px 8px;
+    }
+
+    td {
+      color: #666;
+      padding: 12px 8px;
+    }
+
+    mat-chip {
+      font-size: 0.875rem;
+    }
+
+    tr:hover {
+      background-color: #f9f9f9;
+    }
+  }
+}
+
+// Responsive Design
+@media (max-width: 768px) {
+  .rank-overview-container {
+    padding: 16px;
+  }
+
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .rank-header-content,
+  .route-header-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .rank-stats,
+  .route-stats {
+    width: 100%;
+  }
+
+  .routes-container {
+    padding-left: 12px;
+  }
+}

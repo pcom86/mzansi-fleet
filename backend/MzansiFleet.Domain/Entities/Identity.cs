@@ -8,6 +8,7 @@ namespace MzansiFleet.Domain.Entities
         public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;  // Unique tenant code for registration
+        public string TenantType { get; set; } = "Taxi Association";  // e.g., "Taxi Association", "Fleet Owner", etc.
         public string ContactEmail { get; set; } = string.Empty;
         public string ContactPhone { get; set; } = string.Empty;
         public ICollection<User> Users { get; set; } = new List<User>();

@@ -76,6 +76,42 @@ namespace MzansiFleet.Application.Handlers
             var token = GenerateJwtToken(user);
             var expirationMinutes = int.Parse(_configuration["JwtSettings:ExpirationMinutes"] ?? "1440");
             
+            // Get user's full name based on role
+            string fullName = null;
+            try
+            {
+                if (user.Role == "Owner")
+                {
+                    var ownerProfile = _context.Set<Domain.Entities.OwnerProfile>()
+                        .FirstOrDefault(o => o.UserId == user.Id);
+                    fullName = ownerProfile?.ContactName;
+                }
+                else if (user.Role == "Driver")
+                {
+                    var driverProfile = _context.Set<Domain.Entities.DriverProfile>()
+                        .FirstOrDefault(d => d.UserId == user.Id);
+                    fullName = driverProfile?.Name;
+                }
+                else if (user.Role == "ServiceProvider")
+                {
+                    var providerProfile = _context.Set<Domain.Entities.ServiceProviderProfile>()
+                        .FirstOrDefault(sp => sp.UserId == user.Id);
+                    fullName = providerProfile?.ContactPerson;
+                }
+                else if (user.Role == "TaxiRankAdmin")
+                {
+                    // TaxiRankAdmin doesn't have a profile with name, use email
+                    fullName = user.Email;
+                }
+                else if (user.Role == "TaxiMarshal")
+                {
+                    var marshalProfile = _context.Set<Domain.Entities.TaxiMarshalProfile>()
+                        .FirstOrDefault(m => m.UserId == user.Id);
+                    fullName = marshalProfile?.FullName;
+                }
+            }
+            catch { /* Ignore profile lookup errors */ }
+            
             return new LoginResponseDto
             {
                 Token = token,
@@ -83,7 +119,8 @@ namespace MzansiFleet.Application.Handlers
                 Email = user.Email,
                 Role = user.Role,
                 TenantId = user.TenantId,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(expirationMinutes)
+                ExpiresAt = DateTime.UtcNow.AddMinutes(expirationMinutes),
+                FullName = fullName
             };
         }
 

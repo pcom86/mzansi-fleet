@@ -1,0 +1,118 @@
+.trip-revenue-container {
+  padding: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.summary-card, .table-card {
+  margin-bottom: 24px;
+}
+
+.filter-form {
+  margin-bottom: 24px;
+
+  .filter-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+
+    mat-form-field {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    button {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.metric-card {
+  mat-card-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px !important;
+
+    .metric-icon {
+      mat-icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        color: #3f51b5;
+      }
+    }
+
+    .metric-value {
+      font-size: 32px;
+      font-weight: 600;
+      color: #333;
+      margin: 12px 0 8px 0;
+    }
+
+    .metric-label {
+      font-size: 14px;
+      color: #666;
+      text-align: center;
+    }
+  }
+}
+
+.loading-spinner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
+}
+
+.no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #666;
+
+  mat-icon {
+    font-size: 64px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 16px;
+  }
+
+  p {
+    font-size: 16px;
+  }
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.trips-table {
+  width: 100%;
+  
+  th {
+    font-weight: 600;
+    background-color: #f5f5f5;
+  }
+
+  td, th {
+    padding: 12px 16px;
+  }
+
+  tr:hover {
+    background-color: #f9f9f9;
+  }
+}

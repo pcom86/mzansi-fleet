@@ -45,6 +45,7 @@ namespace MzansiFleet.Domain.DTOs
         public string Role { get; set; }
         public Guid TenantId { get; set; }
         public DateTime ExpiresAt { get; set; }
+        public string? FullName { get; set; }
     }
 
     public class LogoutRequestDto

@@ -44,6 +44,10 @@ import { MatBadgeModule } from '@angular/material/badge';
           <h1>Driver Dashboard</h1>
           <p class="subtitle">Manage your profile and trips</p>
         </div>
+        <div class="user-info" *ngIf="userData">
+          <span class="user-name">{{ userData.fullName || userData.email }}</span>
+          <span class="user-role">{{ userData.role }}</span>
+        </div>
       </div>
 
       <!-- Maintenance Alerts Banner -->
@@ -296,6 +300,22 @@ import { MatBadgeModule } from '@angular/material/badge';
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       border-radius: 12px;
       color: white;
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+
+      .user-name {
+        font-weight: 500;
+        font-size: 14px;
+      }
+
+      .user-role {
+        font-size: 12px;
+        opacity: 0.8;
+      }
     }
 
     .alert-banner {
@@ -876,6 +896,7 @@ import { MatBadgeModule } from '@angular/material/badge';
   `]
 })
 export class DriverDashboardComponent implements OnInit {
+  userData: any;
   driverProfile: any = null;
   assignedVehicle: any = null;
   loading = true;
@@ -901,6 +922,11 @@ export class DriverDashboardComponent implements OnInit {
   ) {}
 
   ngOnInit() {
+    // Get user info from local storage
+    const user = localStorage.getItem('user');
+    if (user) {
+      this.userData = JSON.parse(user);
+    }
     this.loadDriverProfile();
   }
 
