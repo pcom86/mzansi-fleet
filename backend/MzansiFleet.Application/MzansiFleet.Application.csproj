@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+      <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Add references to domain/infrastructure projects if needed -->
+    <ProjectReference Include="..\MzansiFleet.Repository\MzansiFleet.Repository.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MzansiFleet.Domain\MzansiFleet.Domain.csproj" />
+    
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MediatR" Version="14.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.14.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+  </ItemGroup>
+</Project>

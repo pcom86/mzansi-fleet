@@ -1,0 +1,196 @@
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+// Define custom color palettes - Black and Gold theme
+$mzansi-black-palette: (
+  50: #e6e6e6,
+  100: #cccccc,
+  200: #999999,
+  300: #666666,
+  400: #333333,
+  500: #000000,
+  600: #000000,
+  700: #000000,
+  800: #000000,
+  900: #000000,
+  A100: #666666,
+  A200: #333333,
+  A400: #1a1a1a,
+  A700: #000000,
+  contrast: (
+    50: #000000,
+    100: #000000,
+    200: #000000,
+    300: #ffffff,
+    400: #ffffff,
+    500: #ffffff,
+    600: #ffffff,
+    700: #ffffff,
+    800: #ffffff,
+    900: #ffffff,
+    A100: #000000,
+    A200: #ffffff,
+    A400: #ffffff,
+    A700: #ffffff,
+  )
+);
+
+$mzansi-gold-palette: (
+  50: #fef9e7,
+  100: #fcf0c3,
+  200: #fae69b,
+  300: #f7dc73,
+  400: #f5d455,
+  500: #D4AF37,
+  600: #c9a232,
+  700: #bb932b,
+  800: #ad8425,
+  900: #926d19,
+  A100: #fff9e6,
+  A200: #ffe9b3,
+  A400: #ffd980,
+  A700: #ffd066,
+  contrast: (
+    50: #000000,
+    100: #000000,
+    200: #000000,
+    300: #000000,
+    400: #ffffff,
+    500: #ffffff,
+    600: #ffffff,
+    700: #ffffff,
+    800: #ffffff,
+    900: #ffffff,
+    A100: #000000,
+    A200: #000000,
+    A400: #000000,
+    A700: #000000,
+  )
+);
+
+$my-primary: mat.define-palette($mzansi-black-palette, 500);
+$my-accent: mat.define-palette($mzansi-gold-palette, 500);
+$my-warn: mat.define-palette($mzansi-gold-palette, 900);
+
+$my-theme: mat.define-light-theme((
+  color: (
+    primary: $my-primary,
+    accent: $my-accent,
+    warn: $my-warn,
+  ),
+  typography: mat.define-typography-config(
+    $font-family: 'Roboto, "Helvetica Neue", sans-serif',
+  ),
+  density: 0,
+));
+
+@include mat.all-component-themes($my-theme);
+
+/* Custom Material Overrides */
+.success-snackbar {
+  background-color: #D4AF37 !important;
+  color: #FFFFFF !important;
+}
+
+.error-snackbar {
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+  border: 2px solid #D4AF37 !important;
+}
+
+.warning-snackbar {
+  background-color: #FFFFFF !important;
+  color: #000000 !important;
+  border: 2px solid #FFD700 !important;
+}
+
+/* Material Cards */
+.mat-mdc-card {
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  transition: all 0.3s ease !important;
+  border: 2px solid rgba(212, 175, 55, 0.3) !important;
+  background: #FFFFFF !important;
+}
+
+.mat-mdc-card:hover {
+  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.25) !important;
+  border-color: #D4AF37 !important;
+}
+
+/* Material Buttons */
+.mat-mdc-raised-button {
+  border-radius: 8px !important;
+  text-transform: none !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.5px !important;
+}
+
+.mat-mdc-button, .mat-mdc-raised-button, .mat-mdc-unelevated-button {
+  min-height: 40px !important;
+}
+
+/* Material Form Fields */
+.mat-mdc-form-field {
+  font-size: 14px;
+}
+
+.mat-mdc-form-field-outline {
+  border-radius: 8px !important;
+}
+
+/* Material Toolbar */
+.mat-toolbar {
+  box-shadow: 0 2px 4px rgba(0, 20, 137, 0.1) !important;
+}
+
+/* Material Stepper */
+.mat-stepper-horizontal {
+  background: transparent;
+}
+
+.mat-step-header {
+  pointer-events: none !important;
+}
+
+.mat-step-header.cdk-keyboard-focused,
+.mat-step-header.cdk-program-focused,
+.mat-step-header:hover {
+  background-color: transparent !important;
+}
+
+.mat-step-icon {
+  background-color: #000000 !important;
+}
+
+.mat-step-icon-selected {
+  background-color: #D4AF37 !important;
+  color: #000000 !important;
+}
+
+/* Material Progress Spinner */
+.mat-mdc-progress-spinner circle {
+  stroke: #D4AF37 !important;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #000000;
+  border-radius: 10px;
+  border: 2px solid #D4AF37;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #D4AF37;
+}

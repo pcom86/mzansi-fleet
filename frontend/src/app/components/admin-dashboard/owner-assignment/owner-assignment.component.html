@@ -1,0 +1,85 @@
+<div class="owner-assignment-container">
+  <mat-card class="form-card">
+    <mat-card-header>
+      <mat-card-title>Assign Owner to Taxi Rank</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="assignmentForm" (ngSubmit)="onSubmit()">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Select Vehicle Owner</mat-label>
+          <mat-select formControlName="ownerId">
+            <mat-option *ngFor="let owner of owners" [value]="owner.id">
+              {{ getOwnerDisplayName(owner) }}
+              <span *ngIf="owner.vehicleCount" class="vehicle-count">
+                ({{ owner.vehicleCount }} vehicles)
+              </span>
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Select Taxi Rank</mat-label>
+          <mat-select formControlName="taxiRankId">
+            <mat-option *ngFor="let rank of taxiRanks" [value]="rank.id">
+              {{ rank.name }} ({{ rank.code }})
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <div class="form-actions">
+          <button mat-raised-button color="primary" type="submit" [disabled]="loading">
+            Assign Owner
+          </button>
+        </div>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="table-card">
+    <mat-card-header>
+      <mat-card-title>Current Assignments</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <table mat-table [dataSource]="assignments" class="assignments-table">
+        <ng-container matColumnDef="ownerName">
+          <th mat-header-cell *matHeaderCellDef>Owner</th>
+          <td mat-cell *matCellDef="let assignment">{{ assignment.ownerName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="taxiRankName">
+          <th mat-header-cell *matHeaderCellDef>Taxi Rank</th>
+          <td mat-cell *matCellDef="let assignment">{{ assignment.taxiRankName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="assignedDate">
+          <th mat-header-cell *matHeaderCellDef>Assigned Date</th>
+          <td mat-cell *matCellDef="let assignment">
+            {{ assignment.assignedDate | date:'mediumDate' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Status</th>
+          <td mat-cell *matCellDef="let assignment">
+            <span [class.status-active]="assignment.status === 'Active'" 
+                  [class.status-inactive]="assignment.status !== 'Active'">
+              {{ assignment.status }}
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let assignment">
+            <button mat-icon-button color="warn" (click)="removeAssignment(assignment.id)">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+      </table>
+    </mat-card-content>
+  </mat-card>
+</div>

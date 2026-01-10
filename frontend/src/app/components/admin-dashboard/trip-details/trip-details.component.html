@@ -1,0 +1,164 @@
+<div class="trip-details-container">
+  <mat-card class="form-card">
+    <mat-card-header>
+      <mat-card-title>Capture Trip Details</mat-card-title>
+      <mat-card-subtitle>Record passenger list, fares, and vehicle earnings</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="tripForm" (ngSubmit)="onSubmit()">
+        <!-- Trip Basic Information -->
+        <div class="section-title">Trip Information</div>
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Vehicle</mat-label>
+            <mat-select formControlName="vehicleId">
+              <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
+                {{ getVehicleDisplayName(vehicle) }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Route</mat-label>
+            <mat-select formControlName="routeId" (selectionChange)="onRouteChange()">
+              <mat-option *ngFor="let route of routes" [value]="route.id">
+                {{ route.name }} (R{{ route.fareAmount }})
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Driver</mat-label>
+            <mat-select formControlName="driverId">
+              <mat-option *ngFor="let driver of drivers" [value]="driver.id">
+                {{ getDriverDisplayName(driver) }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Trip Date</mat-label>
+            <input matInput [matDatepicker]="picker" formControlName="tripDate">
+            <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
+            <mat-datepicker #picker></mat-datepicker>
+          </mat-form-field>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Departure Time</mat-label>
+            <input matInput type="time" formControlName="departureTime">
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Arrival Time</mat-label>
+            <input matInput type="time" formControlName="arrivalTime">
+          </mat-form-field>
+        </div>
+
+        <mat-divider></mat-divider>
+
+        <!-- Passenger List -->
+        <div class="section-title">
+          Passenger List
+          <button mat-mini-fab color="primary" type="button" (click)="addPassenger()">
+            <mat-icon>person_add</mat-icon>
+          </button>
+          <button mat-stroked-button type="button" (click)="setDefaultFare()" class="default-fare-btn">
+            Apply Default Fare
+          </button>
+        </div>
+
+        <div formArrayName="passengers" class="passengers-section">
+          <div *ngFor="let passenger of passengers.controls; let i = index" [formGroupName]="i" class="passenger-card">
+            <mat-card>
+              <mat-card-header>
+                <mat-card-title>Passenger {{ i + 1 }}</mat-card-title>
+                <button mat-icon-button color="warn" type="button" (click)="removePassenger(i)"
+                        [disabled]="passengers.length === 1" class="delete-btn">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </mat-card-header>
+              <mat-card-content>
+                <div class="passenger-form-grid">
+                  <!-- Row 1: Name and Contact -->
+                  <mat-form-field appearance="outline">
+                    <mat-label>Passenger Name</mat-label>
+                    <input matInput formControlName="name" placeholder="Full name" required>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Contact Number</mat-label>
+                    <input matInput formControlName="contactNumber" placeholder="Phone number">
+                  </mat-form-field>
+
+                  <!-- Row 2: Next of Kin Details -->
+                  <mat-form-field appearance="outline">
+                    <mat-label>Next of Kin</mat-label>
+                    <input matInput formControlName="nextOfKin" placeholder="Next of kin name">
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Next of Kin Contact</mat-label>
+                    <input matInput formControlName="nextOfKinContact" placeholder="Next of kin phone">
+                  </mat-form-field>
+
+                  <!-- Row 3: Address -->
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Address</mat-label>
+                    <input matInput formControlName="address" placeholder="Residential address">
+                  </mat-form-field>
+
+                  <!-- Row 4: Destination and Fare -->
+                  <mat-form-field appearance="outline">
+                    <mat-label>Destination</mat-label>
+                    <mat-select formControlName="destination">
+                      <mat-option value="">Select destination</mat-option>
+                      <mat-option *ngFor="let dest of routeDestinations" [value]="dest">
+                        {{ dest }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Fare (R)</mat-label>
+                    <input matInput type="number" formControlName="fareAmount" placeholder="0.00" required>
+                  </mat-form-field>
+                </div>
+              </mat-card-content>
+            </mat-card>
+          </div>
+        </div>
+
+        <mat-divider></mat-divider>
+
+        <!-- Summary -->
+        <div class="summary-section">
+          <div class="summary-item">
+            <span class="summary-label">Total Passengers:</span>
+            <span class="summary-value">{{ passengerCount }}</span>
+          </div>
+          <div class="summary-item total-fare">
+            <span class="summary-label">Total Fare Collected:</span>
+            <span class="summary-value">R {{ totalFare | number:'1.2-2' }}</span>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Notes</mat-label>
+          <textarea matInput formControlName="notes" rows="3" placeholder="Additional trip notes"></textarea>
+        </mat-form-field>
+
+        <div class="form-actions">
+          <button mat-button type="button" (click)="resetForm()">Reset</button>
+          <button mat-raised-button color="primary" type="submit" [disabled]="loading">
+            Save Trip & Record Earnings
+          </button>
+        </div>
+      </form>
+    </mat-card-content>
+  </mat-card>
+</div>

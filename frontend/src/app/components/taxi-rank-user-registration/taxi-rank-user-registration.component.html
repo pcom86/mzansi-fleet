@@ -1,0 +1,518 @@
+<div class="registration-container">
+  <mat-card class="registration-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon class="title-icon">event_seat</mat-icon>
+        Taxi Rank User Registration
+      </mat-card-title>
+      <mat-card-subtitle>Register as Taxi Rank Admin or Marshal</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <mat-stepper #stepper linear>
+        <!-- Step 1: Role Selection -->
+        <mat-step [stepControl]="roleSelectionForm">
+          <form [formGroup]="roleSelectionForm">
+            <ng-template matStepLabel>Select Role</ng-template>
+            
+            <div class="step-content">
+              <h3>Choose Your Role</h3>
+              <p class="step-description">Select whether you want to register as a Taxi Rank Administrator or Marshal</p>
+              
+              <mat-radio-group formControlName="role" class="role-selection">
+                <mat-card class="role-card" [class.selected]="selectedRole === 'TaxiRankAdmin'">
+                  <mat-radio-button value="TaxiRankAdmin">
+                    <div class="role-content">
+                      <div class="role-header">
+                        <mat-icon class="role-icon admin-icon">admin_panel_settings</mat-icon>
+                        <h4>Taxi Rank Admin</h4>
+                      </div>
+                      <p class="role-description">{{ getRoleDescription('TaxiRankAdmin') }}</p>
+                      <div class="role-features">
+                        <div class="feature">
+                          <mat-icon>check_circle</mat-icon>
+                          <span>Manage marshals and staff</span>
+                        </div>
+                        <div class="feature">
+                          <mat-icon>check_circle</mat-icon>
+                          <span>Assign vehicles to rank</span>
+                        </div>
+                        <div class="feature">
+                          <mat-icon>check_circle</mat-icon>
+                          <span>Create and manage schedules</span>
+                        </div>
+                        <div class="feature">
+                          <mat-icon>check_circle</mat-icon>
+                          <span>View reports and analytics</span>
+                        </div>
+                      </div>
+                    </div>
+                  </mat-radio-button>
+                </mat-card>
+
+                <mat-card class="role-card" [class.selected]="selectedRole === 'TaxiMarshal'">
+                  <mat-radio-button value="TaxiMarshal">
+                    <div class="role-content">
+                      <div class="role-header">
+                        <mat-icon class="role-icon marshal-icon">badge</mat-icon>
+                        <h4>Taxi Marshal</h4>
+                      </div>
+                      <p class="role-description">{{ getRoleDescription('TaxiMarshal') }}</p>
+                      <div class="role-features">
+                        <div class="feature">
+                          <mat-icon>check_circle</mat-icon>
+                          <span>Coordinate taxi departures</span>
+                        </div>
+                        <div class="feature">
+                          <mat-icon>check_circle</mat-icon>
+                          <span>Manage passenger queues</span>
+                        </div>
+                        <div class="feature">
+                          <mat-icon>check_circle</mat-icon>
+                          <span>Assist drivers and passengers</span>
+                        </div>
+                        <div class="feature">
+                          <mat-icon>check_circle</mat-icon>
+                          <span>Monitor rank operations</span>
+                        </div>
+                      </div>
+                    </div>
+                  </mat-radio-button>
+                </mat-card>
+              </mat-radio-group>
+            </div>
+
+            <div class="step-actions">
+              <button mat-raised-button color="primary" matStepperNext [disabled]="!roleSelectionForm.valid">
+                Next
+                <mat-icon>navigate_next</mat-icon>
+              </button>
+            </div>
+          </form>
+        </mat-step>
+
+        <!-- Step 2: User Details -->
+        <mat-step [stepControl]="userDetailsForm">
+          <form [formGroup]="userDetailsForm">
+            <ng-template matStepLabel>User Details</ng-template>
+            
+            <div class="step-content">
+              <h3>Personal Information</h3>
+              <p class="step-description">Enter your personal details</p>
+
+              <div class="form-row">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>First Name</mat-label>
+                  <input matInput formControlName="firstName" placeholder="John" required>
+                  <mat-icon matPrefix>person</mat-icon>
+                  <mat-error *ngIf="userDetailsForm.get('firstName')?.hasError('required')">
+                    First name is required
+                  </mat-error>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Last Name</mat-label>
+                  <input matInput formControlName="lastName" placeholder="Doe" required>
+                  <mat-icon matPrefix>person</mat-icon>
+                  <mat-error *ngIf="userDetailsForm.get('lastName')?.hasError('required')">
+                    Last name is required
+                  </mat-error>
+                </mat-form-field>
+              </div>
+
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Email</mat-label>
+                <input matInput formControlName="email" type="email" placeholder="john.doe@example.com" required>
+                <mat-icon matPrefix>email</mat-icon>
+                <mat-error *ngIf="userDetailsForm.get('email')?.hasError('required')">
+                  Email is required
+                </mat-error>
+                <mat-error *ngIf="userDetailsForm.get('email')?.hasError('email')">
+                  Please enter a valid email
+                </mat-error>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>User Code (Auto-generated)</mat-label>
+                <input matInput formControlName="userCode" placeholder="Auto-generated from name" readonly>
+                <mat-icon matPrefix>badge</mat-icon>
+                <mat-hint>Automatically generated unique identifier</mat-hint>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Phone Number</mat-label>
+                <input matInput formControlName="phoneNumber" placeholder="+27 12 345 6789" required>
+                <mat-icon matPrefix>phone</mat-icon>
+                <mat-error *ngIf="userDetailsForm.get('phoneNumber')?.hasError('required')">
+                  Phone number is required
+                </mat-error>
+              </mat-form-field>
+
+              <div class="form-row">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Password</mat-label>
+                  <input matInput formControlName="password" type="password" placeholder="Min. 6 characters" required>
+                  <mat-icon matPrefix>lock</mat-icon>
+                  <mat-error *ngIf="userDetailsForm.get('password')?.hasError('required')">
+                    Password is required
+                  </mat-error>
+                  <mat-error *ngIf="userDetailsForm.get('password')?.hasError('minlength')">
+                    Password must be at least 6 characters
+                  </mat-error>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Confirm Password</mat-label>
+                  <input matInput formControlName="confirmPassword" type="password" required>
+                  <mat-icon matPrefix>lock</mat-icon>
+                  <mat-error *ngIf="userDetailsForm.get('confirmPassword')?.hasError('required')">
+                    Please confirm your password
+                  </mat-error>
+                </mat-form-field>
+              </div>
+
+              <mat-error *ngIf="userDetailsForm.hasError('passwordMismatch') && userDetailsForm.get('confirmPassword')?.touched" class="password-mismatch-error">
+                Passwords do not match
+              </mat-error>
+            </div>
+
+            <div class="step-actions">
+              <button mat-button matStepperPrevious>
+                <mat-icon>navigate_before</mat-icon>
+                Back
+              </button>
+              <button mat-raised-button color="primary" matStepperNext [disabled]="!userDetailsForm.valid">
+                Next
+                <mat-icon>navigate_next</mat-icon>
+              </button>
+            </div>
+          </form>
+        </mat-step>
+
+        <!-- Step 3: Taxi Rank Selection -->
+        <mat-step [stepControl]="taxiRankForm">
+          <form [formGroup]="taxiRankForm">
+            <ng-template matStepLabel>Select Taxi Rank</ng-template>
+            
+            <div class="step-content">
+              <h3>Taxi Rank Assignment</h3>
+              <p class="step-description">Choose the taxi rank you will be working at</p>
+
+              <!-- Mode Selection -->
+              <mat-radio-group formControlName="mode" class="mode-selection">
+                <mat-radio-button value="existing">Select Existing Rank</mat-radio-button>
+                <mat-radio-button value="new">Create New Rank</mat-radio-button>
+              </mat-radio-group>
+
+              <!-- Existing Rank Selection -->
+              <div *ngIf="!isCreatingNewRank" class="existing-rank-section">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Taxi Rank</mat-label>
+                  <mat-select formControlName="taxiRankId" (selectionChange)="onTaxiRankChange()" required>
+                    <mat-option *ngFor="let rank of taxiRanks" [value]="rank.id">
+                      {{ rank.name }} - {{ rank.city }} ({{ rank.code }})
+                    </mat-option>
+                  </mat-select>
+                  <mat-icon matPrefix>location_on</mat-icon>
+                  <mat-error *ngIf="taxiRankForm.get('taxiRankId')?.hasError('required')">
+                    Please select a taxi rank
+                  </mat-error>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Tenant ID</mat-label>
+                  <input matInput formControlName="tenantId" readonly required>
+                  <mat-icon matPrefix>business</mat-icon>
+                  <mat-hint>Auto-filled based on selected taxi rank</mat-hint>
+                </mat-form-field>
+              </div>
+
+              <!-- New Rank Creation -->
+              <div *ngIf="isCreatingNewRank" class="new-rank-section">
+                <mat-card class="info-card">
+                  <mat-icon class="info-icon">info</mat-icon>
+                  <p>Creating a new taxi rank. First, select or create a Taxi Association.</p>
+                </mat-card>
+
+                <!-- Taxi Association (Tenant) Selection -->
+                <div class="tenant-section">
+                  <h4>Taxi Association</h4>
+                  
+                  <mat-radio-group formControlName="tenantMode" class="mode-selection">
+                    <mat-radio-button value="existing">Select Existing Association</mat-radio-button>
+                    <mat-radio-button value="new">Create New Association</mat-radio-button>
+                  </mat-radio-group>
+
+                  <!-- Existing Tenant Selection -->
+                  <div *ngIf="!isCreatingNewTenant">
+                    <mat-form-field appearance="outline" class="full-width">
+                      <mat-label>Taxi Association</mat-label>
+                      <mat-select formControlName="tenantId" required>
+                        <mat-option *ngFor="let tenant of tenants" [value]="tenant.id">
+                          {{ tenant.name }} ({{ tenant.code }})
+                        </mat-option>
+                      </mat-select>
+                      <mat-icon matPrefix>business</mat-icon>
+                      <mat-error *ngIf="taxiRankForm.get('tenantId')?.hasError('required')">
+                        Please select a taxi association
+                      </mat-error>
+                    </mat-form-field>
+                  </div>
+
+                  <!-- New Tenant Creation -->
+                  <div *ngIf="isCreatingNewTenant" [formGroup]="newTenantForm" class="new-tenant-section">
+                    <mat-card class="info-card secondary">
+                      <mat-icon class="info-icon">info</mat-icon>
+                      <p>Creating a new taxi association. All fields marked with * are required.</p>
+                    </mat-card>
+
+                    <div class="form-row">
+                      <mat-form-field appearance="outline" class="full-width">
+                        <mat-label>Association Name *</mat-label>
+                        <input matInput formControlName="name" placeholder="e.g., Johannesburg Taxi Association" required>
+                        <mat-icon matPrefix>business</mat-icon>
+                        <mat-error *ngIf="newTenantForm.get('name')?.hasError('required')">
+                          Association name is required
+                        </mat-error>
+                      </mat-form-field>
+
+                      <mat-form-field appearance="outline" class="full-width">
+                        <mat-label>Association Code (Auto-generated)</mat-label>
+                        <input matInput formControlName="code" placeholder="Auto-generated from name" readonly>
+                        <mat-icon matPrefix>qr_code</mat-icon>
+                        <mat-hint>Automatically generated unique identifier</mat-hint>
+                      </mat-form-field>
+                    </div>
+
+                    <div class="form-row">
+                      <mat-form-field appearance="outline" class="full-width">
+                        <mat-label>Contact Email *</mat-label>
+                        <input matInput formControlName="contactEmail" type="email" placeholder="info@association.co.za" required>
+                        <mat-icon matPrefix>email</mat-icon>
+                        <mat-error *ngIf="newTenantForm.get('contactEmail')?.hasError('required')">
+                          Contact email is required
+                        </mat-error>
+                        <mat-error *ngIf="newTenantForm.get('contactEmail')?.hasError('email')">
+                          Please enter a valid email
+                        </mat-error>
+                      </mat-form-field>
+
+                      <mat-form-field appearance="outline" class="full-width">
+                        <mat-label>Contact Phone *</mat-label>
+                        <input matInput formControlName="contactPhone" placeholder="+27 11 123 4567" required>
+                        <mat-icon matPrefix>phone</mat-icon>
+                        <mat-error *ngIf="newTenantForm.get('contactPhone')?.hasError('required')">
+                          Contact phone is required
+                        </mat-error>
+                      </mat-form-field>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Taxi Rank Details -->
+                <div [formGroup]="newRankForm" class="rank-details-section">
+                  <h4>Taxi Rank Details</h4>
+
+                <div class="form-row">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Rank Name *</mat-label>
+                    <input matInput formControlName="name" placeholder="e.g., Bree Street Taxi Rank" required>
+                    <mat-icon matPrefix>local_taxi</mat-icon>
+                    <mat-error *ngIf="newRankForm.get('name')?.hasError('required')">
+                      Rank name is required
+                    </mat-error>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Rank Code (Auto-generated)</mat-label>
+                    <input matInput formControlName="code" placeholder="Auto-generated from name" readonly>
+                    <mat-icon matPrefix>qr_code</mat-icon>
+                    <mat-hint>Automatically generated unique identifier</mat-hint>
+                  </mat-form-field>
+                </div>
+
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Address *</mat-label>
+                  <input matInput formControlName="address" placeholder="e.g., 123 Main Street" required>
+                  <mat-icon matPrefix>location_on</mat-icon>
+                  <mat-error *ngIf="newRankForm.get('address')?.hasError('required')">
+                    Address is required
+                  </mat-error>
+                </mat-form-field>
+
+                <div class="form-row">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>City *</mat-label>
+                    <input matInput formControlName="city" placeholder="e.g., Johannesburg" required>
+                    <mat-icon matPrefix>location_city</mat-icon>
+                    <mat-error *ngIf="newRankForm.get('city')?.hasError('required')">
+                      City is required
+                    </mat-error>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Province *</mat-label>
+                    <input matInput formControlName="province" placeholder="e.g., Gauteng" required>
+                    <mat-icon matPrefix>map</mat-icon>
+                    <mat-error *ngIf="newRankForm.get('province')?.hasError('required')">
+                      Province is required
+                    </mat-error>
+                  </mat-form-field>
+                </div>
+
+                <div class="form-row">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Latitude</mat-label>
+                    <input matInput formControlName="latitude" type="number" step="0.000001" placeholder="e.g., -26.2041">
+                    <mat-icon matPrefix>my_location</mat-icon>
+                    <mat-hint>GPS coordinates (optional)</mat-hint>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Longitude</mat-label>
+                    <input matInput formControlName="longitude" type="number" step="0.000001" placeholder="e.g., 28.0473">
+                    <mat-icon matPrefix>my_location</mat-icon>
+                    <mat-hint>GPS coordinates (optional)</mat-hint>
+                  </mat-form-field>
+                </div>
+
+                <div class="form-row">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Capacity</mat-label>
+                    <input matInput formControlName="capacity" type="number" placeholder="e.g., 50">
+                    <mat-icon matPrefix>event_seat</mat-icon>
+                    <mat-hint>Number of vehicles the rank can accommodate</mat-hint>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Operating Hours</mat-label>
+                    <input matInput formControlName="operatingHours" placeholder="e.g., 05:00 - 22:00">
+                    <mat-icon matPrefix>schedule</mat-icon>
+                    <mat-hint>Daily operating hours</mat-hint>
+                  </mat-form-field>
+                </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-actions">
+              <button mat-button matStepperPrevious>
+                <mat-icon>navigate_before</mat-icon>
+                Back
+              </button>
+              <button mat-raised-button color="primary" matStepperNext 
+                [disabled]="!isTaxiRankStepValid()">
+                Next
+                <mat-icon>navigate_next</mat-icon>
+              </button>
+            </div>
+          </form>
+        </mat-step>
+
+        <!-- Step 4: Role-Specific Details -->
+        <mat-step [stepControl]="roleSpecificForm">
+          <form [formGroup]="roleSpecificForm">
+            <ng-template matStepLabel>Role Details</ng-template>
+            
+            <div class="step-content">
+              <h3>{{ selectedRole === 'TaxiRankAdmin' ? 'Administrator' : 'Marshal' }} Details</h3>
+              <p class="step-description">Configure role-specific settings</p>
+
+              <!-- Admin-specific fields -->
+              <div *ngIf="selectedRole === 'TaxiRankAdmin'" class="admin-fields">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Admin Code (Auto-generated)</mat-label>
+                  <input matInput formControlName="adminCode" placeholder="Auto-generated from name" readonly>
+                  <mat-icon matPrefix>badge</mat-icon>
+                  <mat-hint>Automatically generated unique identifier</mat-hint>
+                </mat-form-field>
+
+                <div class="permissions-section">
+                  <h4>Administrator Permissions</h4>
+                  <p class="permissions-hint">Select the permissions for this administrator</p>
+                  
+                  <div class="permissions-grid">
+                    <mat-checkbox formControlName="canManageMarshals">
+                      <div class="permission-item">
+                        <mat-icon>people</mat-icon>
+                        <span>Manage Marshals</span>
+                      </div>
+                    </mat-checkbox>
+
+                    <mat-checkbox formControlName="canManageVehicles">
+                      <div class="permission-item">
+                        <mat-icon>directions_car</mat-icon>
+                        <span>Manage Vehicles</span>
+                      </div>
+                    </mat-checkbox>
+
+                    <mat-checkbox formControlName="canManageSchedules">
+                      <div class="permission-item">
+                        <mat-icon>schedule</mat-icon>
+                        <span>Manage Schedules</span>
+                      </div>
+                    </mat-checkbox>
+
+                    <mat-checkbox formControlName="canViewReports">
+                      <div class="permission-item">
+                        <mat-icon>assessment</mat-icon>
+                        <span>View Reports</span>
+                      </div>
+                    </mat-checkbox>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Marshal-specific fields -->
+              <div *ngIf="selectedRole === 'TaxiMarshal'" class="marshal-fields">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Marshal Code (Auto-generated)</mat-label>
+                  <input matInput formControlName="marshalCode" placeholder="Auto-generated from name" readonly>
+                  <mat-icon matPrefix>badge</mat-icon>
+                  <mat-hint>Automatically generated unique identifier</mat-hint>
+                </mat-form-field>
+
+                <div class="form-row">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Shift Start Time</mat-label>
+                    <input matInput formControlName="shiftStartTime" type="time">
+                    <mat-icon matPrefix>schedule</mat-icon>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Shift End Time</mat-label>
+                    <input matInput formControlName="shiftEndTime" type="time">
+                    <mat-icon matPrefix>schedule</mat-icon>
+                  </mat-form-field>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-actions">
+              <button mat-button matStepperPrevious>
+                <mat-icon>navigate_before</mat-icon>
+                Back
+              </button>
+              <button 
+                mat-raised-button 
+                color="accent" 
+                (click)="onSubmit()" 
+                [disabled]="loading || !isFormValid()"
+                class="submit-button">
+                <mat-icon>how_to_reg</mat-icon>
+                {{ loading ? 'Registering...' : 'Complete Registration' }}
+              </button>
+            </div>
+          </form>
+        </mat-step>
+      </mat-stepper>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <div class="login-link">
+        Already have an account? 
+        <a routerLink="/login" class="link">Login here</a>
+      </div>
+    </mat-card-actions>
+  </mat-card>
+</div>

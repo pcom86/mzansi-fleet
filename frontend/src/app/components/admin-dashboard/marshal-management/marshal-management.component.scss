@@ -1,0 +1,44 @@
+.marshal-management-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.form-card, .table-card {
+  margin-bottom: 24px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.half-width {
+  flex: 1;
+}
+
+.full-width {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.marshals-table {
+  width: 100%;
+  
+  .status-active {
+    color: #4caf50;
+    font-weight: 500;
+  }
+  
+  .status-inactive {
+    color: #f44336;
+    font-weight: 500;
+  }
+}

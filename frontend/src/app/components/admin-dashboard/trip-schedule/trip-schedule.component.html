@@ -1,0 +1,148 @@
+<div class="trip-schedule-container">
+  <mat-card class="form-card">
+    <mat-card-header>
+      <mat-card-title>{{ editMode ? 'Edit Trip Schedule' : 'Create Trip Schedule' }}</mat-card-title>
+      <mat-card-subtitle>Plan and manage daily taxi trip rosters</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="scheduleForm" (ngSubmit)="onSubmit()">
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Vehicle</mat-label>
+            <mat-select formControlName="vehicleId">
+              <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
+                {{ getVehicleDisplayName(vehicle) }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Route</mat-label>
+            <mat-select formControlName="routeId">
+              <mat-option *ngFor="let route of routes" [value]="route.id">
+                {{ route.name }} ({{ route.origin }} → {{ route.destination }})
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Driver</mat-label>
+            <mat-select formControlName="driverId">
+              <mat-option *ngFor="let driver of drivers" [value]="driver.id">
+                {{ getDriverDisplayName(driver) }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Marshal</mat-label>
+            <mat-select formControlName="marshalId">
+              <mat-option *ngFor="let marshal of marshals" [value]="marshal.id">
+                {{ getMarshalDisplayName(marshal) }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="third-width">
+            <mat-label>Scheduled Date</mat-label>
+            <input matInput [matDatepicker]="picker" formControlName="scheduledDate">
+            <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
+            <mat-datepicker #picker></mat-datepicker>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="third-width">
+            <mat-label>Departure Time</mat-label>
+            <input matInput type="time" formControlName="departureTime">
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="third-width">
+            <mat-label>Est. Arrival Time</mat-label>
+            <input matInput type="time" formControlName="estimatedArrivalTime">
+          </mat-form-field>
+        </div>
+
+        <div class="form-actions">
+          <button mat-raised-button type="button" (click)="resetForm()" *ngIf="editMode">
+            Cancel
+          </button>
+          <button mat-raised-button color="primary" type="submit" [disabled]="loading">
+            {{ editMode ? 'Update Schedule' : 'Create Schedule' }}
+          </button>
+        </div>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="table-card">
+    <mat-card-header>
+      <mat-card-title>Trip Roster</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <table mat-table [dataSource]="schedules" class="schedules-table">
+        <ng-container matColumnDef="date">
+          <th mat-header-cell *matHeaderCellDef>Date</th>
+          <td mat-cell *matCellDef="let schedule">
+            {{ schedule.scheduledDate | date:'mediumDate' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="time">
+          <th mat-header-cell *matHeaderCellDef>Departure</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.departureTime }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="vehicle">
+          <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.vehicleRegistration }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="route">
+          <th mat-header-cell *matHeaderCellDef>Route</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.routeName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="driver">
+          <th mat-header-cell *matHeaderCellDef>Driver</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.driverName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="marshal">
+          <th mat-header-cell *matHeaderCellDef>Marshal</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.marshalName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Status</th>
+          <td mat-cell *matCellDef="let schedule">
+            <span [ngClass]="{
+              'status-scheduled': schedule.status === 'Scheduled',
+              'status-completed': schedule.status === 'Completed',
+              'status-cancelled': schedule.status === 'Cancelled'
+            }">
+              {{ schedule.status }}
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let schedule">
+            <button mat-icon-button color="primary" (click)="editSchedule(schedule)">
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button mat-icon-button color="warn" (click)="deleteSchedule(schedule.id)">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+      </table>
+    </mat-card-content>
+  </mat-card>
+</div>

@@ -1,0 +1,39 @@
+.owner-assignment-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.form-card, .table-card {
+  margin-bottom: 24px;
+}
+
+.full-width {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.vehicle-count {
+  color: #666;
+  font-size: 0.9em;
+  margin-left: 8px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.assignments-table {
+  width: 100%;
+  
+  .status-active {
+    color: #4caf50;
+    font-weight: 500;
+  }
+  
+  .status-inactive {
+    color: #f44336;
+    font-weight: 500;
+  }
+}

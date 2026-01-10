@@ -1,0 +1,186 @@
+<div class="owner-trips-container">
+  <mat-card class="header-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>trip_origin</mat-icon>
+      <mat-card-title>My Fleet Trips</mat-card-title>
+      <mat-card-subtitle>View and analyze all trips taken by your vehicles</mat-card-subtitle>
+    </mat-card-header>
+  </mat-card>
+
+  <!-- Summary Stats -->
+  <div class="stats-row">
+    <mat-card class="stat-card">
+      <mat-icon class="stat-icon trips">directions_car</mat-icon>
+      <div class="stat-content">
+        <div class="stat-value">{{ totalTrips }}</div>
+        <div class="stat-label">Total Trips</div>
+      </div>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-icon class="stat-icon earnings">attach_money</mat-icon>
+      <div class="stat-content">
+        <div class="stat-value">R{{ totalEarnings.toFixed(2) }}</div>
+        <div class="stat-label">Total Earnings</div>
+      </div>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-icon class="stat-icon passengers">people</mat-icon>
+      <div class="stat-content">
+        <div class="stat-value">{{ totalPassengers }}</div>
+        <div class="stat-label">Total Passengers</div>
+      </div>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-icon class="stat-icon average">trending_up</mat-icon>
+      <div class="stat-content">
+        <div class="stat-value">R{{ avgFarePerTrip.toFixed(2) }}</div>
+        <div class="stat-label">Avg Fare/Trip</div>
+      </div>
+    </mat-card>
+  </div>
+
+  <!-- Filters -->
+  <mat-card class="filter-card">
+    <mat-card-content>
+      <form [formGroup]="filterForm" class="filter-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Start Date</mat-label>
+          <input matInput [matDatepicker]="startPicker" formControlName="startDate">
+          <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker></mat-datepicker>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>End Date</mat-label>
+          <input matInput [matDatepicker]="endPicker" formControlName="endDate">
+          <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker></mat-datepicker>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Vehicle</mat-label>
+          <mat-select formControlName="vehicleId">
+            <mat-option value="">All Vehicles</mat-option>
+            <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
+              {{ vehicle.registration }} - {{ vehicle.make }} {{ vehicle.model }}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Route</mat-label>
+          <mat-select formControlName="routeId">
+            <mat-option value="">All Routes</mat-option>
+            <mat-option *ngFor="let route of routes" [value]="route.id">
+              {{ route.name }} ({{ route.origin }} → {{ route.destination }})
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <button mat-raised-button color="accent" (click)="exportToCSV()">
+          <mat-icon>download</mat-icon>
+          Export CSV
+        </button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Trips Table -->
+  <mat-card class="table-card">
+    <mat-card-content>
+      <div *ngIf="loading" class="loading-container">
+        <mat-spinner diameter="50"></mat-spinner>
+        <p>Loading trips...</p>
+      </div>
+
+      <div *ngIf="!loading && filteredTrips.length === 0" class="no-data">
+        <mat-icon>info</mat-icon>
+        <p>No trips found for the selected period</p>
+      </div>
+
+      <div *ngIf="!loading && filteredTrips.length > 0" class="table-container">
+        <table mat-table [dataSource]="filteredTrips" class="trips-table">
+          <!-- Date Column -->
+          <ng-container matColumnDef="tripDate">
+            <th mat-header-cell *matHeaderCellDef>Date</th>
+            <td mat-cell *matCellDef="let trip">
+              {{ trip.tripDate | date:'medium' }}
+            </td>
+          </ng-container>
+
+          <!-- Vehicle Column -->
+          <ng-container matColumnDef="vehicle">
+            <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+            <td mat-cell *matCellDef="let trip">
+              {{ getVehicleName(trip.vehicleId) }}
+            </td>
+          </ng-container>
+
+          <!-- Driver Column -->
+          <ng-container matColumnDef="driver">
+            <th mat-header-cell *matHeaderCellDef>Driver</th>
+            <td mat-cell *matCellDef="let trip">
+              {{ getDriverName(trip.driverId) }}
+            </td>
+          </ng-container>
+
+          <!-- Route Column -->
+          <ng-container matColumnDef="route">
+            <th mat-header-cell *matHeaderCellDef>Route</th>
+            <td mat-cell *matCellDef="let trip">
+              {{ getRouteName(trip.routeId) }}
+            </td>
+          </ng-container>
+
+          <!-- Passengers Column -->
+          <ng-container matColumnDef="passengers">
+            <th mat-header-cell *matHeaderCellDef class="text-center">Passengers</th>
+            <td mat-cell *matCellDef="let trip" class="text-center">
+              <mat-chip class="passengers-chip">
+                <mat-icon>people</mat-icon>
+                {{ trip.passengerCount }}
+              </mat-chip>
+            </td>
+          </ng-container>
+
+          <!-- Total Fare Column -->
+          <ng-container matColumnDef="totalFare">
+            <th mat-header-cell *matHeaderCellDef class="text-right">Total Fare</th>
+            <td mat-cell *matCellDef="let trip" class="text-right fare-cell">
+              R{{ trip.totalFare.toFixed(2) }}
+            </td>
+          </ng-container>
+
+          <!-- Status Column -->
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Status</th>
+            <td mat-cell *matCellDef="let trip">
+              <mat-chip [class.status-completed]="trip.status === 'Completed'"
+                        [class.status-in-progress]="trip.status === 'In Progress'">
+                {{ trip.status }}
+              </mat-chip>
+            </td>
+          </ng-container>
+
+          <!-- Actions Column -->
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef class="text-center">Actions</th>
+            <td mat-cell *matCellDef="let trip" class="text-center">
+              <button mat-icon-button color="primary" 
+                      (click)="viewTripDetails(trip)"
+                      matTooltip="View Details">
+                <mat-icon>visibility</mat-icon>
+              </button>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="trip-row"></tr>
+        </table>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</div>

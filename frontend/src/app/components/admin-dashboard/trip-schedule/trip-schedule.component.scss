@@ -1,0 +1,48 @@
+.trip-schedule-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.form-card, .table-card {
+  margin-bottom: 24px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.half-width {
+  flex: 1;
+}
+
+.third-width {
+  flex: 1;
+}
+
+.form-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.schedules-table {
+  width: 100%;
+  
+  .status-scheduled {
+    color: #2196f3;
+    font-weight: 500;
+  }
+  
+  .status-completed {
+    color: #4caf50;
+    font-weight: 500;
+  }
+  
+  .status-cancelled {
+    color: #f44336;
+    font-weight: 500;
+  }
+}
