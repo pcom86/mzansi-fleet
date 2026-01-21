@@ -1,11 +1,19 @@
 <div class="rank-overview-container">
   <!-- Header -->
   <div class="page-header">
-    <h1>
-      <mat-icon>account_tree</mat-icon>
-      Association Hierarchy Overview
-    </h1>
-    <p class="subtitle">View the complete structure: Association → Taxi Ranks → Routes → Vehicles</p>
+    <div class="header-content">
+      <div>
+        <h1>
+          <mat-icon>account_tree</mat-icon>
+          Association Hierarchy Overview
+        </h1>
+        <p class="subtitle">View the complete structure: Association → Taxi Ranks → Routes → Vehicles</p>
+      </div>
+      <button mat-raised-button color="primary" (click)="openCreateTaxiRankDialog()" *ngIf="association">
+        <mat-icon>add_location</mat-icon>
+        Create Taxi Rank
+      </button>
+    </div>
   </div>
 
   <!-- Loading Spinner -->

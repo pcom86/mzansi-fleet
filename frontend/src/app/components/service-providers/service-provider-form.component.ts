@@ -122,6 +122,8 @@ import { CreateServiceProvider, UpdateServiceProvider, ServiceProvider } from '.
                   <mat-option value="Diagnostics">Diagnostics</mat-option>
                   <mat-option value="Routine Service">Routine Service</mat-option>
                   <mat-option value="Glass Repair">Glass Repair</mat-option>
+                  <mat-option value="Tracking Device Installation">Tracking Device Installation</mat-option>
+                  <mat-option value="Roadside Assistance">Roadside Assistance</mat-option>
                 </mat-select>
                 <mat-hint>Select all applicable service types</mat-hint>
               </mat-form-field>

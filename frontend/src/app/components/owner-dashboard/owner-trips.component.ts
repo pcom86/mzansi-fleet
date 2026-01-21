@@ -162,12 +162,39 @@ export class OwnerTripsComponent implements OnInit {
   async loadData(): Promise<void> {
     this.loading = true;
     try {
-      // Get owner's vehicles first
-      const vehiclesData = await this.http.get<Vehicle[]>(`${environment.apiUrl}/Vehicles`).toPromise();
+      // Get tenant ID from logged-in user
+      let tenantId = '';
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const userInfo = JSON.parse(userStr);
+          tenantId = userInfo.tenantId || '';
+        } catch (e) {
+          console.error('Failed to parse user info:', e);
+        }
+      }
+
+      // Get owner's vehicles filtered by tenantId
+      const vehiclesEndpoint = tenantId 
+        ? `${environment.apiUrl}/Vehicles/tenant/${tenantId}`
+        : `${environment.apiUrl}/Vehicles`;
+      
+      const vehiclesData = await this.http.get<Vehicle[]>(vehiclesEndpoint).toPromise();
       this.vehicles = vehiclesData || [];
+      
+      console.log(`Loaded ${this.vehicles.length} vehicles for tenant ${tenantId}`);
       
       // Get vehicle IDs to filter trips
       const vehicleIds = this.vehicles.map(v => v.id).join(',');
+      
+      if (!vehicleIds) {
+        console.warn('No vehicles found for this owner');
+        this.trips = [];
+        this.routes = [];
+        this.loading = false;
+        this.applyFilters();
+        return;
+      }
       
       // Load trips and routes
       const [tripsData, routesData] = await Promise.all([
@@ -177,6 +204,8 @@ export class OwnerTripsComponent implements OnInit {
 
       this.trips = tripsData || [];
       this.routes = routesData || [];
+      
+      console.log(`Loaded ${this.trips.length} trips for vehicles: ${vehicleIds}`);
       
       // Get unique driver IDs from trips
       const uniqueDriverIds = [...new Set(this.trips.map(t => t.driverId).filter(id => id))];

@@ -1,6 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ServiceAlertsComponent } from '../shared/service-alerts/service-alerts.component';
+import { AuthService, UserInfo } from '../../services/auth.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -8,7 +9,14 @@ import { ServiceAlertsComponent } from '../shared/service-alerts/service-alerts.
   imports: [CommonModule, ServiceAlertsComponent],
   template: `
     <div class="dashboard">
-      <h1>Fleet Dashboard</h1>
+      <div class="dashboard-header">
+        <div>
+          <h1>Fleet Dashboard</h1>
+          <p class="welcome-message" *ngIf="userInfo">
+            Welcome, <strong>{{ userInfo.fullName || userInfo.email }}</strong>
+          </p>
+        </div>
+      </div>
       
       <div class="stats-grid">
         <div class="card">
@@ -47,6 +55,25 @@ import { ServiceAlertsComponent } from '../shared/service-alerts/service-alerts.
     </div>
   `,
   styles: [`
+    .dashboard-header {
+      margin-bottom: 2rem;
+    }
+
+    .dashboard-header h1 {
+      margin-bottom: 0.5rem;
+    }
+
+    .welcome-message {
+      color: #666;
+      font-size: 1.1rem;
+      margin: 0;
+    }
+
+    .welcome-message strong {
+      color: #333;
+      font-weight: 600;
+    }
+
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -87,4 +114,12 @@ import { ServiceAlertsComponent } from '../shared/service-alerts/service-alerts.
     }
   `]
 })
-export class DashboardComponent {}
+export class DashboardComponent implements OnInit {
+  userInfo: UserInfo | null = null;
+
+  constructor(private authService: AuthService) {}
+
+  ngOnInit() {
+    this.userInfo = this.authService.getCurrentUserInfo();
+  }
+}

@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.DTOs;
 using MzansiFleet.Domain.Interfaces.IRepositories;
@@ -10,6 +12,7 @@ namespace MzansiFleet.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class ServiceProviderProfilesController : ControllerBase
     {
         private readonly IServiceProviderProfileRepository _repository;
@@ -151,6 +154,51 @@ namespace MzansiFleet.Api.Controllers
 
             _repository.Delete(id);
             return NoContent();
+        }
+
+        [HttpGet("my-profile")]
+        public ActionResult<ServiceProviderProfileDto> GetMyProfile()
+        {
+            var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? throw new UnauthorizedAccessException());
+            var profile = _repository.GetByUserId(userId);
+            
+            if (profile == null)
+                return NotFound("Service provider profile not found for this user");
+
+            return Ok(MapToDto(profile));
+        }
+
+        [HttpPut("my-profile")]
+        public ActionResult<ServiceProviderProfileDto> UpdateMyProfile([FromBody] ServiceProviderProfileDto dto)
+        {
+            var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? throw new UnauthorizedAccessException());
+            var profile = _repository.GetByUserId(userId);
+            
+            if (profile == null)
+                return NotFound("Service provider profile not found for this user");
+
+            profile.BusinessName = dto.BusinessName;
+            profile.RegistrationNumber = dto.RegistrationNumber;
+            profile.ContactPerson = dto.ContactPerson;
+            profile.Phone = dto.Phone;
+            profile.Email = dto.Email;
+            profile.Address = dto.Address;
+            profile.ServiceTypes = dto.ServiceTypes;
+            profile.VehicleCategories = dto.VehicleCategories;
+            profile.OperatingHours = dto.OperatingHours;
+            profile.IsActive = dto.IsActive;
+            profile.IsAvailable = dto.IsAvailable;
+            profile.HourlyRate = dto.HourlyRate;
+            profile.CallOutFee = dto.CallOutFee;
+            profile.ServiceRadiusKm = dto.ServiceRadiusKm;
+            profile.BankAccount = dto.BankAccount;
+            profile.TaxNumber = dto.TaxNumber;
+            profile.CertificationsLicenses = dto.CertificationsLicenses;
+            profile.Notes = dto.Notes;
+            profile.UpdatedAt = DateTime.UtcNow;
+
+            _repository.Update(profile);
+            return Ok(MapToDto(profile));
         }
 
         private ServiceProviderProfileDto MapToDto(ServiceProviderProfile profile)

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Npgsql;
 
@@ -7,29 +8,28 @@ class Program
     static async Task<int> Main(string[] args)
     {
         var connectionString = "Host=localhost;Database=MzansiFleetDb;Username=postgres;Password=postgres";
+        var sqlFilePath = args.Length > 0 ? args[0] : "../Migrations/20260115_AddTenderTables.sql";
 
         try
         {
+            Console.WriteLine($"Reading migration file: {sqlFilePath}");
+            var sqlScript = await File.ReadAllTextAsync(sqlFilePath);
+            
+            Console.WriteLine("Connecting to database...");
             using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync();
-            Console.WriteLine("Connected to database successfully!");
-
-            var sql = @"
-    ALTER TABLE ""Trips"" ADD COLUMN IF NOT EXISTS ""PassengerListFileName"" text NULL;
-    ALTER TABLE ""Trips"" ADD COLUMN IF NOT EXISTS ""PassengerListFileData"" text NULL;
-    ";
-
-            using var command = new NpgsqlCommand(sql, connection);
-            await command.ExecuteNonQueryAsync();
-
-            Console.WriteLine("Migration applied successfully!");
-            Console.WriteLine("Added columns:");
-            Console.WriteLine("  - PassengerListFileName (text, nullable)");
-            Console.WriteLine("  - PassengerListFileData (text, nullable)");
+            
+            Console.WriteLine("Executing migration...");
+            using var command = new NpgsqlCommand(sqlScript, connection);
+            var result = await command.ExecuteNonQueryAsync();
+            
+            Console.WriteLine("✓ Tender tables migration applied successfully!");
+            Console.WriteLine($"Migration completed: {result} operations executed");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error: {ex.Message}");
+            Console.WriteLine($"✗ Error applying migration: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
             return 1;
         }
 

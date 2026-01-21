@@ -486,6 +486,10 @@ import { ScheduleServiceDialogComponent } from './schedule-service-dialog.compon
                             <mat-icon>schedule</mat-icon>
                             <span>Last Service: {{ stat.lastServiceDate | date:'shortDate' }}</span>
                           </div>
+                          <div class="stat-detail" *ngIf="stat.lastMaintenanceDate">
+                            <mat-icon>construction</mat-icon>
+                            <span>Last Maintenance: {{ stat.lastMaintenanceDate | date:'shortDate' }}</span>
+                          </div>
                           <div class="stat-detail" *ngIf="stat.daysSinceService !== null">
                             <mat-icon [class.overdue]="stat.daysSinceService > 90">event</mat-icon>
                             <span [class.overdue]="stat.daysSinceService > 90">
@@ -1011,6 +1015,7 @@ export class MaintenanceDashboardComponent implements OnInit {
           totalCost: vehicleServices.reduce((sum: number, s: any) => sum + (s.cost || 0), 0) +
                     vehicleMaintenance.reduce((sum: number, m: any) => sum + (m.cost || 0), 0),
           lastServiceDate: lastService?.serviceDate || null,
+          lastMaintenanceDate: vehicle.lastMaintenanceDate || null,
           daysSinceService
         };
       });

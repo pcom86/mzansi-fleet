@@ -100,8 +100,9 @@ namespace MzansiFleet.Application.Handlers
                 }
                 else if (user.Role == "TaxiRankAdmin")
                 {
-                    // TaxiRankAdmin doesn't have a profile with name, use email
-                    fullName = user.Email;
+                    var adminProfile = _context.Set<Domain.Entities.TaxiRankAdminProfile>()
+                        .FirstOrDefault(a => a.UserId == user.Id);
+                    fullName = adminProfile?.FullName;
                 }
                 else if (user.Role == "TaxiMarshal")
                 {
@@ -137,6 +138,7 @@ namespace MzansiFleet.Application.Handlers
             var claims = new[]
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                new Claim("userId", user.Id.ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email ?? ""),
                 new Claim(ClaimTypes.Role, user.Role ?? "User"),
                 new Claim("tenant_id", user.TenantId.ToString()),

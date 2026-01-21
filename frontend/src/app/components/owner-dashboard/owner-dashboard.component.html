@@ -1,0 +1,152 @@
+<div class="dashboard-wrapper">
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
+    <div class="sidebar-header">
+      <div class="logo-section">
+        <app-mzansi-fleet-logo class="mzansi-logo"></app-mzansi-fleet-logo>
+        <div class="header-text" *ngIf="!sidebarCollapsed">
+          <h2>{{ ownerName || 'Fleet Owner' }}</h2>
+          <p class="admin-badge">Owner Portal</p>
+        </div>
+      </div>
+      <button mat-icon-button class="collapse-btn" (click)="toggleSidebar()">
+        <mat-icon>{{ sidebarCollapsed ? 'menu_open' : 'menu' }}</mat-icon>
+      </button>
+    </div>
+    
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <p class="section-label" *ngIf="!sidebarCollapsed">Dashboard</p>
+        <a class="nav-item" 
+           *ngFor="let item of menuItems" 
+           [routerLink]="item.route"
+           routerLinkActive="active"
+           [routerLinkActiveOptions]="{exact: item.route === '/owner-dashboard'}"
+           [title]="item.title"
+           (click)="onMenuItemClick()">
+          <mat-icon [matBadge]="item.badge || null" [matBadgeHidden]="!item.badge" matBadgeColor="warn" matBadgeSize="small">{{ item.icon }}</mat-icon>
+          <span *ngIf="!sidebarCollapsed">{{ item.title }}</span>
+          <mat-icon class="nav-arrow" *ngIf="!sidebarCollapsed">chevron_right</mat-icon>
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <p class="section-label" *ngIf="!sidebarCollapsed">Account</p>
+        <a class="nav-item clickable" (click)="navigateTo('/identity/owner-profiles')" title="Profile">
+          <mat-icon>person</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Profile</span>
+        </a>
+        <a class="nav-item clickable" (click)="navigateTo('/owner-dashboard/settings')" title="Settings">
+          <mat-icon>settings</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Settings</span>
+        </a>
+        <a class="nav-item logout-item clickable" (click)="logout()" title="Logout">
+          <mat-icon>logout</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Logout</span>
+        </a>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="main-content" [class.expanded]="sidebarCollapsed">
+    <header class="top-bar">
+      <div class="left-section">
+        <button class="menu-toggle" (click)="toggleSidebar()">
+          <mat-icon>menu</mat-icon>
+        </button>
+        <div class="breadcrumb">
+          <mat-icon>business_center</mat-icon>
+          <span>{{ ownerName || 'Owner Dashboard' }}</span>
+        </div>
+      </div>
+
+      <div class="center-section">
+        <!-- Quick action buttons -->
+        <button 
+          *ngFor="let item of topMenuItems" 
+          class="quick-action-btn"
+          (click)="onTopMenuAction(item.action)"
+          [title]="item.title"
+          [attr.aria-label]="item.title">
+          <mat-icon [matBadge]="item.badge || null" [matBadgeHidden]="!item.badge" matBadgeColor="warn" matBadgeSize="small">{{ item.icon }}</mat-icon>
+          <span class="action-label">{{ item.title }}</span>
+        </button>
+      </div>
+
+      <div class="right-section">
+        <button class="notifications-btn" [matMenuTriggerFor]="notifMenu" title="Notifications">
+          <mat-icon [matBadge]="unreadNotifications > 0 ? unreadNotifications.toString() : null" [matBadgeHidden]="unreadNotifications === 0" matBadgeColor="warn" matBadgeSize="small">notifications</mat-icon>
+        </button>
+
+        <mat-menu #notifMenu="matMenu" class="notification-dropdown">
+          <div class="notification-header">
+            <h3>Notifications</h3>
+            <button mat-button class="mark-read-btn">Mark all read</button>
+          </div>
+          <mat-divider></mat-divider>
+          <button mat-menu-item class="notification-item">
+            <mat-icon class="notif-icon info">info</mat-icon>
+            <div class="notif-content">
+              <p class="notif-title">Maintenance scheduled</p>
+              <p class="notif-time">5 minutes ago</p>
+            </div>
+          </button>
+          <button mat-menu-item class="notification-item">
+            <mat-icon class="notif-icon success">check_circle</mat-icon>
+            <div class="notif-content">
+              <p class="notif-title">Trip completed successfully</p>
+              <p class="notif-time">1 hour ago</p>
+            </div>
+          </button>
+          <button mat-menu-item class="notification-item">
+            <mat-icon class="notif-icon warning">warning</mat-icon>
+            <div class="notif-content">
+              <p class="notif-title">Driver status update needed</p>
+              <p class="notif-time">2 hours ago</p>
+            </div>
+          </button>
+          <mat-divider></mat-divider>
+          <button mat-menu-item class="view-all-btn">
+            <span>View all notifications</span>
+          </button>
+        </mat-menu>
+
+        <button class="profile-btn" [matMenuTriggerFor]="profileMenu">
+          <mat-icon>account_circle</mat-icon>
+          <span class="profile-name" *ngIf="userData">{{ userData.fullName || 'Owner' }}</span>
+          <mat-icon class="dropdown-arrow">expand_more</mat-icon>
+        </button>
+
+        <mat-menu #profileMenu="matMenu" class="profile-dropdown">
+          <div class="profile-header">
+            <mat-icon class="profile-avatar">account_circle</mat-icon>
+            <div class="profile-info">
+              <p class="profile-name-text">{{ userData?.fullName || 'Owner' }}</p>
+              <p class="profile-role">{{ userData?.role }}</p>
+            </div>
+          </div>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="navigateTo('/identity/owner-profiles')">
+            <mat-icon>person</mat-icon>
+            <span>My Profile</span>
+          </button>
+          <button mat-menu-item (click)="navigateTo('/owner-dashboard/settings')">
+            <mat-icon>settings</mat-icon>
+            <span>Settings</span>
+          </button>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="logout()" class="logout-menu-item">
+            <mat-icon>logout</mat-icon>
+            <span>Logout</span>
+          </button>
+        </mat-menu>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="content-wrapper">
+      <router-outlet></router-outlet>
+    </div>
+  </main>
+</div>

@@ -73,7 +73,15 @@ namespace MzansiFleet.Api.Controllers
                         description = mh.Description,
                         cost = mh.Cost,
                         invoiceNumber = mh.InvoiceNumber,
-                        mileageAtMaintenance = mh.MileageAtMaintenance
+                        mileageAtMaintenance = mh.MileageAtMaintenance,
+                        rating = mh.ServiceProviderRating,
+                        ownerName = _context.Vehicles
+                            .Where(v => v.Id == mh.VehicleId)
+                            .Join(_context.OwnerProfiles,
+                                vehicle => vehicle.TenantId,
+                                owner => owner.Id,
+                                (vehicle, owner) => owner.ContactName)
+                            .FirstOrDefault()
                     })
                     .ToListAsync();
 
@@ -135,6 +143,40 @@ namespace MzansiFleet.Api.Controllers
                     .ThenBy(x => x.month)
                     .ToListAsync();
 
+                // Get reviews (completed maintenance with ratings)
+                var reviews = await _context.MaintenanceHistories
+                    .Where(mh => mh.ServiceProvider == serviceProviderName 
+                        && mh.Status == "Completed"
+                        && mh.ServiceProviderRating.HasValue
+                        && mh.CompletedDate.HasValue)
+                    .OrderByDescending(mh => mh.CompletedDate)
+                    .Take(20)
+                    .Select(mh => new
+                    {
+                        id = mh.Id,
+                        vehicleRegistration = _context.Vehicles
+                            .Where(v => v.Id == mh.VehicleId)
+                            .Select(v => v.Registration)
+                            .FirstOrDefault(),
+                        rating = mh.ServiceProviderRating.Value,
+                        comment = mh.Notes ?? "Service completed successfully.",
+                        reviewDate = mh.CompletedDate.Value,
+                        reviewerName = _context.Vehicles
+                            .Where(v => v.Id == mh.VehicleId)
+                            .Join(_context.OwnerProfiles,
+                                vehicle => vehicle.TenantId,
+                                owner => owner.Id,
+                                (vehicle, owner) => owner.ContactName)
+                            .FirstOrDefault() ?? "Vehicle Owner",
+                        jobType = mh.MaintenanceType
+                    })
+                    .ToListAsync();
+
+                // Calculate average rating
+                var averageRating = reviews.Any() 
+                    ? reviews.Average(r => r.rating) 
+                    : 0.0;
+
                 var dashboardData = new
                 {
                     upcomingAppointments = new
@@ -146,6 +188,12 @@ namespace MzansiFleet.Api.Controllers
                     {
                         count = recentMaintenance.Count,
                         records = recentMaintenance
+                    },
+                    reviews = new
+                    {
+                        count = reviews.Count,
+                        averageRating = Math.Round(averageRating, 1),
+                        items = reviews
                     },
                     financial = new
                     {

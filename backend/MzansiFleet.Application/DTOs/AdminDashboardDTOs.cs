@@ -113,6 +113,8 @@ namespace MzansiFleet.Application.DTOs
     // Marshal DTOs
     public class CreateMarshalDto
     {
+        public Guid? TenantId { get; set; }
+        public Guid? TaxiRankId { get; set; }
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
         public string MarshalCode { get; set; } = string.Empty;
@@ -121,6 +123,7 @@ namespace MzansiFleet.Application.DTOs
         public string Password { get; set; } = string.Empty;
         public string ShiftStartTime { get; set; } = string.Empty;
         public string ShiftEndTime { get; set; } = string.Empty;
+        public string? Status { get; set; }
     }
 
     public class UpdateMarshalDto

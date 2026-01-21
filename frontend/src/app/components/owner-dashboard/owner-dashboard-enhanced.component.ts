@@ -43,12 +43,6 @@ Chart.register(...registerables);
           <h1>Fleet Performance Dashboard</h1>
           <p>{{ currentMonthName }} Overview</p>
         </div>
-        <div class="header-actions">
-          <button mat-raised-button routerLink="/owner-dashboard">
-            <mat-icon>dashboard</mat-icon>
-            Main Menu
-          </button>
-        </div>
       </div>
 
       <!-- Maintenance Alerts Banner -->
@@ -212,6 +206,148 @@ Chart.register(...registerables);
                     <div class="profit-visual">
                       <canvas id="profitChart" width="200" height="200"></canvas>
                     </div>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+            </div>
+          </mat-tab>
+
+          <!-- Fleet Vehicles Tab -->
+          <mat-tab label="Fleet Vehicles">
+            <div class="tab-content">
+              <mat-card class="table-card">
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>directions_car</mat-icon>
+                  <mat-card-title>Fleet Vehicles</mat-card-title>
+                  <mat-card-subtitle>{{ totalVehicles }} vehicles ({{ activeVehicles }} active, {{ inactiveVehicles }} inactive)</mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="table-container">
+                    <table mat-table [dataSource]="vehiclePerformance" class="vehicles-table">
+                      <!-- Vehicle Column -->
+                      <ng-container matColumnDef="vehicle">
+                        <th mat-header-cell *matHeaderCellDef>Vehicle Details</th>
+                        <td mat-cell *matCellDef="let v">
+                          <div class="vehicle-details-cell">
+                            <div class="vehicle-primary">
+                              <strong>{{ v.make }} {{ v.model }}</strong>
+                              <mat-chip class="year-chip">{{ v.year || 'N/A' }}</mat-chip>
+                            </div>
+                            <div class="vehicle-secondary">
+                              <span class="registration">{{ v.registration }}</span>
+                              <span class="vin" *ngIf="v.vin">VIN: {{ v.vin }}</span>
+                            </div>
+                          </div>
+                        </td>
+                      </ng-container>
+
+                      <!-- Status Column -->
+                      <ng-container matColumnDef="status">
+                        <th mat-header-cell *matHeaderCellDef>Status</th>
+                        <td mat-cell *matCellDef="let v">
+                          <div class="status-column">
+                            <mat-chip [class.status-active]="v.status === 'Active'" 
+                                      [class.status-inactive]="v.status !== 'Active'">
+                              <mat-icon>{{ v.status === 'Active' ? 'check_circle' : 'cancel' }}</mat-icon>
+                              {{ v.status || 'Unknown' }}
+                            </mat-chip>
+                            <mat-chip class="service-status" *ngIf="v.isInService" [matTooltip]="v.serviceMessage">
+                              <mat-icon>build</mat-icon>
+                              In Service
+                            </mat-chip>
+                          </div>
+                        </td>
+                      </ng-container>
+
+                      <!-- Health Score Column -->
+                      <ng-container matColumnDef="health">
+                        <th mat-header-cell *matHeaderCellDef>Health</th>
+                        <td mat-cell *matCellDef="let v">
+                          <div class="health-column">
+                            <div class="health-score" [matTooltip]="getHealthTooltip(v)">
+                              <mat-icon [class.health-good]="v.healthScore >= 80"
+                                        [class.health-warning]="v.healthScore >= 50 && v.healthScore < 80"
+                                        [class.health-critical]="v.healthScore < 50">
+                                {{ getHealthIcon(v.healthScore) }}
+                              </mat-icon>
+                              <span class="score-text">{{ v.healthScore }}%</span>
+                            </div>
+                            <div class="health-bar">
+                              <div class="health-bar-fill" 
+                                   [style.width.%]="v.healthScore"
+                                   [class.bar-good]="v.healthScore >= 80"
+                                   [class.bar-warning]="v.healthScore >= 50 && v.healthScore < 80"
+                                   [class.bar-critical]="v.healthScore < 50">
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </ng-container>
+
+                      <!-- Driver Column -->
+                      <ng-container matColumnDef="driver">
+                        <th mat-header-cell *matHeaderCellDef>Driver</th>
+                        <td mat-cell *matCellDef="let v">
+                          <div class="driver-cell">
+                            <mat-icon>person</mat-icon>
+                            <span>{{ v.driverName || 'Unassigned' }}</span>
+                          </div>
+                        </td>
+                      </ng-container>
+
+                      <!-- This Month Profit Column -->
+                      <ng-container matColumnDef="profit">
+                        <th mat-header-cell *matHeaderCellDef>This Month</th>
+                        <td mat-cell *matCellDef="let v">
+                          <div class="profit-column">
+                            <div class="profit-value" [class.positive]="v.profit > 0" [class.negative]="v.profit < 0">
+                              R{{ v.profit.toFixed(2) }}
+                            </div>
+                            <div class="profit-breakdown">
+                              <small class="earnings">+R{{ v.earnings.toFixed(2) }}</small>
+                              <small class="expenses">-R{{ v.expenses.toFixed(2) }}</small>
+                            </div>
+                          </div>
+                        </td>
+                      </ng-container>
+
+                      <!-- Actions Column -->
+                      <ng-container matColumnDef="actions">
+                        <th mat-header-cell *matHeaderCellDef>Actions</th>
+                        <td mat-cell *matCellDef="let v">
+                          <button mat-icon-button [matMenuTriggerFor]="vehicleMenu" [matTooltip]="'Vehicle options'">
+                            <mat-icon>more_vert</mat-icon>
+                          </button>
+                          <mat-menu #vehicleMenu="matMenu">
+                            <button mat-menu-item (click)="viewVehicleDetails(v.id)">
+                              <mat-icon>visibility</mat-icon>
+                              <span>View Details</span>
+                            </button>
+                            <button mat-menu-item (click)="navigateToVehicles()">
+                              <mat-icon>edit</mat-icon>
+                              <span>Edit Vehicle</span>
+                            </button>
+                            <button mat-menu-item (click)="scheduleService(v)">
+                              <mat-icon>build_circle</mat-icon>
+                              <span>Schedule Service</span>
+                            </button>
+                          </mat-menu>
+                        </td>
+                      </ng-container>
+
+                      <tr mat-header-row *matHeaderRowDef="['vehicle', 'status', 'health', 'driver', 'profit', 'actions']"></tr>
+                      <tr mat-row *matRowDef="let row; columns: ['vehicle', 'status', 'health', 'driver', 'profit', 'actions'];"></tr>
+                    </table>
+                  </div>
+
+                  <div *ngIf="vehiclePerformance.length === 0" class="no-data">
+                    <mat-icon>directions_car_filled</mat-icon>
+                    <h3>No Vehicles Found</h3>
+                    <p>Add vehicles to your fleet to see them here</p>
+                    <button mat-raised-button color="primary" (click)="navigateToVehicles()">
+                      <mat-icon>add</mat-icon>
+                      Add Vehicle
+                    </button>
                   </div>
                 </mat-card-content>
               </mat-card>
@@ -1204,6 +1340,177 @@ Chart.register(...registerables);
       color: white !important;
       font-weight: 600;
     }
+
+    /* Fleet Vehicles Tab Styles */
+    .vehicles-table {
+      width: 100%;
+    }
+
+    .vehicle-details-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .vehicle-primary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .vehicle-primary strong {
+      font-size: 15px;
+      color: #212529;
+    }
+
+    .year-chip {
+      background: #e3f2fd !important;
+      color: #1976d2 !important;
+      font-size: 11px;
+      height: 20px;
+      line-height: 20px;
+      padding: 0 8px;
+    }
+
+    .vehicle-secondary {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .registration {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .vin {
+      color: #999;
+      font-size: 11px;
+    }
+
+    .status-column {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .status-active {
+      background: #4caf50 !important;
+      color: white !important;
+    }
+
+    .status-inactive {
+      background: #9e9e9e !important;
+      color: white !important;
+    }
+
+    .service-status {
+      background: #ff9800 !important;
+      color: white !important;
+    }
+
+    .health-column {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 120px;
+    }
+
+    .health-score {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .score-text {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .health-bar {
+      width: 100%;
+      height: 6px;
+      background: #e0e0e0;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .health-bar-fill {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    .bar-good {
+      background: linear-gradient(90deg, #4caf50, #8bc34a);
+    }
+
+    .bar-warning {
+      background: linear-gradient(90deg, #ff9800, #ffc107);
+    }
+
+    .bar-critical {
+      background: linear-gradient(90deg, #f44336, #e91e63);
+    }
+
+    .driver-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #666;
+    }
+
+    .profit-column {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .profit-value {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .profit-breakdown {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .profit-breakdown .earnings {
+      color: #4caf50;
+      font-size: 11px;
+    }
+
+    .profit-breakdown .expenses {
+      color: #f44336;
+      font-size: 11px;
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 60px 20px;
+      color: #999;
+    }
+
+    .no-data mat-icon {
+      font-size: 80px;
+      width: 80px;
+      height: 80px;
+      margin-bottom: 20px;
+      opacity: 0.3;
+    }
+
+    .no-data h3 {
+      margin: 10px 0;
+      color: #666;
+    }
+
+    .no-data p {
+      margin: 10px 0 20px;
+      color: #999;
+    }
   `]
 })
 export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
@@ -1272,9 +1579,10 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
       }
 
       const user = JSON.parse(userStr);
+      const tenantId = user.tenantId;
       
-      const allVehicles: any = await this.http.get(`${this.apiUrl}/Vehicles`).toPromise();
-      const ownerVehicles = allVehicles.filter((v: any) => v.tenantId === user.tenantId);
+      // Load only vehicles for this tenant
+      const ownerVehicles: any = await this.http.get(`${this.apiUrl}/Vehicles/tenant/${tenantId}`).toPromise();
       
       this.totalVehicles = ownerVehicles.length;
       this.activeVehicles = ownerVehicles.filter((v: any) => v.status === 'Active').length;
@@ -2107,6 +2415,32 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
       console.error('Error completing request:', error);
       this.snackBar.open('Failed to complete request. Please try again.', 'Close', { duration: 3000 });
     }
+  }
+
+  viewVehicleDetails(vehicleId: string) {
+    this.router.navigate(['/owner-dashboard/vehicles', vehicleId]);
+  }
+
+  navigateToVehicles() {
+    this.router.navigate(['/owner-dashboard/vehicles']);
+  }
+
+  scheduleService(vehicle: any) {
+    const dialogRef = this.dialog.open(ScheduleServiceDialogComponent, {
+      width: '600px',
+      data: {
+        vehicleId: vehicle.id,
+        vehicleName: `${vehicle.make} ${vehicle.model} (${vehicle.registration})`
+      }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        this.snackBar.open('Service scheduled successfully', 'Close', { duration: 3000 });
+        // Reload dashboard data to reflect the changes
+        this.loadDashboardData();
+      }
+    });
   }
 
   logout() {

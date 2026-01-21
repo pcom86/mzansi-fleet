@@ -21,32 +21,129 @@ import { ServiceProviderFormComponent } from './components/service-providers/ser
 import { ServiceProviderRegistrationComponent } from './components/service-providers/service-provider-registration.component';
 import { CreateServiceProviderProfileComponent } from './components/service-providers/create-service-provider-profile.component';
 import { ServiceProviderDashboardComponent } from './components/service-providers/service-provider-dashboard.component';
+import { ServiceProviderOverviewComponent } from './components/service-providers/service-provider-overview.component';
+import { ServiceProviderProfileEditComponent } from './components/service-providers/service-provider-profile-edit.component';
+import { RoadsideAssistanceMarketplaceComponent } from './components/service-providers/roadside-assistance-marketplace.component';
 import { MarshalRegistrationComponent } from './components/marshal/marshal-registration.component';
 import { TaxiRankUserRegistrationComponent } from './components/taxi-rank-user-registration/taxi-rank-user-registration.component';
 import { AdminDashboardComponent } from './components/admin-dashboard/admin-dashboard.component';
 import { OwnerTripsComponent } from './components/owner-dashboard/owner-trips.component';
 import { MarshalDashboardComponent } from './components/marshal-dashboard/marshal-dashboard.component';
+import { TenderListComponent } from './components/tenders/tender-list.component';
+import { PostTenderComponent } from './components/tenders/post-tender.component';
+import { TenderApplicationComponent } from './components/tenders/tender-application.component';
+import { TenderApplicationsViewComponent } from './components/tenders/tender-applications-view.component';
+import { TenderDetailsComponent } from './components/tenders/tender-details.component';
+import { NormalUserRegistrationComponent } from './components/normal-user-registration/normal-user-registration.component';
+import { UserDashboardComponent } from './components/user-dashboard/user-dashboard.component';
+import { RegistrationComponent } from './components/registration/registration.component';
+import { RequestVehicleRentalComponent } from './components/rental/request-vehicle-rental.component';
+import { MyRentalRequestsComponent } from './components/rental/my-rental-requests.component';
+import { ViewRentalOffersComponent } from './components/rental/view-rental-offers.component';
+import { RentalMarketplaceComponent } from './components/rental/rental-marketplace.component';
+import { RequestTrackingDeviceComponent } from './components/tracking-device/request-tracking-device.component';
+import { TrackingDeviceOffersComponent } from './components/tracking-device/tracking-device-offers.component';
+import { TrackingMarketplaceComponent } from './components/tracking-device/tracking-marketplace.component';
+import { RequestRoadsideAssistanceComponent } from './components/roadside-assistance/request-roadside-assistance.component';
+import { RoadsideAssistanceDashboardComponent } from './components/roadside-assistance/roadside-assistance-dashboard.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/login', pathMatch: 'full' },
   { path: 'login', component: LoginComponent },
+  { path: 'registration', component: RegistrationComponent },
   { path: 'register', component: ProfileSelectionComponent },
+  { path: 'user-registration', component: NormalUserRegistrationComponent },
+  { 
+    path: 'user-dashboard', 
+    component: UserDashboardComponent,
+    children: [
+      { path: '', redirectTo: 'overview', pathMatch: 'full' },
+      { 
+        path: 'overview', 
+        loadComponent: () => import('./components/user-dashboard/user-overview/user-overview.component').then(m => m.UserOverviewComponent)
+      },
+      { path: 'tenders', component: TenderListComponent },
+      { path: 'tenders/post', component: PostTenderComponent },
+      { path: 'tenders/:id', component: TenderDetailsComponent },
+      { path: 'tenders/:id/apply', component: TenderApplicationComponent },
+      { path: 'rental', component: MyRentalRequestsComponent },
+      { path: 'rental/request', component: RequestVehicleRentalComponent },
+      { path: 'rental/requests/:id/offers', component: ViewRentalOffersComponent }
+    ]
+  },
   { path: 'driver-registration', component: DriverRegistrationComponent },
   { path: 'onboarding', component: OnboardingWizardComponent },
   { path: 'identity-management', component: IdentityManagementComponent },
-  { path: 'owner-dashboard', component: OwnerDashboardComponent },
-  { path: 'owner-dashboard/analytics', component: OwnerDashboardEnhancedComponent },
-  { path: 'owner-dashboard/trips', component: OwnerTripsComponent },
+  { 
+    path: 'owner-dashboard', 
+    component: OwnerDashboardComponent,
+    children: [
+      { path: '', redirectTo: 'analytics', pathMatch: 'full' },
+      { path: 'analytics', component: OwnerDashboardEnhancedComponent },
+      { path: 'vehicles', component: VehiclesComponent },
+      { path: 'vehicles/:id', component: VehicleDetailsComponent },
+      { path: 'drivers', component: DriversComponent },
+      { path: 'drivers/create', component: CreateDriverProfileComponent },
+      { path: 'trips', component: OwnerTripsComponent },
+      { path: 'maintenance', component: MaintenanceDashboardComponent },
+      { path: 'tenders', component: TenderListComponent },
+      { path: 'tenders/post', component: PostTenderComponent },
+      { path: 'tenders/:id', component: TenderDetailsComponent },
+      { path: 'tenders/:id/apply', component: TenderApplicationComponent },
+      { path: 'rental/marketplace', component: RentalMarketplaceComponent },
+      { path: 'tracking-device', component: RequestTrackingDeviceComponent },
+      { path: 'tracking-offers/:requestId', component: TrackingDeviceOffersComponent },
+      { path: 'roadside-assistance', component: RequestRoadsideAssistanceComponent }
+    ]
+  },
   { path: 'maintenance', component: MaintenanceDashboardComponent },
   { path: 'driver-maintenance', component: DriverMaintenanceRequestComponent },
-  { path: 'driver-dashboard', component: DriverDashboardComponent },
-  { path: 'service-provider-dashboard', component: ServiceProviderDashboardComponent },
-  { path: 'marshal-dashboard', component: MarshalDashboardComponent },
   { 
-    path: 'marshal', 
+    path: 'driver-dashboard', 
+    component: DriverDashboardComponent,
     children: [
-      { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
-      { path: 'dashboard', component: MarshalDashboardComponent },
+      { path: '', redirectTo: 'overview', pathMatch: 'full' },
+      { 
+        path: 'overview', 
+        loadComponent: () => import('./components/driver-dashboard/driver-overview/driver-overview.component').then(m => m.DriverOverviewComponent)
+      },
+      { path: 'vehicle', component: VehicleDetailsComponent },
+      { path: 'roadside-assistance', component: RequestRoadsideAssistanceComponent },
+      { path: 'maintenance', component: DriverMaintenanceRequestComponent }
+    ]
+  },
+  { 
+    path: 'service-provider-dashboard', 
+    component: ServiceProviderDashboardComponent,
+    children: [
+      { path: '', redirectTo: 'overview', pathMatch: 'full' },
+      { 
+        path: 'overview', 
+        component: ServiceProviderOverviewComponent
+      },
+      { 
+        path: 'marketplace', 
+        component: TrackingMarketplaceComponent
+      },
+      { 
+        path: 'profile-edit', 
+        component: ServiceProviderProfileEditComponent
+      },
+      { 
+        path: 'roadside-assistance', 
+        component: RoadsideAssistanceMarketplaceComponent
+      }
+    ]
+  },
+  { 
+    path: 'marshal-dashboard', 
+    component: MarshalDashboardComponent,
+    children: [
+      { path: '', redirectTo: 'overview', pathMatch: 'full' },
+      { 
+        path: 'overview', 
+        loadComponent: () => import('./components/marshal-dashboard/marshal-overview/marshal-overview.component').then(m => m.MarshalOverviewComponent)
+      },
       { 
         path: 'trip-details', 
         loadComponent: () => import('./components/admin-dashboard/trip-details/trip-details.component').then(m => m.TripDetailsComponent)
@@ -74,6 +171,30 @@ export const routes: Routes = [
   { path: 'service-provider-profile/create', component: CreateServiceProviderProfileComponent },
   { path: 'marshal-registration', component: MarshalRegistrationComponent },
   { path: 'taxi-rank-user-registration', component: TaxiRankUserRegistrationComponent },
+  
+  // Tender Management Routes
+  { path: 'tenders', component: TenderListComponent },
+  { path: 'tenders/post', component: PostTenderComponent },
+  { path: 'tenders/post/:id', component: PostTenderComponent },
+  { path: 'tenders/:id', component: TenderDetailsComponent },
+  { path: 'tenders/:id/apply', component: TenderApplicationComponent },
+  { path: 'tenders/:id/applications', component: TenderApplicationsViewComponent },
+  
+  // Vehicle Rental Marketplace Routes
+  { path: 'rental/request', component: RequestVehicleRentalComponent },
+  { path: 'rental/my-requests', component: MyRentalRequestsComponent },
+  { path: 'rental/requests/:id/offers', component: ViewRentalOffersComponent },
+  { path: 'rental/marketplace', component: RentalMarketplaceComponent },
+  { path: 'rental/bookings', loadComponent: () => import('./components/rental/my-rental-requests.component').then(m => m.MyRentalRequestsComponent) },
+  
+  // Tracking Device Installation Routes
+  { path: 'tracking-device/request', component: RequestTrackingDeviceComponent },
+  
+  // Roadside Assistance Routes
+  { path: 'roadside-assistance/request', component: RequestRoadsideAssistanceComponent },
+  { path: 'roadside-assistance/dashboard', component: RoadsideAssistanceDashboardComponent },
+  { path: 'tracking-device/marketplace', component: TrackingMarketplaceComponent },
+  
   { 
     path: 'admin', 
     component: AdminDashboardComponent,
@@ -106,10 +227,6 @@ export const routes: Routes = [
       { 
         path: 'trip-details', 
         loadComponent: () => import('./components/admin-dashboard/trip-details/trip-details.component').then(m => m.TripDetailsComponent)
-      },
-      { 
-        path: 'trip-revenue', 
-        loadComponent: () => import('./components/admin-dashboard/trip-revenue/trip-revenue.component').then(m => m.TripRevenueComponent)
       }
     ]
   },

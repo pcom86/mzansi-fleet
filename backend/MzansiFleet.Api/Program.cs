@@ -7,8 +7,36 @@ using MzansiFleet.Repository;
 using MzansiFleet.Repository.Repositories;
 using MzansiFleet.Application.Handlers;
 using System.Text.Json;
+using System;
+using MzansiFleet.Api;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add JWT Authentication
+var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is not configured");
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtSettings["Issuer"],
+        ValidAudience = jwtSettings["Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey))
+    };
+});
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -116,12 +144,24 @@ builder.Services.AddScoped<GetVehiclesNeedingServiceQueryHandler>();
 
 var app = builder.Build();
 
+// Apply migrations on startup
+try
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    MigrationRunner.ApplyServiceProviderRatingMigration(connectionString);
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Failed to apply migrations: {ex.Message}");
+}
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
 // CORS must be before Authorization and MapControllers
 app.UseCors("AllowAngularApp");
 
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.Run();

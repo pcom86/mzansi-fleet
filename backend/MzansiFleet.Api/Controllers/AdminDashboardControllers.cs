@@ -419,6 +419,10 @@ namespace MzansiFleet.Api.Controllers
                 marshal.Status = dto.Status ?? marshal.Status;
                 marshal.UpdatedAt = DateTime.UtcNow;
 
+                // Fix DateTime kind for PostgreSQL
+                marshal.HireDate = DateTime.SpecifyKind(marshal.HireDate, DateTimeKind.Utc);
+                marshal.CreatedAt = DateTime.SpecifyKind(marshal.CreatedAt, DateTimeKind.Utc);
+
                 await _marshalRepository.UpdateAsync(marshal);
 
                 return NoContent();
@@ -529,21 +533,37 @@ namespace MzansiFleet.Api.Controllers
         {
             try
             {
-                // Convert dates to UTC if they're not already
-                var utcStartDate = startDate.Kind == DateTimeKind.Unspecified 
-                    ? DateTime.SpecifyKind(startDate, DateTimeKind.Utc) 
-                    : startDate.ToUniversalTime();
+                Console.WriteLine($"=== GetRevenue called ===");
+                Console.WriteLine($"TenantId: {tenantId}");
+                Console.WriteLine($"TaxiRankId: {taxiRankId}");
+                Console.WriteLine($"StartDate: {startDate}");
+                Console.WriteLine($"EndDate: {endDate}");
                 
+                // Convert dates to UTC if they're not already and set time to cover full day
+                var utcStartDate = startDate.Kind == DateTimeKind.Unspecified 
+                    ? DateTime.SpecifyKind(startDate.Date, DateTimeKind.Utc) 
+                    : startDate.ToUniversalTime().Date;
+                
+                // Set end date to end of day to include all trips on that date
                 var utcEndDate = endDate.Kind == DateTimeKind.Unspecified 
-                    ? DateTime.SpecifyKind(endDate, DateTimeKind.Utc) 
-                    : endDate.ToUniversalTime();
+                    ? DateTime.SpecifyKind(endDate.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) 
+                    : endDate.ToUniversalTime().Date.AddDays(1).AddTicks(-1);
+
+                Console.WriteLine($"UTC StartDate: {utcStartDate}");
+                Console.WriteLine($"UTC EndDate: {utcEndDate}");
 
                 var query = _context.Set<Trip>()
                     .Include(t => t.Passengers)
                     .AsQueryable();
 
-                // Filter by date range
-                query = query.Where(t => t.TripDate >= utcStartDate && t.TripDate <= utcEndDate);
+                // Check total trips before filtering
+                var totalTripsCount = await query.CountAsync();
+                Console.WriteLine($"Total trips in database: {totalTripsCount}");
+
+                // Filter by date range (comparing only dates)
+                query = query.Where(t => t.TripDate.Date >= utcStartDate.Date && t.TripDate.Date <= utcEndDate.Date);
+                var afterDateFilterCount = await query.CountAsync();
+                Console.WriteLine($"Trips after date filter: {afterDateFilterCount}");
 
                 // Filter by tenantId through Vehicle
                 var vehicleIds = await _context.Set<Vehicle>()
@@ -551,7 +571,15 @@ namespace MzansiFleet.Api.Controllers
                     .Select(v => v.Id)
                     .ToListAsync();
                 
+                Console.WriteLine($"Vehicles found for tenant: {vehicleIds.Count}");
+                if (vehicleIds.Count > 0)
+                {
+                    Console.WriteLine($"First few vehicle IDs: {string.Join(", ", vehicleIds.Take(5))}");
+                }
+                
                 query = query.Where(t => vehicleIds.Contains(t.VehicleId));
+                var afterVehicleFilterCount = await query.CountAsync();
+                Console.WriteLine($"Trips after vehicle/tenant filter: {afterVehicleFilterCount}");
 
                 // Optionally filter by taxiRankId if provided
                 if (taxiRankId.HasValue)
@@ -561,20 +589,25 @@ namespace MzansiFleet.Api.Controllers
                         .Select(vtr => vtr.VehicleId)
                         .ToListAsync();
                     
+                    Console.WriteLine($"Vehicles found for taxi rank: {rankVehicleIds.Count}");
                     query = query.Where(t => rankVehicleIds.Contains(t.VehicleId));
+                    var afterRankFilterCount = await query.CountAsync();
+                    Console.WriteLine($"Trips after taxi rank filter: {afterRankFilterCount}");
                 }
 
                 var trips = await query
                     .OrderByDescending(t => t.TripDate)
                     .ToListAsync();
 
+                Console.WriteLine($"Final trips returned: {trips.Count}");
+
                 // Get related data
-                var routeIds = trips.Select(t => t.RouteId).Distinct().ToList();
+                var routeIds = trips.Where(t => t.RouteId.HasValue).Select(t => t.RouteId!.Value).Distinct().ToList();
                 var routes = await _context.Set<Route>()
                     .Where(r => routeIds.Contains(r.Id))
                     .ToDictionaryAsync(r => r.Id, r => r.Name);
 
-                var driverIds = trips.Select(t => t.DriverId).Distinct().ToList();
+                var driverIds = trips.Where(t => t.DriverId.HasValue).Select(t => t.DriverId!.Value).Distinct().ToList();
                 var drivers = await _context.Set<DriverProfile>()
                     .Where(d => driverIds.Contains(d.Id))
                     .ToDictionaryAsync(d => d.Id, d => d.Name);
@@ -600,8 +633,8 @@ namespace MzansiFleet.Api.Controllers
                     tripId = t.Id.ToString(),
                     tripDate = t.TripDate.ToString("yyyy-MM-dd"),
                     vehicleRegistration = vehicles.ContainsKey(t.VehicleId) ? vehicles[t.VehicleId] : "Unknown",
-                    routeName = routes.ContainsKey(t.RouteId) ? routes[t.RouteId] : "Unknown",
-                    driverName = drivers.ContainsKey(t.DriverId) ? drivers[t.DriverId] : "Unknown",
+                    routeName = t.RouteId.HasValue && routes.ContainsKey(t.RouteId.Value) ? routes[t.RouteId.Value] : "Rental",
+                    driverName = t.DriverId.HasValue && drivers.ContainsKey(t.DriverId.Value) ? drivers[t.DriverId.Value] : "Owner-Driven",
                     departureTime = t.DepartureTime,
                     arrivalTime = t.ArrivalTime ?? "",
                     passengerCount = t.PassengerCount,
@@ -614,6 +647,8 @@ namespace MzansiFleet.Api.Controllers
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"ERROR in GetRevenue: {ex.Message}");
+                Console.WriteLine($"StackTrace: {ex.StackTrace}");
                 return BadRequest(new { message = "Error retrieving revenue data", error = ex.Message });
             }
         }

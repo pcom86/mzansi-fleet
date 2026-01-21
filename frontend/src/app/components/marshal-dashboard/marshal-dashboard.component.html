@@ -1,103 +1,152 @@
-<div class="marshal-dashboard">
-  <mat-toolbar color="primary" class="dashboard-toolbar">
-    <span>Marshal Dashboard</span>
-    <span class="spacer"></span>
-    <div class="user-info" *ngIf="userData">
-      <span class="user-name">{{ userData.fullName || userData.email }}</span>
-      <span class="user-role">{{ userData.role }}</span>
+<div class="dashboard-wrapper">
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
+    <div class="sidebar-header">
+      <div class="logo-section">
+        <app-mzansi-fleet-logo class="mzansi-logo"></app-mzansi-fleet-logo>
+        <div class="header-text" *ngIf="!sidebarCollapsed">
+          <h2>{{ taxiRankName || 'Mzansi Fleet' }}</h2>
+          <p class="admin-badge">Marshal Portal</p>
+        </div>
+      </div>
+      <button mat-icon-button class="collapse-btn" (click)="toggleSidebar()">
+        <mat-icon>{{ sidebarCollapsed ? 'menu_open' : 'menu' }}</mat-icon>
+      </button>
     </div>
-    <button mat-icon-button (click)="logout()">
-      <mat-icon>logout</mat-icon>
-    </button>
-  </mat-toolbar>
+    
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <p class="section-label" *ngIf="!sidebarCollapsed">Dashboard</p>
+        <a class="nav-item" 
+           *ngFor="let item of menuItems" 
+           [routerLink]="item.route"
+           routerLinkActive="active"
+           [routerLinkActiveOptions]="{exact: false}"
+           [title]="item.title"
+           (click)="onMenuItemClick()">
+          <mat-icon>{{ item.icon }}</mat-icon>
+          <span *ngIf="!sidebarCollapsed">{{ item.title }}</span>
+          <mat-icon class="nav-arrow" *ngIf="!sidebarCollapsed">chevron_right</mat-icon>
+        </a>
+      </div>
 
-  <div class="dashboard-content">
-    <div class="dashboard-cards">
-      <mat-card (click)="navigateToTripCapture()">
-        <mat-card-header>
-          <mat-card-title>
-            <mat-icon>add_circle</mat-icon>
-            Capture Trip Details
-          </mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <p>Record new trips, passenger counts, and departure times.</p>
-        </mat-card-content>
-      </mat-card>
+      <div class="nav-section">
+        <p class="section-label" *ngIf="!sidebarCollapsed">Account</p>
+        <a class="nav-item clickable" (click)="navigateTo('/profile')" title="Profile">
+          <mat-icon>person</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Profile</span>
+        </a>
+        <a class="nav-item clickable" (click)="navigateTo('/settings')" title="Settings">
+          <mat-icon>settings</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Settings</span>
+        </a>
+        <a class="nav-item logout-item clickable" (click)="logout()" title="Logout">
+          <mat-icon>logout</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Logout</span>
+        </a>
+      </div>
+    </nav>
+  </aside>
 
-      <mat-card (click)="navigateToTripHistory()">
-        <mat-card-header>
-          <mat-card-title>
-            <mat-icon>history</mat-icon>
-            Trip History
-          </mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <p>View all trips recorded for your assigned rank.</p>
-        </mat-card-content>
-      </mat-card>
+  <!-- Main Content Area -->
+  <main class="main-content" [class.expanded]="sidebarCollapsed">
+    <header class="top-bar">
+      <div class="left-section">
+        <button class="menu-toggle" (click)="toggleSidebar()">
+          <mat-icon>menu</mat-icon>
+        </button>
+        <div class="breadcrumb">
+          <mat-icon>local_taxi</mat-icon>
+          <span>{{ taxiRankName || 'Marshal Dashboard' }}</span>
+        </div>
+      </div>
 
-      <mat-card>
-        <mat-card-header>
-          <mat-card-title>
-            <mat-icon>schedule</mat-icon>
-            Today's Schedule
-          </mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <p>Your shift and scheduled tasks will appear here.</p>
-        </mat-card-content>
-      </mat-card>
+      <div class="center-section">
+        <button 
+          *ngFor="let item of topMenuItems" 
+          class="quick-action-btn"
+          (click)="onTopMenuAction(item.action)"
+          [title]="item.title"
+          [attr.aria-label]="item.title + (item.badge && item.badge !== '0' ? ': ' + item.badge + ' items' : '')">
+          <mat-icon [matBadge]="item.badge || null" [matBadgeHidden]="!item.badge || item.badge === '0'" matBadgeColor="warn" matBadgeSize="small" aria-hidden="false">{{ item.icon }}</mat-icon>
+          <span class="action-label">{{ item.title }}</span>
+        </button>
+      </div>
 
-      <mat-card>
-        <mat-card-header>
-          <mat-card-title>
-            <mat-icon>directions_bus</mat-icon>
-            Active Vehicles
-          </mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <div *ngIf="loadingVehicles" class="loading-text">
-            <p>Loading vehicles...</p>
+      <div class="right-section">
+        <button class="notifications-btn" [matMenuTriggerFor]="notifMenu" [title]="'Notifications'" [attr.aria-label]="'Notifications' + (unreadNotifications > 0 ? ': ' + unreadNotifications + ' unread' : '')">
+          <mat-icon [matBadge]="unreadNotifications > 0 ? unreadNotifications.toString() : null" [matBadgeHidden]="unreadNotifications === 0" matBadgeColor="warn" matBadgeSize="small" aria-hidden="false">notifications</mat-icon>
+        </button>
+
+        <mat-menu #notifMenu="matMenu" class="notification-dropdown">
+          <div class="notification-header">
+            <h3>Notifications</h3>
+            <button mat-button class="mark-read-btn">Mark all read</button>
           </div>
-          <div *ngIf="!loadingVehicles && activeVehicles.length === 0" class="no-data">
-            <p>No vehicles assigned to this rank</p>
+          <mat-divider></mat-divider>
+          <button mat-menu-item class="notification-item">
+            <mat-icon class="notif-icon info">info</mat-icon>
+            <div class="notif-content">
+              <p class="notif-title">No new notifications</p>
+              <p class="notif-time">All caught up!</p>
+            </div>
+          </button>
+          <mat-divider></mat-divider>
+          <button mat-menu-item class="view-all-notif">
+            <span>View All Notifications</span>
+          </button>
+        </mat-menu>
+
+        <button class="settings-btn" (click)="navigateTo('/settings')" [title]="'Settings'">
+          <mat-icon>settings</mat-icon>
+        </button>
+
+        <div class="user-menu-btn" [matMenuTriggerFor]="userMenu">
+          <div class="user-avatar">
+            <mat-icon>account_circle</mat-icon>
           </div>
-          <div *ngIf="!loadingVehicles && activeVehicles.length > 0" class="vehicle-list">
-            <p><strong>{{ activeVehicles.length }}</strong> vehicle(s) assigned</p>
-            <div class="vehicle-items">
-              <div *ngFor="let vehicle of activeVehicles" class="vehicle-item">
-                <mat-icon>directions_car</mat-icon>
-                <span>{{ vehicle.registration }} - {{ vehicle.make }} {{ vehicle.model }}</span>
-              </div>
+          <div class="user-info">
+            <p class="user-name">{{ userData?.fullName || 'Marshal' }}</p>
+            <p class="user-role">{{ getRoleDisplayName() }}</p>
+          </div>
+          <mat-icon class="dropdown-icon">expand_more</mat-icon>
+        </div>
+
+        <mat-menu #userMenu="matMenu" class="user-dropdown">
+          <div class="menu-user-info">
+            <div class="menu-avatar">
+              <mat-icon>account_circle</mat-icon>
+            </div>
+            <div>
+              <p class="menu-user-name">{{ userData?.fullName || 'Marshal' }}</p>
+              <p class="menu-user-role">{{ getRoleDisplayName() }}</p>
+              <p class="menu-user-email">{{ userData?.email }}</p>
             </div>
           </div>
-        </mat-card-content>
-      </mat-card>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="navigateTo('/profile')">
+            <mat-icon>person</mat-icon>
+            <span>My Profile</span>
+          </button>
+          <button mat-menu-item (click)="navigateTo('/settings')">
+            <mat-icon>settings</mat-icon>
+            <span>Account Settings</span>
+          </button>
+          <button mat-menu-item (click)="navigateTo('/help')">
+            <mat-icon>help</mat-icon>
+            <span>Help & Support</span>
+          </button>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="logout()" class="logout-menu-item">
+            <mat-icon>logout</mat-icon>
+            <span>Sign Out</span>
+          </button>
+        </mat-menu>
+      </div>
+    </header>
 
-      <mat-card>
-        <mat-card-header>
-          <mat-card-title>
-            <mat-icon>people</mat-icon>
-            Passenger Management
-          </mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <p>Manage passenger queues and boarding.</p>
-        </mat-card-content>
-      </mat-card>
-
-      <mat-card>
-        <mat-card-header>
-          <mat-card-title>
-            <mat-icon>report_problem</mat-icon>
-            Incidents
-          </mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <p>Report and track incidents at your rank.</p>
-        </mat-card-content>
-      </mat-card>
+    <div class="content-area">
+      <router-outlet></router-outlet>
     </div>
-  </div>
+  </main>
 </div>

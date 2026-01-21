@@ -53,8 +53,8 @@ namespace MzansiFleet.Domain.Entities
     {
         public Guid Id { get; set; }
         public Guid VehicleId { get; set; }
-        public Guid RouteId { get; set; }
-        public Guid DriverId { get; set; }
+        public Guid? RouteId { get; set; }
+        public Guid? DriverId { get; set; }
         public DateTime TripDate { get; set; }
         public string DepartureTime { get; set; } = string.Empty;
         public string? ArrivalTime { get; set; }

@@ -260,6 +260,13 @@ mat-divider {
 
   .passenger-card {
     margin-bottom: 16px;
+    scroll-margin-top: 100px; // Offset for fixed headers if any
+    transition: all 0.3s ease;
+
+    // Highlight animation for newly added passenger
+    &.highlight-new {
+      animation: highlightPulse 2s ease-in-out;
+    }
 
     mat-card {
       mat-card-header {
@@ -369,9 +376,459 @@ mat-divider {
   }
 }
 
+// Animations
+@keyframes highlightPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(103, 58, 183, 0);
+  }
+  10% {
+    transform: scale(1.02);
+    box-shadow: 0 0 20px 5px rgba(103, 58, 183, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px 5px rgba(103, 58, 183, 0.2);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(103, 58, 183, 0);
+  }
+}
+
 .form-actions {
   display: flex;
   gap: 16px;
   justify-content: flex-end;
   margin-top: 24px;
+}
+
+// Tab styles
+.tab-content {
+  padding: 24px 0;
+}
+
+// Filter card for historical trips
+.filter-card {
+  margin-bottom: 24px;
+
+  .filter-form {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+
+    mat-form-field {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    button {
+      height: 56px;
+    }
+  }
+}
+
+// Historical trips table
+.table-container {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+
+  .loading-container {
+    padding: 48px;
+    text-align: center;
+
+    mat-spinner {
+      margin: 0 auto 16px;
+    }
+
+    p {
+      color: #666;
+      font-size: 14px;
+    }
+  }
+
+  .no-data {
+    padding: 48px;
+    text-align: center;
+
+    mat-icon {
+      font-size: 64px;
+      width: 64px;
+      height: 64px;
+      color: #ccc;
+      margin-bottom: 16px;
+    }
+
+    p {
+      color: #666;
+      font-size: 16px;
+      margin: 8px 0;
+    }
+
+    .hint {
+      font-size: 14px;
+      color: #999;
+    }
+  }
+
+  .trips-table {
+    width: 100%;
+
+    th {
+      background: #f5f5f5;
+      font-weight: 600;
+      color: #333;
+    }
+
+    td, th {
+      padding: 16px;
+    }
+
+    tr:hover {
+      background: #fafafa;
+    }
+  }
+
+  .summary-stats {
+    display: flex;
+    gap: 24px;
+    padding: 24px;
+    background: #f9f9f9;
+    border-top: 1px solid #e0e0e0;
+
+    .stat-item {
+      flex: 1;
+      text-align: center;
+
+      .stat-label {
+        display: block;
+        font-size: 14px;
+        color: #666;
+        margin-bottom: 8px;
+      }
+
+      .stat-value {
+        display: block;
+        font-size: 24px;
+        font-weight: 600;
+        color: #673ab7;
+      }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .filter-form {
+    flex-direction: column;
+
+    mat-form-field, button {
+      width: 100%;
+    }
+  }
+
+  .summary-stats {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .revenue-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .charts-container {
+    grid-template-columns: 1fr !important;
+  }
+
+  .top-performers {
+    flex-direction: column;
+  }
+}
+
+// Revenue Tab Styles
+.revenue-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+
+  .summary-card {
+    mat-card-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px;
+    }
+
+    .summary-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      mat-icon {
+        font-size: 32px;
+        width: 32px;
+        height: 32px;
+        color: white;
+      }
+
+      &.revenue {
+        background: linear-gradient(135deg, #43a047 0%, #66bb6a 100%);
+      }
+
+      &.trips {
+        background: linear-gradient(135deg, #1e88e5 0%, #42a5f5 100%);
+      }
+
+      &.average {
+        background: linear-gradient(135deg, #fb8c00 0%, #ffa726 100%);
+      }
+
+      &.passengers {
+        background: linear-gradient(135deg, #8e24aa 0%, #ab47bc 100%);
+      }
+    }
+
+    .summary-info {
+      flex: 1;
+
+      .summary-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 4px;
+      }
+
+      .summary-label {
+        font-size: 14px;
+        color: #666;
+      }
+    }
+  }
+}
+
+.charts-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 24px;
+  margin-bottom: 24px;
+
+  .chart-card {
+    mat-card-header {
+      mat-card-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        font-weight: 600;
+        color: #673ab7;
+
+        mat-icon {
+          color: #673ab7;
+        }
+      }
+    }
+
+    &.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .chart-wrapper {
+      min-height: 300px;
+      padding: 16px 0;
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 48px;
+
+      mat-icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        color: #ccc;
+        margin-bottom: 16px;
+      }
+
+      p {
+        color: #999;
+      }
+    }
+  }
+}
+
+// Daily Revenue Bar Chart
+.daily-revenue-chart {
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+    height: 300px;
+    padding: 0 16px;
+    gap: 8px;
+    overflow-x: auto;
+
+    .bar-item {
+      flex: 1;
+      min-width: 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+
+      .bar-container {
+        width: 100%;
+        height: 250px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        position: relative;
+
+        .bar-value {
+          font-size: 12px;
+          font-weight: 600;
+          color: #666;
+          margin-bottom: 4px;
+        }
+
+        .bar {
+          width: 100%;
+          max-width: 50px;
+          background: #f0f0f0;
+          border-radius: 4px 4px 0 0;
+          position: relative;
+          transition: all 0.3s ease;
+
+          .bar-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 100%;
+            background: linear-gradient(180deg, #673ab7 0%, #9575cd 100%);
+            border-radius: 4px 4px 0 0;
+            transition: all 0.3s ease;
+          }
+
+          &:hover {
+            transform: scale(1.05);
+
+            .bar-fill {
+              background: linear-gradient(180deg, #512da8 0%, #673ab7 100%);
+            }
+          }
+        }
+      }
+
+      .bar-label {
+        margin-top: 8px;
+        font-size: 11px;
+        color: #666;
+        text-align: center;
+        white-space: nowrap;
+      }
+    }
+  }
+}
+
+// Horizontal Bar Chart
+.horizontal-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+
+  .h-bar-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .h-bar-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .h-bar-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .h-bar {
+        height: 32px;
+        background: #f0f0f0;
+        border-radius: 16px;
+        position: relative;
+        transition: all 0.3s ease;
+        min-width: 20px;
+
+        .h-bar-fill {
+          position: absolute;
+          top: 0;
+          left: 0;
+          bottom: 0;
+          width: 100%;
+          background: linear-gradient(90deg, #673ab7 0%, #9575cd 100%);
+          border-radius: 16px;
+          transition: all 0.3s ease;
+        }
+
+        &:hover {
+          transform: scaleY(1.1);
+
+          .h-bar-fill {
+            background: linear-gradient(90deg, #512da8 0%, #673ab7 100%);
+          }
+        }
+      }
+
+      .h-bar-value {
+        font-size: 14px;
+        font-weight: 600;
+        color: #673ab7;
+        white-space: nowrap;
+      }
+    }
+  }
+}
+
+// Top Performers
+.top-performers {
+  display: flex;
+  gap: 16px;
+
+  .performer-card {
+    flex: 1;
+
+    mat-card-content {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 24px;
+
+      .trophy-icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        color: #ffc107;
+      }
+
+      .performer-info {
+        .performer-label {
+          font-size: 14px;
+          color: #666;
+          margin-bottom: 8px;
+        }
+
+        .performer-value {
+          font-size: 18px;
+          font-weight: 600;
+          color: #333;
+        }
+      }
+    }
+  }
 }

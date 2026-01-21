@@ -34,15 +34,35 @@ namespace MzansiFleet.Api.Controllers
 
         // GET: api/TaxiRankUsers/marshals
         [HttpGet("marshals")]
-        public async Task<ActionResult<IEnumerable<TaxiMarshalProfile>>> GetAll([FromQuery] Guid? tenantId = null)
+        public async Task<ActionResult<IEnumerable<TaxiMarshalProfile>>> GetAll([FromQuery] Guid? tenantId = null, [FromQuery] Guid? taxiRankId = null)
         {
-            if (tenantId.HasValue)
+            // If taxiRankId is provided, filter by taxi rank
+            if (taxiRankId.HasValue)
             {
-                var marshals = await _marshalRepository.GetByTenantIdAsync(tenantId.Value);
+                var marshals = await _context.TaxiMarshalProfiles
+                    .Include(m => m.User)
+                    .Include(m => m.TaxiRank)
+                    .Where(m => m.TaxiRankId == taxiRankId.Value)
+                    .ToListAsync();
                 return Ok(marshals);
             }
             
-            var allMarshals = await _marshalRepository.GetAllAsync();
+            // If tenantId is provided, filter by tenant
+            if (tenantId.HasValue)
+            {
+                var marshals = await _context.TaxiMarshalProfiles
+                    .Include(m => m.User)
+                    .Include(m => m.TaxiRank)
+                    .Where(m => m.TenantId == tenantId.Value)
+                    .ToListAsync();
+                return Ok(marshals);
+            }
+            
+            // Return all marshals
+            var allMarshals = await _context.TaxiMarshalProfiles
+                .Include(m => m.User)
+                .Include(m => m.TaxiRank)
+                .ToListAsync();
             return Ok(allMarshals);
         }
 
@@ -226,6 +246,10 @@ namespace MzansiFleet.Api.Controllers
             marshal.PhoneNumber = dto.PhoneNumber ?? marshal.PhoneNumber;
             marshal.Email = dto.Email ?? marshal.Email;
             marshal.Status = dto.Status ?? marshal.Status;
+
+            // Fix DateTime kind for PostgreSQL
+            marshal.HireDate = DateTime.SpecifyKind(marshal.HireDate, DateTimeKind.Utc);
+            marshal.CreatedAt = DateTime.SpecifyKind(marshal.CreatedAt, DateTimeKind.Utc);
 
             await _marshalRepository.UpdateAsync(marshal);
             return Ok(marshal);

@@ -2071,7 +2071,24 @@ export class VehicleDetailsComponent implements OnInit {
   }
 
   goBack(): void {
-    this.router.navigate(['/vehicles']);
+    // Check if user is an owner to determine the correct route
+    const userStr = localStorage.getItem('user');
+    let isOwner = false;
+    
+    if (userStr) {
+      try {
+        const userInfo = JSON.parse(userStr);
+        isOwner = userInfo.role === 'Owner';
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
+    
+    if (isOwner) {
+      this.router.navigate(['/owner-dashboard/vehicles']);
+    } else {
+      this.router.navigate(['/vehicles']);
+    }
   }
 
   formatDate(dateString: string): string {

@@ -1,6 +1,6 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
@@ -8,9 +8,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTabsModule } from '@angular/material/tabs';
+import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { environment } from '../../../../environments/environment';
 
 interface Association {
@@ -73,15 +76,19 @@ interface Vehicle {
   imports: [
     CommonModule,
     FormsModule,
+    ReactiveFormsModule,
     MatCardModule,
     MatTableModule,
     MatIconModule,
     MatButtonModule,
     MatSelectModule,
     MatFormFieldModule,
+    MatInputModule,
     MatProgressSpinnerModule,
     MatChipsModule,
-    MatTabsModule
+    MatTabsModule,
+    MatDialogModule,
+    MatSnackBarModule
   ],
   templateUrl: './rank-overview.component.html',
   styleUrls: ['./rank-overview.component.scss']
@@ -99,7 +106,11 @@ export class RankOverviewComponent implements OnInit {
   
   vehicleColumns = ['registrationNumber', 'make', 'model', 'year', 'capacity', 'status'];
 
-  constructor(private http: HttpClient) {}
+  constructor(
+    private http: HttpClient,
+    private dialog: MatDialog,
+    private snackBar: MatSnackBar
+  ) {}
 
   ngOnInit(): void {
     this.loadAdminProfile();
@@ -282,6 +293,211 @@ export class RankOverviewComponent implements OnInit {
         return 'warn';
       default:
         return '';
+    }
+  }
+
+  openCreateTaxiRankDialog(): void {
+    const dialogRef = this.dialog.open(CreateTaxiRankDialog, {
+      width: '600px',
+      data: { tenantId: this.tenantId, associationName: this.association?.name }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        this.loadAssociationData();
+      }
+    });
+  }
+}
+
+// Create Taxi Rank Dialog Component
+@Component({
+  selector: 'app-create-taxi-rank-dialog',
+  standalone: true,
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    MatDialogModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatButtonModule,
+    MatIconModule,
+    MatProgressSpinnerModule
+  ],
+  template: `
+    <h2 mat-dialog-title>
+      <mat-icon>add_location</mat-icon>
+      Create New Taxi Rank
+    </h2>
+    <mat-dialog-content>
+      <form [formGroup]="taxiRankForm">
+        <div class="form-info">
+          <p><strong>Association:</strong> {{ data.associationName }}</p>
+          <mat-icon class="info-icon">info</mat-icon>
+          <p class="hint">This taxi rank will be linked to your taxi association</p>
+        </div>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Rank Name</mat-label>
+          <input matInput formControlName="name" placeholder="e.g., Bree Street Taxi Rank">
+          <mat-error *ngIf="taxiRankForm.get('name')?.hasError('required')">
+            Rank name is required
+          </mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Rank Code</mat-label>
+          <input matInput formControlName="code" placeholder="e.g., BST001">
+          <mat-hint>Unique identifier for this rank</mat-hint>
+          <mat-error *ngIf="taxiRankForm.get('code')?.hasError('required')">
+            Rank code is required
+          </mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>City</mat-label>
+          <input matInput formControlName="city" placeholder="e.g., Johannesburg">
+          <mat-error *ngIf="taxiRankForm.get('city')?.hasError('required')">
+            City is required
+          </mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Physical Address</mat-label>
+          <textarea matInput formControlName="address" rows="2" 
+            placeholder="Complete address of the taxi rank"></textarea>
+          <mat-error *ngIf="taxiRankForm.get('address')?.hasError('required')">
+            Address is required
+          </mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Capacity (Number of Bays)</mat-label>
+          <input matInput type="number" formControlName="capacity" placeholder="e.g., 50">
+          <mat-hint>Maximum number of vehicles that can park simultaneously</mat-hint>
+          <mat-error *ngIf="taxiRankForm.get('capacity')?.hasError('required')">
+            Capacity is required
+          </mat-error>
+          <mat-error *ngIf="taxiRankForm.get('capacity')?.hasError('min')">
+            Capacity must be at least 1
+          </mat-error>
+        </mat-form-field>
+      </form>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button (click)="onCancel()" [disabled]="saving">Cancel</button>
+      <button mat-raised-button color="primary" (click)="onSave()" [disabled]="!taxiRankForm.valid || saving">
+        <mat-icon *ngIf="!saving">save</mat-icon>
+        <mat-spinner *ngIf="saving" diameter="20"></mat-spinner>
+        {{ saving ? 'Creating...' : 'Create Taxi Rank' }}
+      </button>
+    </mat-dialog-actions>
+  `,
+  styles: [`
+    mat-dialog-content {
+      min-width: 500px;
+      padding: 24px;
+    }
+
+    .form-info {
+      background: #f5f5f5;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      p {
+        margin: 0;
+        color: #666;
+      }
+
+      .info-icon {
+        color: #673ab7;
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .hint {
+        font-size: 14px;
+        color: #999;
+      }
+    }
+
+    .full-width {
+      width: 100%;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #673ab7;
+
+      mat-icon {
+        color: #673ab7;
+      }
+    }
+
+    mat-dialog-actions {
+      padding: 16px 24px;
+
+      button {
+        mat-icon, mat-spinner {
+          margin-right: 8px;
+        }
+      }
+    }
+  `]
+})
+export class CreateTaxiRankDialog {
+  taxiRankForm: FormGroup;
+  saving = false;
+
+  constructor(
+    public dialogRef: MatDialogRef<CreateTaxiRankDialog>,
+    @Inject(MAT_DIALOG_DATA) public data: any,
+    private fb: FormBuilder,
+    private http: HttpClient,
+    private snackBar: MatSnackBar
+  ) {
+    this.taxiRankForm = this.fb.group({
+      name: ['', Validators.required],
+      code: ['', Validators.required],
+      city: ['', Validators.required],
+      address: ['', Validators.required],
+      capacity: [20, [Validators.required, Validators.min(1)]]
+    });
+  }
+
+  onCancel(): void {
+    this.dialogRef.close();
+  }
+
+  onSave(): void {
+    if (this.taxiRankForm.valid) {
+      this.saving = true;
+      
+      const taxiRankData = {
+        ...this.taxiRankForm.value,
+        tenantId: this.data.tenantId,
+        status: 'Active'
+      };
+
+      this.http.post(`${environment.apiUrl}/TaxiRanks`, taxiRankData).subscribe({
+        next: () => {
+          this.snackBar.open('Taxi rank created successfully!', 'Close', { duration: 3000 });
+          this.dialogRef.close(true);
+        },
+        error: (err) => {
+          console.error('Error creating taxi rank:', err);
+          this.snackBar.open('Failed to create taxi rank: ' + (err.error?.message || 'Unknown error'), 'Close', { duration: 5000 });
+          this.saving = false;
+        }
+      });
     }
   }
 }

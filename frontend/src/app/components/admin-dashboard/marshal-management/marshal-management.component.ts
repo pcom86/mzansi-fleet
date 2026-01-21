@@ -102,30 +102,64 @@ export class MarshalManagementComponent implements OnInit {
   loadMarshals(): void {
     this.loading = true;
     
-    // Get tenantId from localStorage
+    // Get user data from localStorage
     const user = localStorage.getItem('user');
     let tenantId = '';
+    let userId = '';
+    
     if (user) {
       const userData = JSON.parse(user);
       tenantId = userData.tenantId;
+      userId = userData.id;
     }
     
-    // Use the correct endpoint with tenantId filter
-    const url = tenantId 
-      ? `${environment.apiUrl}/TaxiRankUsers/marshals?tenantId=${tenantId}`
-      : `${environment.apiUrl}/TaxiRankUsers/marshals`;
-    
-    this.http.get<Marshal[]>(url)
+    // First, get the admin profile to find the taxiRankId
+    this.http.get<any>(`${environment.apiUrl}/TaxiRankUsers/admin/user/${userId}`)
       .subscribe({
-        next: (marshals) => {
-          console.log('Marshals loaded:', marshals);
-          this.marshals = marshals;
-          this.loading = false;
+        next: (adminProfile) => {
+          console.log('Admin profile:', adminProfile);
+          
+          // Use taxiRankId if available, otherwise fall back to tenantId
+          let url = `${environment.apiUrl}/TaxiRankUsers/marshals`;
+          if (adminProfile?.taxiRankId) {
+            url += `?taxiRankId=${adminProfile.taxiRankId}`;
+          } else if (tenantId) {
+            url += `?tenantId=${tenantId}`;
+          }
+          
+          // Now load marshals with the appropriate filter
+          this.http.get<Marshal[]>(url).subscribe({
+            next: (marshals) => {
+              console.log('Marshals loaded:', marshals);
+              this.marshals = marshals;
+              this.loading = false;
+            },
+            error: (error) => {
+              console.error('Error loading marshals:', error);
+              this.snackBar.open('Failed to load marshals', 'Close', { duration: 3000 });
+              this.loading = false;
+            }
+          });
         },
         error: (error) => {
-          console.error('Error loading marshals:', error);
-          this.snackBar.open('Failed to load marshals', 'Close', { duration: 3000 });
-          this.loading = false;
+          console.error('Error loading admin profile:', error);
+          // If we can't get admin profile, try with just tenantId
+          const url = tenantId 
+            ? `${environment.apiUrl}/TaxiRankUsers/marshals?tenantId=${tenantId}`
+            : `${environment.apiUrl}/TaxiRankUsers/marshals`;
+          
+          this.http.get<Marshal[]>(url).subscribe({
+            next: (marshals) => {
+              console.log('Marshals loaded (fallback):', marshals);
+              this.marshals = marshals;
+              this.loading = false;
+            },
+            error: (error) => {
+              console.error('Error loading marshals:', error);
+              this.snackBar.open('Failed to load marshals', 'Close', { duration: 3000 });
+              this.loading = false;
+            }
+          });
         }
       });
   }

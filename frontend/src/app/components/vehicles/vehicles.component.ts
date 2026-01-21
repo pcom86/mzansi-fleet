@@ -1068,7 +1068,24 @@ export class VehiclesComponent implements OnInit {
   }
 
   viewVehicleDetails(vehicleId: string) {
-    this.router.navigate(['/vehicles', vehicleId]);
+    // Check if user is an owner to determine the correct route
+    const userStr = localStorage.getItem('user');
+    let isOwner = false;
+    
+    if (userStr) {
+      try {
+        const userInfo = JSON.parse(userStr);
+        isOwner = userInfo.role === 'Owner';
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
+    
+    if (isOwner) {
+      this.router.navigate(['/owner-dashboard/vehicles', vehicleId]);
+    } else {
+      this.router.navigate(['/vehicles', vehicleId]);
+    }
   }
 
   editVehicle(vehicle: Vehicle) {

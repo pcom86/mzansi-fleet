@@ -10,6 +10,7 @@ export interface ServiceProvider {
   vehicleCategories: string;
   operatingHours: string;
   isActive: boolean;
+  isAvailable: boolean;
   hourlyRate?: number;
   callOutFee?: number;
   serviceRadiusKm?: number;
@@ -53,6 +54,7 @@ export interface UpdateServiceProvider {
   vehicleCategories: string;
   operatingHours: string;
   isActive: boolean;
+  isAvailable: boolean;
   hourlyRate?: number;
   callOutFee?: number;
   serviceRadiusKm?: number;

@@ -3,8 +3,8 @@
     <mat-card-header>
       <div class="header-content">
         <div>
-          <mat-card-title>Capture Trip Details</mat-card-title>
-          <mat-card-subtitle>Record passenger list, fares, and vehicle earnings</mat-card-subtitle>
+          <mat-card-title>Trip Details Management</mat-card-title>
+          <mat-card-subtitle>Capture new trips and view historical records</mat-card-subtitle>
         </div>
         <button mat-raised-button color="primary" (click)="goToDashboard()" *ngIf="isMarshal()">
           <mat-icon>dashboard</mat-icon>
@@ -13,7 +13,12 @@
       </div>
     </mat-card-header>
     <mat-card-content>
-      <form [formGroup]="tripForm" (ngSubmit)="onSubmit()" *ngIf="tripForm">
+      <!-- Tabs for Capture Trip and Historical Trips -->
+      <mat-tab-group>
+        <!-- Capture Trip Tab -->
+        <mat-tab label="Capture Trip">
+          <div class="tab-content">
+            <form [formGroup]="tripForm" (ngSubmit)="onSubmit()" *ngIf="tripForm">
         <!-- Trip Basic Information -->
         <div class="section-title">Trip Information</div>
         <div class="form-row">
@@ -130,7 +135,7 @@
           </div>
         
           <div formArrayName="passengers" class="passengers-section">
-          <div *ngFor="let passenger of passengers.controls; let i = index" [formGroupName]="i" class="passenger-card">
+          <div *ngFor="let passenger of passengers.controls; let i = index" [formGroupName]="i" class="passenger-card" [id]="'passenger-card-' + i">
             <mat-card>
               <mat-card-header>
                 <mat-card-title>Passenger {{ i + 1 }}</mat-card-title>
@@ -264,6 +269,370 @@
           </button>
         </div>
       </form>
+          </div>
+        </mat-tab>
+
+        <!-- Historical Trips Tab -->
+        <mat-tab label="Historical Trips">
+          <div class="tab-content">
+            <!-- Date Range Filters -->
+            <mat-card class="filter-card">
+              <mat-card-content>
+                <form [formGroup]="dateFilterForm" class="filter-form" *ngIf="dateFilterForm">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Start Date</mat-label>
+                    <input matInput [matDatepicker]="startPicker" formControlName="startDate">
+                    <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #startPicker></mat-datepicker>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>End Date</mat-label>
+                    <input matInput [matDatepicker]="endPicker" formControlName="endDate">
+                    <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #endPicker></mat-datepicker>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Filter by Vehicle</mat-label>
+                    <mat-select formControlName="vehicleId">
+                      <mat-option value="">All Vehicles</mat-option>
+                      <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
+                        {{ getVehicleDisplayName(vehicle) }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Filter by Route</mat-label>
+                    <mat-select formControlName="routeId">
+                      <mat-option value="">All Routes</mat-option>
+                      <mat-option *ngFor="let route of routes" [value]="route.id">
+                        {{ route.name }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <button mat-raised-button color="accent" (click)="resetFilters()">
+                    <mat-icon>refresh</mat-icon>
+                    Reset Filters
+                  </button>
+                </form>
+              </mat-card-content>
+            </mat-card>
+
+            <!-- Historical Trips Table -->
+            <div class="table-container">
+              <div *ngIf="loadingHistory" class="loading-container">
+                <mat-spinner diameter="50"></mat-spinner>
+                <p>Loading trip history...</p>
+              </div>
+
+              <div *ngIf="!loadingHistory && filteredHistoricalTrips.length === 0" class="no-data">
+                <mat-icon>info</mat-icon>
+                <p>No trips found for the selected period</p>
+                <p class="hint">Adjust your date range or filters to view trips</p>
+              </div>
+
+              <table mat-table [dataSource]="filteredHistoricalTrips" class="trips-table" *ngIf="!loadingHistory && filteredHistoricalTrips.length > 0">
+                <!-- Date Column -->
+                <ng-container matColumnDef="tripDate">
+                  <th mat-header-cell *matHeaderCellDef>Date</th>
+                  <td mat-cell *matCellDef="let trip">
+                    {{ trip.tripDate | date:'short' }}
+                  </td>
+                </ng-container>
+
+                <!-- Vehicle Column -->
+                <ng-container matColumnDef="vehicle">
+                  <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+                  <td mat-cell *matCellDef="let trip">
+                    {{ getVehicleName(trip.vehicleId) }}
+                  </td>
+                </ng-container>
+
+                <!-- Route Column -->
+                <ng-container matColumnDef="route">
+                  <th mat-header-cell *matHeaderCellDef>Route</th>
+                  <td mat-cell *matCellDef="let trip">
+                    {{ getRouteName(trip.routeId) }}
+                  </td>
+                </ng-container>
+
+                <!-- Driver Column -->
+                <ng-container matColumnDef="driver">
+                  <th mat-header-cell *matHeaderCellDef>Driver</th>
+                  <td mat-cell *matCellDef="let trip">
+                    {{ getDriverName(trip.driverId) }}
+                  </td>
+                </ng-container>
+
+                <!-- Passengers Column -->
+                <ng-container matColumnDef="passengers">
+                  <th mat-header-cell *matHeaderCellDef>Passengers</th>
+                  <td mat-cell *matCellDef="let trip">
+                    {{ trip.passengerCount || trip.passengers?.length || 0 }}
+                  </td>
+                </ng-container>
+
+                <!-- Total Fare Column -->
+                <ng-container matColumnDef="totalFare">
+                  <th mat-header-cell *matHeaderCellDef>Total Fare</th>
+                  <td mat-cell *matCellDef="let trip">
+                    R{{ trip.totalFare?.toFixed(2) || '0.00' }}
+                  </td>
+                </ng-container>
+
+                <!-- Actions Column -->
+                <ng-container matColumnDef="actions">
+                  <th mat-header-cell *matHeaderCellDef>Actions</th>
+                  <td mat-cell *matCellDef="let trip">
+                    <button mat-icon-button color="primary" (click)="viewTripDetails(trip)" matTooltip="View Details">
+                      <mat-icon>visibility</mat-icon>
+                    </button>
+                  </td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="historyColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: historyColumns;"></tr>
+              </table>
+
+              <!-- Summary Stats -->
+              <div class="summary-stats" *ngIf="!loadingHistory && filteredHistoricalTrips.length > 0">
+                <div class="stat-item">
+                  <span class="stat-label">Total Trips:</span>
+                  <span class="stat-value">{{ filteredHistoricalTrips.length }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Total Revenue:</span>
+                  <span class="stat-value">R{{ getTotalRevenue().toFixed(2) }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Total Passengers:</span>
+                  <span class="stat-value">{{ getTotalPassengers() }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <!-- Trips Revenue Tab -->
+        <mat-tab label="Trips Revenue">
+          <div class="tab-content">
+            <!-- Date Range Filters (Shared) -->
+            <mat-card class="filter-card">
+              <mat-card-content>
+                <form [formGroup]="dateFilterForm" class="filter-form" *ngIf="dateFilterForm">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Start Date</mat-label>
+                    <input matInput [matDatepicker]="revStartPicker" formControlName="startDate">
+                    <mat-datepicker-toggle matIconSuffix [for]="revStartPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #revStartPicker></mat-datepicker>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>End Date</mat-label>
+                    <input matInput [matDatepicker]="revEndPicker" formControlName="endDate">
+                    <mat-datepicker-toggle matIconSuffix [for]="revEndPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #revEndPicker></mat-datepicker>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Filter by Vehicle</mat-label>
+                    <mat-select formControlName="vehicleId">
+                      <mat-option value="">All Vehicles</mat-option>
+                      <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
+                        {{ getVehicleDisplayName(vehicle) }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Filter by Route</mat-label>
+                    <mat-select formControlName="routeId">
+                      <mat-option value="">All Routes</mat-option>
+                      <mat-option *ngFor="let route of routes" [value]="route.id">
+                        {{ route.name }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <button mat-raised-button color="accent" (click)="resetFilters()">
+                    <mat-icon>refresh</mat-icon>
+                    Reset
+                  </button>
+                </form>
+              </mat-card-content>
+            </mat-card>
+
+            <!-- Revenue Summary Cards -->
+            <div class="revenue-summary-grid">
+              <mat-card class="summary-card">
+                <mat-card-content>
+                  <div class="summary-icon revenue">
+                    <mat-icon>attach_money</mat-icon>
+                  </div>
+                  <div class="summary-info">
+                    <div class="summary-value">R{{ getTotalRevenue().toFixed(2) }}</div>
+                    <div class="summary-label">Total Revenue</div>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <mat-card class="summary-card">
+                <mat-card-content>
+                  <div class="summary-icon trips">
+                    <mat-icon>trip_origin</mat-icon>
+                  </div>
+                  <div class="summary-info">
+                    <div class="summary-value">{{ filteredHistoricalTrips.length }}</div>
+                    <div class="summary-label">Total Trips</div>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <mat-card class="summary-card">
+                <mat-card-content>
+                  <div class="summary-icon average">
+                    <mat-icon>trending_up</mat-icon>
+                  </div>
+                  <div class="summary-info">
+                    <div class="summary-value">R{{ getAverageRevenuePerTrip().toFixed(2) }}</div>
+                    <div class="summary-label">Avg Revenue/Trip</div>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <mat-card class="summary-card">
+                <mat-card-content>
+                  <div class="summary-icon passengers">
+                    <mat-icon>people</mat-icon>
+                  </div>
+                  <div class="summary-info">
+                    <div class="summary-value">{{ getTotalPassengers() }}</div>
+                    <div class="summary-label">Total Passengers</div>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+            </div>
+
+            <!-- Revenue Charts -->
+            <div class="charts-container">
+              <!-- Daily Revenue Chart -->
+              <mat-card class="chart-card full-width">
+                <mat-card-header>
+                  <mat-card-title>
+                    <mat-icon>show_chart</mat-icon>
+                    Daily Revenue Trend
+                  </mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="chart-wrapper" *ngIf="dailyRevenue.length > 0">
+                    <div class="daily-revenue-chart">
+                      <div class="bar-chart">
+                        <div class="bar-item" *ngFor="let day of dailyRevenue">
+                          <div class="bar-container">
+                            <div class="bar-value">R{{ day.revenue.toFixed(0) }}</div>
+                            <div class="bar" [style.height.%]="(day.revenue / getMaxDailyRevenue()) * 100">
+                              <div class="bar-fill"></div>
+                            </div>
+                          </div>
+                          <div class="bar-label">{{ day.date | date:'MMM d' }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="no-data" *ngIf="dailyRevenue.length === 0">
+                    <mat-icon>info</mat-icon>
+                    <p>No revenue data available for the selected period</p>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <!-- Revenue by Vehicle -->
+              <mat-card class="chart-card">
+                <mat-card-header>
+                  <mat-card-title>
+                    <mat-icon>directions_car</mat-icon>
+                    Revenue by Vehicle
+                  </mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="chart-wrapper" *ngIf="revenueByVehicle.length > 0">
+                    <div class="horizontal-bar-chart">
+                      <div class="h-bar-item" *ngFor="let item of revenueByVehicle">
+                        <div class="h-bar-label">{{ item.vehicle }}</div>
+                        <div class="h-bar-container">
+                          <div class="h-bar" [style.width.%]="(item.revenue / revenueByVehicle[0].revenue) * 100">
+                            <div class="h-bar-fill"></div>
+                          </div>
+                          <span class="h-bar-value">R{{ item.revenue.toFixed(2) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="no-data" *ngIf="revenueByVehicle.length === 0">
+                    <mat-icon>info</mat-icon>
+                    <p>No vehicle data available</p>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <!-- Revenue by Route -->
+              <mat-card class="chart-card">
+                <mat-card-header>
+                  <mat-card-title>
+                    <mat-icon>route</mat-icon>
+                    Revenue by Route
+                  </mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="chart-wrapper" *ngIf="revenueByRoute.length > 0">
+                    <div class="horizontal-bar-chart">
+                      <div class="h-bar-item" *ngFor="let item of revenueByRoute">
+                        <div class="h-bar-label">{{ item.route }}</div>
+                        <div class="h-bar-container">
+                          <div class="h-bar" [style.width.%]="(item.revenue / revenueByRoute[0].revenue) * 100">
+                            <div class="h-bar-fill"></div>
+                          </div>
+                          <span class="h-bar-value">R{{ item.revenue.toFixed(2) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="no-data" *ngIf="revenueByRoute.length === 0">
+                    <mat-icon>info</mat-icon>
+                    <p>No route data available</p>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+            </div>
+
+            <!-- Top Performers -->
+            <div class="top-performers">
+              <mat-card class="performer-card">
+                <mat-card-content>
+                  <mat-icon class="trophy-icon">emoji_events</mat-icon>
+                  <div class="performer-info">
+                    <div class="performer-label">Top Vehicle</div>
+                    <div class="performer-value">{{ getTopPerformingVehicle() }}</div>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <mat-card class="performer-card">
+                <mat-card-content>
+                  <mat-icon class="trophy-icon">star</mat-icon>
+                  <div class="performer-info">
+                    <div class="performer-label">Top Route</div>
+                    <div class="performer-value">{{ getTopPerformingRoute() }}</div>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+            </div>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
     </mat-card-content>
   </mat-card>
 </div>

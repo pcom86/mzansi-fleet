@@ -8,7 +8,7 @@ import { ServiceProvider, CreateServiceProvider, UpdateServiceProvider } from '.
   providedIn: 'root'
 })
 export class ServiceProviderService {
-  private apiUrl = `${environment.apiUrl}/ServiceProviders`;
+  private apiUrl = `${environment.apiUrl}/ServiceProviderProfiles`;
 
   constructor(private http: HttpClient) {}
 
@@ -42,5 +42,15 @@ export class ServiceProviderService {
 
   toggleStatus(id: string): Observable<ServiceProvider> {
     return this.http.patch<ServiceProvider>(`${this.apiUrl}/${id}/toggle-status`, {});
+  }
+
+  // Get current service provider's profile
+  getMyProfile(): Observable<ServiceProvider> {
+    return this.http.get<ServiceProvider>(`${this.apiUrl}/my-profile`);
+  }
+
+  // Update current service provider's profile
+  updateMyProfile(provider: UpdateServiceProvider): Observable<ServiceProvider> {
+    return this.http.put<ServiceProvider>(`${this.apiUrl}/my-profile`, provider);
   }
 }

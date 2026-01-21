@@ -1,0 +1,365 @@
+// ========================================
+// Mzansi Fleet Design System
+// Professional & Clean UX Standards
+// ========================================
+
+// === Color Palette ===
+$color-primary: #D4AF37;
+$color-primary-dark: #C5A028;
+$color-primary-light: #F4D03F;
+
+$color-success: #4CAF50;
+$color-info: #2196F3;
+$color-warning: #FFA726;
+$color-danger: #dc3545;
+
+$color-text-primary: #212529;
+$color-text-secondary: #6c757d;
+$color-text-muted: #868e96;
+
+$color-bg-primary: #ffffff;
+$color-bg-secondary: #f8f9fa;
+$color-bg-tertiary: #e9ecef;
+
+$color-border: #e9ecef;
+$color-border-light: #dee2e6;
+
+// === Typography ===
+$font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+$font-size-base: 1rem;
+$font-size-sm: 0.875rem;
+$font-size-xs: 0.75rem;
+$font-size-lg: 1.125rem;
+$font-size-xl: 1.25rem;
+$font-size-2xl: 1.5rem;
+$font-size-3xl: 2rem;
+
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+// === Spacing ===
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-2xl: 3rem;
+$spacing-3xl: 4rem;
+
+// === Border Radius ===
+$border-radius-sm: 8px;
+$border-radius-md: 12px;
+$border-radius-lg: 16px;
+$border-radius-xl: 24px;
+$border-radius-round: 50%;
+
+// === Shadows ===
+$shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04);
+$shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+$shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+$shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.15);
+$shadow-2xl: 0 20px 60px rgba(0, 0, 0, 0.20);
+
+// === Transitions ===
+$transition-fast: 0.15s ease;
+$transition-base: 0.3s ease;
+$transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+$transition-slow: 0.5s ease;
+
+// === Mixins ===
+
+// Card Styles
+@mixin card-base {
+  background: $color-bg-primary;
+  border-radius: $border-radius-lg;
+  border: 2px solid $color-border;
+  box-shadow: $shadow-sm;
+  transition: all $transition-smooth;
+}
+
+@mixin card-hover {
+  transform: translateY(-4px);
+  box-shadow: $shadow-lg;
+  border-color: rgba($color-primary, 0.3);
+}
+
+// Button Styles
+@mixin button-base {
+  padding: 0.75rem 1.5rem;
+  border-radius: $border-radius-md;
+  font-weight: $font-weight-semibold;
+  font-size: $font-size-base;
+  transition: all $transition-smooth;
+  cursor: pointer;
+  border: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+@mixin button-primary {
+  background: linear-gradient(135deg, $color-primary 0%, $color-primary-dark 100%);
+  color: #000000;
+  border-color: transparent;
+
+  &:hover {
+    background: linear-gradient(135deg, $color-primary-dark 0%, darken($color-primary-dark, 5%) 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba($color-primary, 0.35);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+}
+
+@mixin button-outline {
+  background: white;
+  color: $color-primary;
+  border-color: $color-primary;
+
+  &:hover {
+    background: $color-primary;
+    color: #000000;
+    transform: translateY(-2px);
+    box-shadow: $shadow-md;
+  }
+}
+
+@mixin button-ghost {
+  background: transparent;
+  color: $color-text-secondary;
+  border-color: $color-border;
+
+  &:hover {
+    background: $color-bg-secondary;
+    color: $color-text-primary;
+    border-color: $color-border-light;
+  }
+}
+
+// Input Styles
+@mixin input-base {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid $color-border;
+  border-radius: $border-radius-md;
+  font-size: $font-size-base;
+  color: $color-text-primary;
+  background: white;
+  transition: all $transition-base;
+
+  &:focus {
+    outline: none;
+    border-color: $color-primary;
+    box-shadow: 0 0 0 3px rgba($color-primary, 0.1);
+  }
+
+  &::placeholder {
+    color: $color-text-muted;
+  }
+
+  &:disabled {
+    background: $color-bg-tertiary;
+    cursor: not-allowed;
+  }
+}
+
+// Container Styles
+@mixin container-base {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: $spacing-xl $spacing-md;
+  position: relative;
+  overflow: hidden;
+}
+
+@mixin container-card {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: white;
+  border-radius: $border-radius-xl;
+  box-shadow: $shadow-2xl;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+// Header Styles
+@mixin header-section {
+  text-align: center;
+  padding: $spacing-2xl $spacing-xl $spacing-xl;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+@mixin page-title {
+  font-size: $font-size-3xl;
+  font-weight: $font-weight-bold;
+  color: $color-text-primary;
+  margin: 0 0 $spacing-sm;
+  letter-spacing: -0.5px;
+}
+
+@mixin page-subtitle {
+  font-size: $font-size-base;
+  color: $color-text-secondary;
+  margin: 0;
+  font-weight: $font-weight-normal;
+}
+
+// Form Styles
+@mixin form-group {
+  margin-bottom: $spacing-lg;
+
+  label {
+    display: block;
+    margin-bottom: $spacing-sm;
+    font-weight: $font-weight-semibold;
+    color: $color-text-primary;
+    font-size: $font-size-sm;
+  }
+
+  .error-message {
+    display: block;
+    margin-top: $spacing-xs;
+    font-size: $font-size-xs;
+    color: $color-danger;
+  }
+}
+
+// Table Styles
+@mixin table-base {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  thead {
+    tr {
+      background: $color-bg-secondary;
+      
+      th {
+        padding: $spacing-md $spacing-lg;
+        text-align: left;
+        font-weight: $font-weight-semibold;
+        color: $color-text-primary;
+        font-size: $font-size-sm;
+        border-bottom: 2px solid $color-border;
+        white-space: nowrap;
+      }
+    }
+  }
+
+  tbody {
+    tr {
+      transition: background $transition-fast;
+
+      &:hover {
+        background: $color-bg-secondary;
+      }
+
+      td {
+        padding: $spacing-md $spacing-lg;
+        border-bottom: 1px solid $color-border;
+        color: $color-text-secondary;
+        font-size: $font-size-sm;
+      }
+    }
+  }
+}
+
+// Badge/Chip Styles
+@mixin badge-base {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.875rem;
+  border-radius: $border-radius-lg;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+@mixin badge-success {
+  background: rgba($color-success, 0.1);
+  color: darken($color-success, 10%);
+}
+
+@mixin badge-warning {
+  background: rgba($color-warning, 0.1);
+  color: darken($color-warning, 20%);
+}
+
+@mixin badge-danger {
+  background: rgba($color-danger, 0.1);
+  color: $color-danger;
+}
+
+@mixin badge-info {
+  background: rgba($color-info, 0.1);
+  color: darken($color-info, 10%);
+}
+
+// Responsive Breakpoints
+$breakpoint-xs: 480px;
+$breakpoint-sm: 768px;
+$breakpoint-md: 1024px;
+$breakpoint-lg: 1200px;
+$breakpoint-xl: 1440px;
+
+@mixin respond-to($breakpoint) {
+  @if $breakpoint == 'xs' {
+    @media (max-width: #{$breakpoint-xs}) { @content; }
+  } @else if $breakpoint == 'sm' {
+    @media (max-width: #{$breakpoint-sm}) { @content; }
+  } @else if $breakpoint == 'md' {
+    @media (max-width: #{$breakpoint-md}) { @content; }
+  } @else if $breakpoint == 'lg' {
+    @media (max-width: #{$breakpoint-lg}) { @content; }
+  } @else if $breakpoint == 'xl' {
+    @media (max-width: #{$breakpoint-xl}) { @content; }
+  }
+}
+
+// Animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-30px) rotate(10deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.08; }
+  50% { transform: scale(1.2); opacity: 0.12; }
+}

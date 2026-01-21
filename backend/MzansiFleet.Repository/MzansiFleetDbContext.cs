@@ -68,6 +68,22 @@ namespace MzansiFleet.Repository
         public DbSet<Trip> Trips { get; set; }
         public DbSet<Passenger> Passengers { get; set; }
         public DbSet<VehicleEarning> VehicleEarningRecords { get; set; }
+        
+        // Tender Management Module
+        public DbSet<Tender> Tenders { get; set; }
+        public DbSet<TenderApplication> TenderApplications { get; set; }
+        
+        // Vehicle Rental Marketplace Module
+        public DbSet<VehicleRentalRequest> VehicleRentalRequests { get; set; }
+        public DbSet<RentalOffer> RentalOffers { get; set; }
+        public DbSet<VehicleRentalBooking> VehicleRentalBookings { get; set; }
+        
+        // Tracking Device Installation Module
+        public DbSet<TrackingDeviceRequest> TrackingDeviceRequests { get; set; }
+        public DbSet<TrackingDeviceOffer> TrackingDeviceOffers { get; set; }
+        
+        // Roadside Assistance Module
+        public DbSet<RoadsideAssistanceRequest> RoadsideAssistanceRequests { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -134,6 +150,77 @@ namespace MzansiFleet.Repository
             modelBuilder.Entity<TaxiRankAssociation>()
                 .HasIndex(tra => new { tra.TaxiRankId, tra.TenantId })
                 .IsUnique();
+                
+            // Tender Module
+            modelBuilder.Entity<Tender>().Property(t => t.Id).ValueGeneratedNever();
+            modelBuilder.Entity<TenderApplication>().Property(t => t.Id).ValueGeneratedNever();
+            
+            modelBuilder.Entity<Tender>()
+                .HasOne(t => t.TenderPublisher)
+                .WithMany()
+                .HasForeignKey(t => t.TenderPublisherId)
+                .OnDelete(DeleteBehavior.Restrict);
+                
+            modelBuilder.Entity<Tender>()
+                .HasOne(t => t.AwardedToOwner)
+                .WithMany()
+                .HasForeignKey(t => t.AwardedToOwnerId)
+                .OnDelete(DeleteBehavior.SetNull);
+                
+            modelBuilder.Entity<TenderApplication>()
+                .HasOne(ta => ta.Tender)
+                .WithMany(t => t.Applications)
+                .HasForeignKey(ta => ta.TenderId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            modelBuilder.Entity<TenderApplication>()
+                .HasOne(ta => ta.Owner)
+                .WithMany()
+                .HasForeignKey(ta => ta.OwnerId)
+                .OnDelete(DeleteBehavior.Restrict);
+                
+            // Tracking Device Module
+            modelBuilder.Entity<TrackingDeviceRequest>().Property(t => t.Id).ValueGeneratedNever();
+            modelBuilder.Entity<TrackingDeviceOffer>().Property(t => t.Id).ValueGeneratedNever();
+            
+            modelBuilder.Entity<TrackingDeviceRequest>()
+                .HasOne(r => r.Owner)
+                .WithMany()
+                .HasForeignKey(r => r.OwnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            modelBuilder.Entity<TrackingDeviceRequest>()
+                .HasOne(r => r.Vehicle)
+                .WithMany()
+                .HasForeignKey(r => r.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            modelBuilder.Entity<TrackingDeviceOffer>()
+                .HasOne(o => o.TrackingRequest)
+                .WithMany()
+                .HasForeignKey(o => o.TrackingDeviceRequestId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            modelBuilder.Entity<TrackingDeviceOffer>()
+                .HasOne(o => o.ServiceProvider)
+                .WithMany()
+                .HasForeignKey(o => o.ServiceProviderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            
+            // Roadside Assistance Configuration
+            modelBuilder.Entity<RoadsideAssistanceRequest>().Property(r => r.Id).ValueGeneratedNever();
+            
+            modelBuilder.Entity<RoadsideAssistanceRequest>()
+                .HasOne(r => r.Vehicle)
+                .WithMany()
+                .HasForeignKey(r => r.VehicleId)
+                .OnDelete(DeleteBehavior.SetNull);
+            
+            modelBuilder.Entity<RoadsideAssistanceRequest>()
+                .HasOne(r => r.ServiceProvider)
+                .WithMany()
+                .HasForeignKey(r => r.ServiceProviderId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

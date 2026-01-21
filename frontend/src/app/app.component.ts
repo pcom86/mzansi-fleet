@@ -9,50 +9,6 @@ import { IdentityService } from './services/identity.service';
   standalone: true,
   imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive],
   template: `
-    <nav>
-      <div class="container nav-container">
-        <div class="logo-container">
-          <svg class="logo" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
-            <!-- Truck Body -->
-            <rect x="70" y="35" width="50" height="25" fill="#D4AF37" stroke="#000000" stroke-width="2"/>
-            <!-- Truck Cab -->
-            <rect x="45" y="30" width="25" height="30" fill="#000000" stroke="#000000" stroke-width="2"/>
-            <!-- Windshield -->
-            <rect x="48" y="33" width="18" height="12" fill="#FFFFFF" opacity="0.5"/>
-            <!-- Wheels -->
-            <circle cx="60" cy="62" r="8" fill="#000000" stroke="#D4AF37" stroke-width="2"/>
-            <circle cx="100" cy="62" r="8" fill="#000000" stroke="#D4AF37" stroke-width="2"/>
-          </svg>
-          <div class="logo-text">
-            <span class="brand-name">Mzansi Fleet</span>
-            <span class="tagline">Fleet Management</span>
-          </div>
-        </div>
-        <ul *ngIf="showNavigation">
-          <li><a (click)="navigateToDashboard()" [class.active]="isDashboardActive()">Dashboard</a></li>
-          <li><a routerLink="/drivers" routerLinkActive="active">Drivers</a></li>
-          <li><a routerLink="/vehicles" routerLinkActive="active">Vehicles</a></li>
-          <li><a (click)="navigateToTrips()" [class.active]="isTripsActive()">Trips</a></li>
-          <li><a routerLink="/service-providers" routerLinkActive="active">Service Providers</a></li>
-          <li><a routerLink="/marshal-registration" routerLinkActive="active">Register Marshal</a></li>
-          <li><a routerLink="/identity-management" routerLinkActive="active">Identity</a></li>
-        </ul>
-        <div class="user-info" *ngIf="showNavigation && (userDisplayName || companyName)">
-          <div class="user-details">
-            <span class="user-name" *ngIf="userDisplayName">{{ userDisplayName }}</span>
-            <span class="company-name" *ngIf="companyName">{{ companyName }}</span>
-          </div>
-        </div>
-        <button class="btn-logout" *ngIf="showNavigation" (click)="logout()">
-          <span>Logout</span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
-          </svg>
-        </button>
-      </div>
-    </nav>
     <main>
       <router-outlet></router-outlet>
     </main>
@@ -220,15 +176,45 @@ export class AppComponent implements OnInit {
   }
 
   checkRoute(url: string): void {
-    // Hide navigation on login and other public pages
-    const publicRoutes = ['/login', '/register', '/forgot-password', '/driver-registration', '/service-provider-registration', '/marshal-registration', '/taxi-rank-user-registration', '/profile-selection'];
+    // Hide navigation on login and all registration pages
+    const publicRoutes = [
+      '/login', 
+      '/registration', 
+      '/register', 
+      '/forgot-password', 
+      '/user-registration',
+      '/driver-registration', 
+      '/service-provider-registration', 
+      '/marshal-registration', 
+      '/taxi-rank-user-registration', 
+      '/profile-selection',
+      '/admin'
+    ];
     const isPublicRoute = publicRoutes.some(route => url.includes(route));
     
     // Check if user is logged in
     const isLoggedIn = !!localStorage.getItem('token');
     
-    // Show navigation only if user is logged in AND not on a public route
-    this.showNavigation = isLoggedIn && !isPublicRoute;
+    // Check user role
+    const userStr = localStorage.getItem('user');
+    let userRole = '';
+    if (userStr) {
+      try {
+        const userInfo = JSON.parse(userStr);
+        userRole = userInfo.role || '';
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
+    
+    // Hide navigation for Owner role, Marshal/TaxiMarshal role, ServiceProvider role, and admin dashboard
+    const ownerDashboardRoute = url.includes('/owner-dashboard');
+    const isOwner = userRole === 'Owner';
+    const isMarshal = userRole === 'Marshal' || userRole === 'TaxiMarshal';
+    const isServiceProvider = userRole === 'ServiceProvider';
+    
+    // Show navigation only if user is logged in AND not on a public route AND not an owner, marshal, or service provider
+    this.showNavigation = isLoggedIn && !isPublicRoute && !isOwner && !isMarshal && !isServiceProvider;
     
     // Load user info when navigation is shown
     if (this.showNavigation) {
@@ -336,16 +322,60 @@ export class AppComponent implements OnInit {
       this.router.navigate(['/driver-dashboard']);
     } else if (this.userRole === 'ServiceProvider') {
       this.router.navigate(['/service-provider-dashboard']);
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      this.router.navigate(['/marshal-dashboard/overview']);
     } else {
       this.router.navigate(['/dashboard']);
+    }
+  }
+
+  navigateToDrivers(): void {
+    if (this.userRole === 'Owner') {
+      this.router.navigate(['/owner-dashboard/drivers']);
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      this.router.navigate(['/marshal-dashboard/overview']);
+    } else {
+      this.router.navigate(['/drivers']);
+    }
+  }
+
+  navigateToVehicles(): void {
+    if (this.userRole === 'Owner') {
+      this.router.navigate(['/owner-dashboard/vehicles']);
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      this.router.navigate(['/marshal-dashboard/overview']);
+    } else {
+      this.router.navigate(['/vehicles']);
     }
   }
 
   navigateToTrips(): void {
     if (this.userRole === 'Owner') {
       this.router.navigate(['/owner-dashboard/trips']);
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      this.router.navigate(['/marshal-dashboard/trip-history']);
     } else {
       this.router.navigate(['/trips']);
+    }
+  }
+
+  navigateToServiceProviders(): void {
+    if (this.userRole === 'Owner') {
+      this.router.navigate(['/owner-dashboard/analytics']);
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      this.router.navigate(['/marshal-dashboard/overview']);
+    } else {
+      this.router.navigate(['/service-providers']);
+    }
+  }
+
+  navigateToIdentity(): void {
+    if (this.userRole === 'Owner') {
+      this.router.navigate(['/owner-dashboard/analytics']);
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      this.router.navigate(['/marshal-dashboard/overview']);
+    } else {
+      this.router.navigate(['/identity-management']);
     }
   }
 
@@ -357,16 +387,60 @@ export class AppComponent implements OnInit {
       return url.includes('/driver-dashboard');
     } else if (this.userRole === 'ServiceProvider') {
       return url.includes('/service-provider-dashboard');
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      return url.includes('/marshal-dashboard');
     }
     return url.includes('/dashboard');
+  }
+
+  isDriversActive(): boolean {
+    const url = this.router.url;
+    if (this.userRole === 'Owner') {
+      return url.includes('/owner-dashboard/drivers');
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      return false; // Marshal doesn't have drivers page
+    }
+    return url === '/drivers' || url.startsWith('/drivers/');
+  }
+
+  isVehiclesActive(): boolean {
+    const url = this.router.url;
+    if (this.userRole === 'Owner') {
+      return url.includes('/owner-dashboard/vehicles');
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      return false; // Marshal doesn't have vehicles page
+    }
+    return url === '/vehicles' || url.startsWith('/vehicles/');
   }
 
   isTripsActive(): boolean {
     const url = this.router.url;
     if (this.userRole === 'Owner') {
       return url.includes('/owner-dashboard/trips');
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      return url.includes('/marshal-dashboard/trip');
     }
     return url === '/trips' || url.startsWith('/trips/');
+  }
+
+  isServiceProvidersActive(): boolean {
+    const url = this.router.url;
+    if (this.userRole === 'Owner') {
+      return false; // Owner doesn't have service providers page in dashboard
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      return false; // Marshal doesn't have service providers page
+    }
+    return url === '/service-providers' || url.startsWith('/service-providers/');
+  }
+
+  isIdentityActive(): boolean {
+    const url = this.router.url;
+    if (this.userRole === 'Owner') {
+      return false; // Owner doesn't have identity page in dashboard
+    } else if (this.userRole === 'Marshal' || this.userRole === 'TaxiMarshal') {
+      return false; // Marshal doesn't have identity page
+    }
+    return url === '/identity-management' || url.startsWith('/identity-management/');
   }
 
   logout(): void {

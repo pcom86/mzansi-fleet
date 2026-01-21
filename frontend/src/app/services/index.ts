@@ -10,3 +10,4 @@ export * from './payment.service';
 export * from './auth.service';
 export * from './stuff-request.service';
 export * from './service-provider.service';
+export * from './tracking-device.service';

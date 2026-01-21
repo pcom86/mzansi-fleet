@@ -102,48 +102,21 @@ import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component'
 
           <div class="signup-section">
             <p class="signup-text">Don't have an account?</p>
-            <div class="button-group">
-              <button 
-                mat-raised-button 
-                color="accent" 
-                class="signup-button"
-                routerLink="/register"
-                [disabled]="loading">
-                <mat-icon>person_add</mat-icon>
-                Register as Owner/Staff
-              </button>
-              <button 
-                mat-raised-button 
-                class="driver-button"
-                routerLink="/driver-registration"
-                [disabled]="loading">
-                <mat-icon>local_shipping</mat-icon>
-                Join as Driver
-              </button>
-              <button 
-                mat-raised-button 
-                class="service-provider-button"
-                routerLink="/service-provider-registration"
-                [disabled]="loading">
-                <mat-icon>build_circle</mat-icon>
-                Register as Service Provider
-              </button>
-              <button 
-                mat-raised-button 
-                class="taxi-rank-button"
-                routerLink="/taxi-rank-user-registration"
-                [disabled]="loading">
-                <mat-icon>event_seat</mat-icon>
-                Register Taxi Rank User
-              </button>
-            </div>
+            <button 
+              mat-raised-button 
+              color="accent" 
+              class="register-button"
+              routerLink="/registration"
+              [disabled]="loading">
+              <mat-icon>how_to_reg</mat-icon>
+              Register
+            </button>
           </div>
 
           <div class="info-section">
             <mat-icon class="info-icon">info</mat-icon>
             <p class="info-text">
-              New users can register as Fleet Owner, Staff, Driver, Service Provider, Taxi Rank Admin, or Taxi Marshal.
-              Driver registration requires license documentation for approval.
+              Sign in to access your dashboard. New to Mzansi Fleet? Click Register to create an account.
             </p>
           </div>
         </mat-card-content>
@@ -151,13 +124,14 @@ import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component'
     </div>
   `,
   styles: [`
+    /* Container & Background */
     .login-container {
+      min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
-      background: linear-gradient(135deg, #FFFFFF 0%, #f5f5f5 50%, #e8e8e8 100%);
-      padding: 1rem;
+      padding: 2rem 1rem;
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
       position: relative;
       overflow: hidden;
     }
@@ -165,71 +139,120 @@ import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component'
     .login-container::before {
       content: '';
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: radial-gradient(circle at 70% 50%, rgba(212, 175, 55, 0.15) 0%, transparent 50%),
-                  radial-gradient(circle at 30% 80%, rgba(0, 0, 0, 0.05) 0%, transparent 40%);
+      width: 400px;
+      height: 400px;
+      background: linear-gradient(135deg, rgba(212, 175, 55, 0.08), rgba(244, 208, 63, 0.08));
+      border-radius: 50%;
+      top: -100px;
+      right: -100px;
+      animation: float 20s ease-in-out infinite;
     }
 
+    .login-container::after {
+      content: '';
+      position: absolute;
+      width: 300px;
+      height: 300px;
+      background: linear-gradient(135deg, rgba(33, 150, 243, 0.08), rgba(100, 181, 246, 0.08));
+      border-radius: 50%;
+      bottom: -80px;
+      left: -80px;
+      animation: float 15s ease-in-out infinite reverse;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-30px) rotate(10deg); }
+    }
+
+    /* Card Styles */
     .login-card {
       width: 100%;
-      max-width: 450px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-      border-radius: 16px;
-      border: 3px solid #D4AF37;
+      max-width: 480px;
       position: relative;
       z-index: 1;
-      background: #FFFFFF;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+      overflow: hidden;
+      background: white;
+      border: none;
     }
 
+    /* Header */
     .header-content {
       width: 100%;
       text-align: center;
-      padding: 1rem 0;
+      padding: 3rem 2rem 2rem;
+      background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     }
 
     app-mzansi-fleet-logo {
       display: block;
-      margin: 0 auto 1rem;
+      margin: 0 auto 1.5rem;
     }
 
     mat-card-header {
       display: block;
-      margin-bottom: 1.5rem;
+      padding: 0;
     }
 
     mat-card-subtitle {
-      color: #495057;
-      font-size: 0.95rem;
-      margin-top: 0.5rem;
+      color: #6c757d;
+      font-size: 1rem;
+      margin: 0;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+
+    /* Form Content */
+    mat-card-content {
+      padding: 2.5rem 2rem !important;
     }
 
     .full-width {
       width: 100%;
-      margin-bottom: 1rem;
+      margin-bottom: 1.25rem;
     }
 
+    /* Login Button */
     .login-button {
-      margin-top: 1rem;
-      height: 48px;
-      font-size: 16px;
-      font-weight: 500;
-    }
+      width: 100%;
+      margin-top: 1.5rem;
+      height: 52px;
+      font-size: 1rem;
+      font-weight: 600;
+      background: linear-gradient(135deg, #D4AF37 0%, #C5A028 100%);
+      color: #000000;
+      border-radius: 12px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-    .login-button mat-icon {
-      margin-right: 0.5rem;
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #C5A028 0%, #B8941F 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(212, 175, 55, 0.35);
+      }
+
+      &:active {
+        transform: translateY(0);
+      }
+
+      mat-icon {
+        margin-right: 0.5rem;
+      }
     }
 
     .button-spinner {
       margin: 0 auto;
     }
 
+    /* Divider */
     .divider {
       margin: 2rem 0;
+      border-top-color: #e9ecef;
     }
 
+    /* Signup Section */
     .signup-section {
       text-align: center;
       margin-bottom: 1.5rem;
@@ -239,91 +262,99 @@ import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component'
       color: #6c757d;
       margin-bottom: 1rem;
       font-size: 0.95rem;
+      font-weight: 400;
     }
 
-    .button-group {
-      display: flex;
-      gap: 0.75rem;
-      flex-direction: column;
-    }
-
-    .signup-button,
-    .driver-button,
-    .service-provider-button,
-    .taxi-rank-button {
+    .register-button {
       width: 100%;
-      height: 48px;
-      font-size: 15px;
-      font-weight: 500;
+      height: 52px;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 12px;
+      border: 2px solid #9C27B0;
+      color: #9C27B0;
+      background: white;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+      &:hover:not(:disabled) {
+        background: linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(156, 39, 176, 0.3);
+      }
+
+      &:active {
+        transform: translateY(0);
+      }
+
+      mat-icon {
+        margin-right: 0.5rem;
+      }
     }
 
-    .signup-button mat-icon,
-    .driver-button mat-icon,
-    .service-provider-button mat-icon,
-    .taxi-rank-button mat-icon {
-      margin-right: 0.5rem;
-    }
-
-    .driver-button {
-      background: linear-gradient(135deg, #D4AF37 0%, #C5A028 100%) !important;
-      color: #000000 !important;
-    }
-
-    .driver-button:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
-    }
-
-    .service-provider-button {
-      background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%) !important;
-      color: #FFFFFF !important;
-    }
-
-    .service-provider-button:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
-    }
-
-    .taxi-rank-button {
-      background: linear-gradient(135deg, #FF6F00 0%, #E65100 100%) !important;
-      color: #FFFFFF !important;
-    }
-
-    .taxi-rank-button:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(255, 111, 0, 0.3);
-    }
-
+    /* Info Section */
     .info-section {
       display: flex;
       align-items: flex-start;
-      gap: 0.75rem;
-      padding: 1rem;
-      background-color: rgba(212, 175, 55, 0.1);
-      border-radius: 8px;
+      gap: 1rem;
+      padding: 1.25rem 1.5rem;
+      background: linear-gradient(135deg, #fff8e1 0%, #fffbf0 100%);
+      border-radius: 12px;
       border-left: 4px solid #D4AF37;
-      margin-top: 1.5rem;
     }
 
     .info-icon {
       color: #D4AF37;
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
       margin-top: 2px;
     }
 
     .info-text {
-      color: #495057;
+      color: #6c757d;
       font-size: 0.875rem;
       margin: 0;
-      line-height: 1.5;
+      line-height: 1.6;
     }
 
-    @media (max-width: 600px) {
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .login-container {
+        padding: 1rem 0.5rem;
+      }
+
+      .login-card {
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      }
+
+      .header-content {
+        padding: 2rem 1.5rem 1.5rem;
+      }
+
+      mat-card-subtitle {
+        font-size: 0.9rem;
+      }
+
+      mat-card-content {
+        padding: 1.5rem 1rem !important;
+      }
+
+      .login-button,
+      .register-button {
+        height: 48px;
+      }
+    }
+
+    @media (max-width: 480px) {
       .login-container {
         padding: 0.5rem;
       }
 
-      .login-card {
-        box-shadow: none;
+      .full-width {
+        margin-bottom: 1rem;
       }
     }
   `]
@@ -383,7 +414,7 @@ export class LoginComponent {
       let navigationPromise;
       if (response.role === 'Owner') {
         console.log('Redirecting to owner dashboard');
-        navigationPromise = this.router.navigate(['/owner-dashboard/analytics']);
+        navigationPromise = this.router.navigate(['/owner-dashboard']);
       } else if (response.role === 'Driver') {
         console.log('Redirecting to driver dashboard');
         navigationPromise = this.router.navigate(['/driver-dashboard']);
@@ -396,6 +427,9 @@ export class LoginComponent {
       } else if (response.role === 'TaxiMarshal') {
         console.log('Redirecting to marshal dashboard');
         navigationPromise = this.router.navigate(['/marshal-dashboard']);
+      } else if (response.role === 'Customer') {
+        console.log('Redirecting to user dashboard');
+        navigationPromise = this.router.navigate(['/user-dashboard']);
       } else {
         console.log('Redirecting to default dashboard, role was:', response.role);
         navigationPromise = this.router.navigate(['/dashboard']);

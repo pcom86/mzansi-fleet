@@ -2,8 +2,8 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
-import { IdentityService } from '../../services';
-import { DriverProfile } from '../../models';
+import { IdentityService, VehicleService } from '../../services';
+import { DriverProfile, Vehicle } from '../../models';
 
 @Component({
   selector: 'app-drivers',
@@ -24,6 +24,59 @@ import { DriverProfile } from '../../models';
           </button>
         </div>
         
+        <!-- View Toggle Tabs -->
+        <div class="view-tabs">
+          <button 
+            class="tab-btn"
+            [class.active]="driverView === 'myDrivers'"
+            (click)="switchView('myDrivers')">
+            <span class="tab-icon">👥</span>
+            My Fleet Drivers ({{ myDriversCount }})
+          </button>
+          <button 
+            class="tab-btn"
+            [class.active]="driverView === 'available'"
+            (click)="switchView('available')">
+            <span class="tab-icon">🔍</span>
+            Available Drivers ({{ availableDriversCount }})
+          </button>
+        </div>
+        
+        <!-- Search and Filter Bar -->
+        <div class="search-filter-bar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input 
+              type="text" 
+              [(ngModel)]="searchQuery" 
+              (input)="applyFilters()"
+              placeholder="Search drivers by name, ID, email, or phone..."
+              class="search-input">
+            <button *ngIf="searchQuery" class="clear-search" (click)="clearSearch()">✕</button>
+          </div>
+          
+          <div class="filter-buttons">
+            <button 
+              class="filter-btn"
+              [class.active]="assignmentFilter === 'all'"
+              (click)="setAssignmentFilter('all')">
+              All Drivers ({{ drivers.length }})
+            </button>
+            <button 
+              class="filter-btn"
+              [class.active]="assignmentFilter === 'unassigned'"
+              (click)="setAssignmentFilter('unassigned')">
+              Not Assigned ({{ getUnassignedDrivers().length }})
+            </button>
+            <button 
+              class="filter-btn"
+              [class.active]="assignmentFilter === 'assigned'"
+              (click)="setAssignmentFilter('assigned')">
+              Assigned ({{ getAssignedDrivers().length }})
+            </button>
+          </div>
+        </div>
+
         <!-- Stats Cards -->
         <div class="stats-grid">
           <div class="stat-card">
@@ -199,8 +252,16 @@ import { DriverProfile } from '../../models';
           <p>Loading drivers...</p>
         </div>
         
-        <div class="drivers-grid" *ngIf="!loading && drivers.length > 0">
-          <div class="driver-card" *ngFor="let driver of drivers">
+        <div class="no-results" *ngIf="!loading && filteredDrivers.length === 0 && drivers.length > 0">
+          <div class="no-results-icon">🔍</div>
+          <h3>No drivers found</h3>
+          <p *ngIf="searchQuery">No drivers match your search "{{ searchQuery }}"</p>
+          <p *ngIf="!searchQuery && assignmentFilter !== 'all'">No {{ assignmentFilter }} drivers</p>
+          <button class="btn-reset" (click)="resetFilters()">Clear Filters</button>
+        </div>
+
+        <div class="drivers-grid" *ngIf="!loading && filteredDrivers.length > 0">
+          <div class="driver-card" *ngFor="let driver of filteredDrivers">
             <div class="driver-header">
               <div class="driver-avatar">
                 <img *ngIf="driver.photoUrl" [src]="driver.photoUrl" alt="{{ driver.name }}">
@@ -411,6 +472,188 @@ import { DriverProfile } from '../../models';
       font-size: 0.875rem;
       color: #666;
       margin-top: 0.25rem;
+    }
+
+    /* View Toggle Tabs */
+    .view-tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      background: white;
+      padding: 0.5rem;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .tab-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1rem 1.5rem;
+      background: transparent;
+      color: #6b7280;
+      border: 2px solid transparent;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .tab-btn:hover {
+      background: #f9fafb;
+      color: #374151;
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, #D4AF37 0%, #FFD700 100%);
+      color: #000000;
+      border-color: #D4AF37;
+      box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+    }
+
+    .tab-icon {
+      font-size: 1.25rem;
+    }
+
+    /* Search and Filter Bar */
+    .search-filter-bar {
+      margin-bottom: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      background: white;
+      padding: 1.5rem;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem 1.5rem;
+      background: #f9fafb;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .search-box:focus-within {
+      border-color: #D4AF37;
+      box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
+    }
+
+    .search-icon {
+      font-size: 1.25rem;
+      color: #6b7280;
+    }
+
+    .search-input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font-size: 1rem;
+      color: #374151;
+      outline: none;
+    }
+
+    .search-input::placeholder {
+      color: #9ca3af;
+    }
+
+    .clear-search {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      color: #6b7280;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+    }
+
+    .clear-search:hover {
+      background: #d1d5db;
+      color: #374151;
+    }
+
+    .filter-buttons {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 0.75rem 1.5rem;
+      background: #f3f4f6;
+      color: #6b7280;
+      border: 2px solid transparent;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .filter-btn:hover {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .filter-btn.active {
+      background: linear-gradient(135deg, #D4AF37 0%, #FFD700 100%);
+      color: #000000;
+      border-color: #D4AF37;
+      box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 3rem 2rem;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .no-results-icon {
+      font-size: 4rem;
+      margin-bottom: 1rem;
+      opacity: 0.4;
+    }
+
+    .no-results h3 {
+      color: #000000;
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .no-results p {
+      color: #6b7280;
+      margin-bottom: 1.5rem;
+      font-size: 1rem;
+    }
+
+    .btn-reset {
+      padding: 0.875rem 2rem;
+      background: linear-gradient(135deg, #D4AF37 0%, #FFD700 100%);
+      color: #000000;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-reset:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
     }
 
     /* Form Modal */
@@ -961,6 +1204,28 @@ import { DriverProfile } from '../../models';
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       }
 
+      .view-tabs {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .tab-btn {
+        padding: 0.875rem 1rem;
+        font-size: 0.875rem;
+      }
+
+      .search-filter-bar {
+        padding: 1rem;
+      }
+
+      .filter-buttons {
+        flex-direction: column;
+      }
+
+      .filter-btn {
+        width: 100%;
+      }
+
       .drivers-grid {
         grid-template-columns: 1fr;
       }
@@ -977,19 +1242,65 @@ import { DriverProfile } from '../../models';
 })
 export class DriversComponent implements OnInit {
   drivers: DriverProfile[] = [];
+  filteredDrivers: DriverProfile[] = [];
+  allDrivers: DriverProfile[] = []; // Store all drivers for view switching
   currentDriver: Partial<DriverProfile> = this.getEmptyDriver();
   editingDriver = false;
   showForm = false;
   loading = false;
   error = '';
+  searchQuery = '';
+  assignmentFilter: 'all' | 'assigned' | 'unassigned' = 'all';
+  ownerVehicleIds: Set<string> = new Set();
+  tenantId = '';
+  driverView: 'myDrivers' | 'available' = 'myDrivers';
+  myDriversCount = 0;
+  availableDriversCount = 0;
 
   constructor(
     private identityService: IdentityService,
+    private vehicleService: VehicleService,
     private http: HttpClient
   ) {}
 
   ngOnInit() {
-    this.loadDrivers();
+    // Get tenant ID from logged-in user
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const userInfo = JSON.parse(userStr);
+        this.tenantId = userInfo.tenantId || '';
+        
+        // Load owner's vehicles first, then drivers
+        if (this.tenantId) {
+          this.loadOwnerVehicles();
+        } else {
+          this.loadDrivers();
+        }
+      } catch (e) {
+        console.error('Failed to parse user info:', e);
+        this.loadDrivers();
+      }
+    } else {
+      this.loadDrivers();
+    }
+  }
+
+  loadOwnerVehicles() {
+    this.vehicleService.getByTenantId(this.tenantId).subscribe({
+      next: (vehicles: Vehicle[]) => {
+        // Store all vehicle IDs from this owner's fleet
+        this.ownerVehicleIds = new Set(
+          vehicles.map(v => v.id).filter(id => id)
+        );
+        // Now load and filter drivers
+        this.loadDrivers();
+      },
+      error: (err) => {
+        console.error('Failed to load vehicles:', err);
+        this.loadDrivers(); // Load drivers anyway
+      }
+    });
   }
 
   loadDrivers() {
@@ -998,7 +1309,7 @@ export class DriversComponent implements OnInit {
     this.identityService.getAllDriverProfiles().subscribe({
       next: (data) => {
         // Map data to handle PascalCase/camelCase
-        this.drivers = data.map(d => ({
+        let allDrivers = data.map(d => ({
           ...d,
           id: d.id || (d as any).Id,
           userId: d.userId || (d as any).UserId,
@@ -1016,6 +1327,28 @@ export class DriversComponent implements OnInit {
           isAvailable: d.isAvailable !== undefined ? d.isAvailable : (d as any).IsAvailable,
           assignedVehicleId: d.assignedVehicleId || (d as any).AssignedVehicleId
         }));
+        
+        // Store all drivers for view switching
+        this.allDrivers = allDrivers;
+        
+        // Calculate counts
+        if (this.ownerVehicleIds.size > 0) {
+          // My drivers: assigned to my vehicles
+          this.myDriversCount = allDrivers.filter(driver => 
+            driver.assignedVehicleId && this.ownerVehicleIds.has(driver.assignedVehicleId)
+          ).length;
+          
+          // Available drivers: not assigned to any vehicle OR active and available
+          this.availableDriversCount = allDrivers.filter(driver => 
+            !driver.assignedVehicleId || (driver.isActive && driver.isAvailable)
+          ).length;
+        } else {
+          this.myDriversCount = allDrivers.length;
+          this.availableDriversCount = 0;
+        }
+        
+        // Apply current view
+        this.applyView();
         this.loading = false;
       },
       error: (err) => {
@@ -1158,6 +1491,78 @@ export class DriversComponent implements OnInit {
 
   getAssignedDrivers(): DriverProfile[] {
     return this.drivers.filter(d => d.assignedVehicleId);
+  }
+
+  getUnassignedDrivers(): DriverProfile[] {
+    return this.drivers.filter(d => !d.assignedVehicleId);
+  }
+
+  switchView(view: 'myDrivers' | 'available'): void {
+    this.driverView = view;
+    this.resetFilters();
+  }
+
+  applyView(): void {
+    // Apply view filter first
+    if (this.ownerVehicleIds.size > 0) {
+      if (this.driverView === 'myDrivers') {
+        // Show only drivers assigned to my vehicles
+        this.drivers = this.allDrivers.filter(driver => 
+          driver.assignedVehicleId && this.ownerVehicleIds.has(driver.assignedVehicleId)
+        );
+      } else {
+        // Show available drivers (not assigned or marked as available)
+        this.drivers = this.allDrivers.filter(driver => 
+          !driver.assignedVehicleId || (driver.isActive && driver.isAvailable)
+        );
+      }
+    } else {
+      this.drivers = this.allDrivers;
+    }
+    
+    // Then apply search and assignment filters
+    this.applyFilters();
+  }
+
+  applyFilters(): void {
+    let filtered = [...this.drivers];
+
+    // Apply assignment filter
+    if (this.assignmentFilter === 'assigned') {
+      filtered = filtered.filter(d => d.assignedVehicleId);
+    } else if (this.assignmentFilter === 'unassigned') {
+      filtered = filtered.filter(d => !d.assignedVehicleId);
+    }
+
+    // Apply search filter
+    if (this.searchQuery.trim()) {
+      const query = this.searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(d => 
+        (d.name && d.name.toLowerCase().includes(query)) ||
+        (d.idNumber && d.idNumber.toLowerCase().includes(query)) ||
+        (d.email && d.email.toLowerCase().includes(query)) ||
+        (d.phone && d.phone.toLowerCase().includes(query)) ||
+        (d.category && d.category.toLowerCase().includes(query))
+      );
+    }
+
+    this.filteredDrivers = filtered;
+  }
+
+  setAssignmentFilter(filter: 'all' | 'assigned' | 'unassigned'): void {
+    this.assignmentFilter = filter;
+    this.applyFilters();
+  }
+
+  clearSearch(): void {
+    this.searchQuery = '';
+    this.applyFilters();
+  }
+
+  resetFilters(): void {
+    this.searchQuery = '';
+    this.assignmentFilter = 'all';
+    this.applyView();
   }
 
   onPhotoSelected(event: any): void {

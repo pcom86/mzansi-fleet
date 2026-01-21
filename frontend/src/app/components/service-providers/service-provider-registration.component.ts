@@ -11,6 +11,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../services/auth.service';
+import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component';
 
 export interface RegisterServiceProviderDto {
   tenantId: string;
@@ -47,11 +48,13 @@ export interface RegisterServiceProviderDto {
     MatInputModule,
     MatSelectModule,
     MatProgressSpinnerModule,
-    MatSnackBarModule
+    MatSnackBarModule,
+    MzansiFleetLogoComponent
   ],
   template: `
     <div class="registration-page">
       <div class="registration-header">
+        <app-mzansi-fleet-logo class="logo"></app-mzansi-fleet-logo>
         <h1>Service Provider Registration</h1>
         <p>Join Mzansi Fleet as a service provider</p>
       </div>
@@ -157,6 +160,8 @@ export interface RegisterServiceProviderDto {
                   <mat-option value="Diagnostics">Diagnostics</mat-option>
                   <mat-option value="Routine Service">Routine Service</mat-option>
                   <mat-option value="Glass Repair">Glass Repair</mat-option>
+                  <mat-option value="Tracking Device Installation">Tracking Device Installation</mat-option>
+                  <mat-option value="Roadside Assistance">Roadside Assistance</mat-option>
                 </mat-select>
                 <mat-hint>Select all applicable service types</mat-hint>
               </mat-form-field>
@@ -284,6 +289,12 @@ export interface RegisterServiceProviderDto {
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 15px;
       margin-top: 15px;
+    }
+
+    .registration-header .logo {
+      display: block;
+      margin: 0 auto 1.5rem auto;
+      width: fit-content;
     }
 
     .full-width {

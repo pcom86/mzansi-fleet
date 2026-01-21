@@ -1,49 +1,160 @@
-<mat-sidenav-container class="dashboard-container">
-  <mat-sidenav #sidenav mode="side" opened class="dashboard-sidenav">
-    <div class="sidenav-header">
-      <h2>{{ taxiRankName }}</h2>
-      <p class="admin-name" *ngIf="userData">{{ userData.fullName || userData.email }}</p>
+<div class="dashboard-wrapper">
+  <!-- Sidebar Navigation -->
+  <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
+    <div class="sidebar-header">
+      <div class="logo-section">
+        <app-mzansi-fleet-logo class="mzansi-logo"></app-mzansi-fleet-logo>
+        <div class="header-text" *ngIf="!sidebarCollapsed">
+          <h2>{{ taxiRankName || 'Mzansi Fleet' }}</h2>
+          <p class="admin-badge">Admin Portal</p>
+        </div>
+      </div>
+      <button mat-icon-button class="collapse-btn" (click)="toggleSidebar()">
+        <mat-icon>{{ sidebarCollapsed ? 'menu_open' : 'menu' }}</mat-icon>
+      </button>
     </div>
     
-    <mat-nav-list>
-      <a mat-list-item *ngFor="let item of menuItems" 
-         [routerLink]="item.route"
-         routerLinkActive="active-link">
-        <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
-        <span matListItemTitle>{{ item.title }}</span>
-      </a>
-    </mat-nav-list>
-  </mat-sidenav>
-
-  <mat-sidenav-content>
-    <mat-toolbar color="primary" class="dashboard-toolbar">
-      <span>Taxi Rank Admin Dashboard</span>
-      <span class="spacer"></span>
-      <div class="user-info" *ngIf="userData">
-        <span class="user-name">{{ userData.fullName || userData.email }}</span>
-        <span class="user-role">{{ userData.role }}</span>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <p class="section-label" *ngIf="!sidebarCollapsed">Dashboard</p>
+        <a class="nav-item" 
+           *ngFor="let item of menuItems" 
+           [routerLink]="item.route"
+           routerLinkActive="active"
+           [routerLinkActiveOptions]="{exact: false}"
+           [title]="item.title"
+           (click)="onMenuItemClick()">
+          <mat-icon>{{ item.icon }}</mat-icon>
+          <span *ngIf="!sidebarCollapsed">{{ item.title }}</span>
+          <mat-icon class="nav-arrow" *ngIf="!sidebarCollapsed">chevron_right</mat-icon>
+        </a>
       </div>
-      <button mat-icon-button [matMenuTriggerFor]="menu">
-        <mat-icon>account_circle</mat-icon>
-      </button>
-      <mat-menu #menu="matMenu">
-        <button mat-menu-item (click)="navigateTo('/admin/profile')">
-          <mat-icon>person</mat-icon>
-          <span>Profile</span>
-        </button>
-        <button mat-menu-item (click)="navigateTo('/admin/settings')">
-          <mat-icon>settings</mat-icon>
-          <span>Settings</span>
-        </button>
-        <button mat-menu-item (click)="logout()">
-          <mat-icon>logout</mat-icon>
-          <span>Logout</span>
-        </button>
-      </mat-menu>
-    </mat-toolbar>
 
-    <div class="dashboard-content">
+      <div class="nav-section">
+        <p class="section-label" *ngIf="!sidebarCollapsed">Account</p>
+        <a class="nav-item clickable" (click)="navigateTo('/admin/profile')" title="Profile">
+          <mat-icon>person</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Profile</span>
+        </a>
+        <a class="nav-item clickable" (click)="navigateTo('/admin/settings')" title="Settings">
+          <mat-icon>settings</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Settings</span>
+        </a>
+        <a class="nav-item logout-item clickable" (click)="logout()" title="Logout">
+          <mat-icon>logout</mat-icon>
+          <span *ngIf="!sidebarCollapsed">Logout</span>
+        </a>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="main-content" [class.expanded]="sidebarCollapsed">
+    <header class="top-bar" *ngIf="isRankAdministrator()">
+      <div class="left-section">
+        <button class="menu-toggle" (click)="toggleSidebar()">
+          <mat-icon>menu</mat-icon>
+        </button>
+        <div class="breadcrumb">
+          <mat-icon>dashboard</mat-icon>
+          <span>{{ taxiRankName || 'Dashboard' }}</span>
+        </div>
+      </div>
+
+      <div class="center-section">
+        <!-- Role-based quick action buttons -->
+        <button 
+          *ngFor="let item of topMenuItems" 
+          class="quick-action-btn"
+          (click)="onTopMenuAction(item.action)"
+          [title]="item.title"
+          [attr.aria-label]="item.title + (item.badge ? ': ' + item.badge + ' items' : '')">
+          <mat-icon [matBadge]="item.badge || null" [matBadgeHidden]="!item.badge" matBadgeColor="warn" matBadgeSize="small" aria-hidden="false">{{ item.icon }}</mat-icon>
+          <span class="action-label">{{ item.title }}</span>
+        </button>
+      </div>
+
+      <div class="right-section">
+        <button class="notifications-btn" [matMenuTriggerFor]="notifMenu" [title]="'Notifications'" [attr.aria-label]="'Notifications' + (unreadNotifications > 0 ? ': ' + unreadNotifications + ' unread' : '')">
+          <mat-icon [matBadge]="unreadNotifications > 0 ? unreadNotifications.toString() : null" [matBadgeHidden]="unreadNotifications === 0" matBadgeColor="warn" matBadgeSize="small" aria-hidden="false">notifications</mat-icon>
+        </button>
+
+        <mat-menu #notifMenu="matMenu" class="notification-dropdown">
+          <div class="notification-header">
+            <h3>Notifications</h3>
+            <button mat-button class="mark-read-btn">Mark all read</button>
+          </div>
+          <mat-divider></mat-divider>
+          <button mat-menu-item class="notification-item">
+            <mat-icon class="notif-icon info">info</mat-icon>
+            <div class="notif-content">
+              <p class="notif-title">New trip scheduled</p>
+              <p class="notif-time">5 minutes ago</p>
+            </div>
+          </button>
+          <button mat-menu-item class="notification-item">
+            <mat-icon class="notif-icon success">check_circle</mat-icon>
+            <div class="notif-content">
+              <p class="notif-title">Marshal assigned successfully</p>
+              <p class="notif-time">1 hour ago</p>
+            </div>
+          </button>
+          <mat-divider></mat-divider>
+          <button mat-menu-item class="view-all-notif">
+            <span>View All Notifications</span>
+          </button>
+        </mat-menu>
+
+        <button class="settings-btn" (click)="navigateTo('/settings')" [title]="'Settings'">
+          <mat-icon>settings</mat-icon>
+        </button>
+
+        <div class="user-menu-btn" [matMenuTriggerFor]="userMenu">
+          <div class="user-avatar">
+            <mat-icon>account_circle</mat-icon>
+          </div>
+          <div class="user-info">
+            <p class="user-name">{{ userData?.fullName || 'Admin' }}</p>
+            <p class="user-role">{{ getRoleDisplayName() }}</p>
+          </div>
+          <mat-icon class="dropdown-icon">expand_more</mat-icon>
+        </div>
+
+        <mat-menu #userMenu="matMenu" class="user-dropdown">
+          <div class="menu-user-info">
+            <div class="menu-avatar">
+              <mat-icon>account_circle</mat-icon>
+            </div>
+            <div>
+              <p class="menu-user-name">{{ userData?.fullName || 'Admin' }}</p>
+              <p class="menu-user-role">{{ getRoleDisplayName() }}</p>
+              <p class="menu-user-email">{{ userData?.email }}</p>
+            </div>
+          </div>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="navigateTo('/profile')">
+            <mat-icon>person</mat-icon>
+            <span>My Profile</span>
+          </button>
+          <button mat-menu-item (click)="navigateTo('/settings')">
+            <mat-icon>settings</mat-icon>
+            <span>Account Settings</span>
+          </button>
+          <button mat-menu-item (click)="navigateTo('/help')">
+            <mat-icon>help</mat-icon>
+            <span>Help & Support</span>
+          </button>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="logout()" class="logout-menu-item">
+            <mat-icon>logout</mat-icon>
+            <span>Sign Out</span>
+          </button>
+        </mat-menu>
+      </div>
+    </header>
+
+    <div class="content-area">
       <router-outlet></router-outlet>
     </div>
-  </mat-sidenav-content>
-</mat-sidenav-container>
+  </main>
+</div>
