@@ -1,0 +1,220 @@
+<div class="passenger-capture-container">
+  <h2>Passenger Capture</h2>
+  <p class="subtitle">Select a schedule and manage passenger bookings</p>
+
+  <!-- Schedule Selection Section -->
+  <mat-card class="trip-selection-card">
+    <mat-card-header>
+      <mat-card-title>Select Schedule</mat-card-title>
+      <mat-card-subtitle>Choose the schedule you want to capture passengers for</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <div *ngIf="loadingSchedules" class="loading">
+        <mat-spinner diameter="40"></mat-spinner>
+        <p>Loading available schedules...</p>
+      </div>
+
+      <div *ngIf="!loadingSchedules && availableSchedules.length === 0" class="no-trips">
+        <mat-icon>event_busy</mat-icon>
+        <h3>No schedules available</h3>
+        <p>There are no upcoming schedules available for passenger capture.</p>
+      </div>
+
+      <div *ngIf="!loadingSchedules && availableSchedules.length > 0" class="trips-grid">
+        <mat-card *ngFor="let schedule of availableSchedules"
+                  class="trip-card"
+                  [class.selected]="selectedSchedule?.id === schedule.id"
+                  (click)="selectSchedule(schedule)">
+          <mat-card-content>
+            <div class="trip-route">
+              <strong>{{ schedule.departureStation }} → {{ schedule.destinationStation }}</strong>
+            </div>
+            <div class="trip-details">
+              <div class="detail-item">
+                <mat-icon>schedule</mat-icon>
+                <span>{{ schedule.departureTime | date:'short' }}</span>
+              </div>
+              <div class="detail-item">
+                <mat-icon>directions_car</mat-icon>
+                <span>{{ schedule.vehicle?.registration }}</span>
+              </div>
+              <div class="detail-item">
+                <mat-icon>person</mat-icon>
+                <span>{{ schedule.driver?.name }}</span>
+              </div>
+              <div class="detail-item">
+                <mat-icon>people</mat-icon>
+                <span>{{ schedule.passengerCount }} passengers</span>
+              </div>
+            </div>
+            <div class="trip-status" [ngClass]="schedule.status.toLowerCase()">
+              {{ schedule.status }}
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Selected Schedule Details and Passenger Management -->
+  <div *ngIf="selectedSchedule" class="selected-trip-section">
+    <mat-card class="trip-details-card">
+      <mat-card-header>
+        <mat-card-title>Selected Schedule Details</mat-card-title>
+        <mat-card-subtitle>{{ getScheduleDisplayName(selectedSchedule) }}</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="trip-info-grid">
+          <div class="info-item">
+            <strong>Vehicle:</strong> {{ selectedSchedule.vehicle?.registration }}
+          </div>
+          <div class="info-item">
+            <strong>Driver:</strong> {{ selectedSchedule.driver?.name }}
+          </div>
+          <div class="info-item">
+            <strong>Marshal:</strong> {{ selectedSchedule.marshal?.fullName }}
+          </div>
+          <div class="info-item">
+            <strong>Status:</strong>
+            <span class="status-badge" [ngClass]="selectedSchedule.status.toLowerCase()">
+              {{ selectedSchedule.status }}
+            </span>
+          </div>
+        </div>
+        <div class="trip-actions">
+          <button mat-button color="accent" (click)="clearSelection()">
+            <mat-icon>clear</mat-icon>
+            Change Schedule
+          </button>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Prebooked Passengers Section -->
+    <mat-card class="prebooked-passengers-card" *ngIf="prebookedPassengers.length > 0">
+      <mat-card-header>
+        <mat-card-title>Prebooked Passengers ({{ prebookedPassengers.length }})</mat-card-title>
+        <mat-card-subtitle>Passengers who have prebooked online for this schedule</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <div *ngIf="loadingPrebooked" class="loading">
+          <mat-spinner diameter="30"></mat-spinner>
+          <p>Loading prebooked passengers...</p>
+        </div>
+
+        <mat-list *ngIf="!loadingPrebooked" class="prebooked-list">
+          <mat-list-item *ngFor="let passenger of prebookedPassengers" class="prebooked-item">
+            <div class="passenger-details">
+              <div class="passenger-name">{{ passenger.passengerName }}</div>
+              <div class="passenger-info">
+                <span class="phone">{{ passenger.phoneNumber }}</span> |
+                <span class="email">{{ passenger.email }}</span> |
+                <span class="seats">Seats: {{ passenger.numberOfSeats }}</span>
+              </div>
+              <div class="booking-time">Booked: {{ passenger.bookingTime | date:'short' }}</div>
+            </div>
+            <button mat-icon-button color="primary" (click)="addPrebookedToTrip(passenger)" matTooltip="Add to Trip">
+              <mat-icon>add</mat-icon>
+            </button>
+          </mat-list-item>
+        </mat-list>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Passengers Section -->
+    <mat-card class="passengers-card">
+      <mat-card-header>
+        <mat-card-title>Passengers ({{ passengers.length }})</mat-card-title>
+        <mat-card-subtitle>Current passenger list for this schedule</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <div *ngIf="loadingPassengers" class="loading">
+          <mat-spinner diameter="30"></mat-spinner>
+          <p>Loading passengers...</p>
+        </div>
+
+        <div *ngIf="!loadingPassengers && passengers.length === 0" class="no-passengers">
+          <mat-icon>people_outline</mat-icon>
+          <p>No passengers captured yet</p>
+        </div>
+
+        <mat-list *ngIf="!loadingPassengers && passengers.length > 0" class="passengers-list">
+          <mat-list-item *ngFor="let passenger of passengers" class="passenger-item">
+            <div class="passenger-details">
+              <div class="passenger-name">{{ passenger.passengerName }}</div>
+              <div class="passenger-info">
+                <span class="phone">{{ passenger.passengerPhone }}</span> |
+                <span class="seat">Seat: {{ passenger.seatNumber }}</span> |
+                <span class="amount">R{{ passenger.amount }}</span>
+              </div>
+              <div class="passenger-notes" *ngIf="passenger.notes">{{ passenger.notes }}</div>
+              <div class="boarding-time">Boarded: {{ passenger.boardedAt | date:'short' }}</div>
+            </div>
+            <button mat-icon-button color="warn" (click)="removePassenger(passenger.id)" matTooltip="Remove Passenger">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </mat-list-item>
+
+          <!-- Add New Passenger Row -->
+          <mat-list-item class="add-passenger-row" [class.expanded]="showAddForm">
+            <div class="passenger-details" (click)="toggleAddForm()">
+              <div class="add-passenger-placeholder">
+                <mat-icon>add_circle</mat-icon>
+                <span>Add New Passenger</span>
+              </div>
+            </div>
+          </mat-list-item>
+
+          <!-- Inline Add Form -->
+          <mat-list-item *ngIf="showAddForm && passengerForm" class="add-form-row">
+            <div class="passenger-details">
+              <form [formGroup]="passengerForm" class="inline-form">
+                <div class="form-fields">
+                  <mat-form-field appearance="outline" class="inline-name">
+                    <mat-label>Name</mat-label>
+                    <input matInput formControlName="passengerName" placeholder="Passenger name">
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="inline-phone">
+                    <mat-label>Phone</mat-label>
+                    <input matInput formControlName="passengerPhone" placeholder="Phone number">
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="inline-destination">
+                    <mat-label>Destination</mat-label>
+                    <mat-select formControlName="destination">
+                      <mat-option *ngFor="let dest of availableDestinations" [value]="dest">
+                        {{ dest }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="inline-seat">
+                    <mat-label>Seat</mat-label>
+                    <input matInput formControlName="seatNumber" placeholder="Seat #">
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="inline-amount">
+                    <mat-label>Fare</mat-label>
+                    <input matInput type="number" formControlName="amount" placeholder="0">
+                  </mat-form-field>
+                </div>
+
+                <div class="form-actions">
+                  <button mat-stroked-button (click)="cancelAdd()">
+                    <mat-icon>cancel</mat-icon>
+                    Cancel
+                  </button>
+                  <button mat-raised-button color="primary" (click)="addPassenger()" [disabled]="passengerForm.invalid || loading">
+                    <mat-icon>check</mat-icon>
+                    Add Passenger
+                  </button>
+                </div>
+              </form>
+            </div>
+          </mat-list-item>
+        </mat-list>
+      </mat-card-content>
+    </mat-card>
+  </div>
+</div>

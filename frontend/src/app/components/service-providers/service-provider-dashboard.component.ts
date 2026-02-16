@@ -24,6 +24,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../services/auth.service';
+import { MessagingService } from '../../services/messaging.service';
 import { TrackingDeviceService } from '../../services/tracking-device.service';
 import { RoadsideAssistanceService } from '../../services/roadside-assistance.service';
 import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component';
@@ -269,6 +270,10 @@ interface Review {
           </div>
 
           <div class="right-section">
+            <button class="notifications-btn" (click)="navigateToMessages()" title="Messages">
+              <mat-icon [matBadge]="unreadMessages > 0 ? unreadMessages.toString() : null" [matBadgeHidden]="unreadMessages === 0" matBadgeColor="warn" matBadgeSize="small">mail</mat-icon>
+            </button>
+
             <button class="profile-btn" [matMenuTriggerFor]="profileMenu">
               <mat-icon>account_circle</mat-icon>
               <span class="profile-name" *ngIf="userData">{{ userData.fullName || userData.email }}</span>
@@ -635,6 +640,12 @@ interface Review {
       background: linear-gradient(135deg, #ffd93d 0%, #ffb700 100%);
       color: #1a1a1a;
       border-left: 6px solid #f59f00;
+    }
+
+    .alert-info {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-left: 6px solid #4c63d2;
     }
 
     .alert mat-icon {
@@ -2013,16 +2024,19 @@ interface Review {
 export class ServiceProviderDashboardComponent implements OnInit {
   userData: any;
   profile: ServiceProviderProfile | null = null;
+  dashboardData: any = null;
   scheduledAppointments: ScheduledAppointment[] = [];
   completedMaintenance: CompletedMaintenance[] = [];
   financialData: FinancialData | null = null;
   loading = true;
   sidebarCollapsed = false;
+  unreadMessages = 0;
   menuItems: any[] = [];
   
   // Marketplace requests
   trackingDeviceRequests: TrackingDeviceRequest[] = [];
   roadsideAssistanceRequests: RoadsideAssistanceRequest[] = [];
+  newServiceRequests: any[] = [];
   loadingMarketplace = false;
 
   // Calendar properties
@@ -2067,6 +2081,7 @@ export class ServiceProviderDashboardComponent implements OnInit {
     private router: Router,
     private snackBar: MatSnackBar,
     private authService: AuthService,
+    private messagingService: MessagingService,
     private trackingDeviceService: TrackingDeviceService,
     private roadsideAssistanceService: RoadsideAssistanceService
   ) {}
@@ -2078,11 +2093,12 @@ export class ServiceProviderDashboardComponent implements OnInit {
       this.userData = JSON.parse(user);
     }
     await this.loadDashboardData();
-    this.loadMenuItems(); // Load menu items after profile is loaded
     this.loadMarketplaceRequests();
+    this.loadNewServiceRequests();
     this.categorizeAppointments();
     this.generateCalendar();
     this.updateMonthDisplay();
+    this.loadUnreadMessages();
   }
 
   loadMarketplaceRequests(): void {
@@ -2131,8 +2147,65 @@ export class ServiceProviderDashboardComponent implements OnInit {
       if (item.title === 'Roadside Requests') {
         return { ...item, badge: this.roadsideAssistanceRequests.length > 0 ? this.roadsideAssistanceRequests.length.toString() : null };
       }
+      if (item.title === 'Service Requests') {
+        return { ...item, badge: this.newServiceRequests.length > 0 ? this.newServiceRequests.length.toString() : null };
+      }
       return item;
     });
+  }
+
+  loadNewServiceRequests(): void {
+    if (!this.profile) return;
+
+    // Combine all already loaded requests plus additional ones
+    const allRequests: any[] = [];
+
+    // Add already loaded tracking device requests
+    allRequests.push(...this.trackingDeviceRequests);
+
+    // Add already loaded roadside assistance requests
+    allRequests.push(...this.roadsideAssistanceRequests);
+
+    // Load mechanical requests
+    this.http.get<any[]>(`${environment.apiUrl}/MechanicalRequests`)
+      .toPromise()
+      .then(reqs => {
+        const mechanicalReqs = (reqs || []).filter(r => r.state !== 'Completed');
+        allRequests.push(...mechanicalReqs);
+
+        // Load stuff requests
+        this.http.get<any[]>(`${environment.apiUrl}/StuffRequests`)
+          .toPromise()
+          .then(stuffReqs => {
+            const pendingStuffReqs = (stuffReqs || []).filter(r => r.status === 'Pending');
+            allRequests.push(...pendingStuffReqs);
+
+            this.newServiceRequests = allRequests;
+            this.updateMenuBadges();
+          })
+          .catch(error => {
+            console.error('Error loading stuff requests:', error);
+            this.newServiceRequests = allRequests;
+            this.updateMenuBadges();
+          });
+      })
+      .catch(error => {
+        console.error('Error loading mechanical requests:', error);
+        // Load stuff requests anyway
+        this.http.get<any[]>(`${environment.apiUrl}/StuffRequests`)
+          .toPromise()
+          .then(stuffReqs => {
+            const pendingStuffReqs = (stuffReqs || []).filter(r => r.status === 'Pending');
+            allRequests.push(...pendingStuffReqs);
+            this.newServiceRequests = allRequests;
+            this.updateMenuBadges();
+          })
+          .catch(stuffError => {
+            console.error('Error loading stuff requests:', stuffError);
+            this.newServiceRequests = allRequests;
+            this.updateMenuBadges();
+          });
+      });
   }
 
   loadMenuItems(): void {
@@ -2144,20 +2217,13 @@ export class ServiceProviderDashboardComponent implements OnInit {
     // Service-specific menu items
     const serviceItems = [];
 
-    // Check if provider offers tracking device installation
+    // Check if provider offers services
     if (this.profile?.serviceTypes) {
       const serviceTypes = this.profile.serviceTypes.toLowerCase();
       
-      if (serviceTypes.includes('tracking device installation') || serviceTypes.includes('tracking')) {
-        serviceItems.push({ 
-          title: 'Tracking Devices', 
-          icon: 'gps_fixed', 
-          route: '/service-provider-dashboard/marketplace', 
-          badge: null 
-        });
-      }
+      // Removed Tracking Devices tab as requested
 
-      if (serviceTypes.includes('roadside assistance') || serviceTypes.includes('towing')) {
+      if (serviceTypes.includes('roadside') || serviceTypes.includes('towing')) {
         serviceItems.push({ 
           title: 'Roadside Assistance', 
           icon: 'local_shipping', 
@@ -2167,7 +2233,22 @@ export class ServiceProviderDashboardComponent implements OnInit {
       }
     }
 
+    // Add Service Requests menu item for all service providers
+    serviceItems.push({ 
+      title: 'Service Requests', 
+      icon: 'assignment', 
+      route: '/service-provider-dashboard/service-requests', 
+      badge: null 
+    });
+
     // Profile edit always shows at the end
+    const messagesItem = { 
+      title: 'Messages', 
+      icon: 'inbox', 
+      route: '/service-provider-dashboard/messages', 
+      badge: null 
+    };
+
     const profileItem = { 
       title: 'Edit Profile', 
       icon: 'edit', 
@@ -2175,7 +2256,7 @@ export class ServiceProviderDashboardComponent implements OnInit {
       badge: null 
     };
 
-    this.menuItems = [...baseItems, ...serviceItems, profileItem];
+    this.menuItems = [...baseItems, ...serviceItems, messagesItem, profileItem];
   }
 
   toggleSidebar(): void {
@@ -2192,6 +2273,10 @@ export class ServiceProviderDashboardComponent implements OnInit {
     this.router.navigate([route]);
   }
 
+  navigateToMessages(): void {
+    this.router.navigate(['/service-provider-dashboard/messages']);
+  }
+
   scrollToSection(section: string): void {
     const element = document.getElementById(section);
     if (element) {
@@ -2202,6 +2287,18 @@ export class ServiceProviderDashboardComponent implements OnInit {
   logout(): void {
     this.authService.logout();
     this.router.navigate(['/login']);
+  }
+
+  loadUnreadMessages(): void {
+    if (this.userData?.id || this.userData?.userId) {
+      const userId = this.userData.id || this.userData.userId;
+      this.messagingService.getUnreadCount(userId).subscribe({
+        next: (count) => {
+          this.unreadMessages = count;
+        },
+        error: (error) => console.error('Error loading unread messages:', error)
+      });
+    }
   }
 
   categorizeAppointments(): void {
@@ -2261,16 +2358,22 @@ export class ServiceProviderDashboardComponent implements OnInit {
       try {
         this.profile = await this.http.get<ServiceProviderProfile>(profileUrl).toPromise() as ServiceProviderProfile;
         console.log('Service provider profile loaded successfully:', this.profile);
+        
+        // Load menu items now that profile is available
+        this.loadMenuItems();
 
         // Load dashboard data if profile exists and has a business name
         if (this.profile && this.profile.businessName) {
           console.log('Loading dashboard data for business:', this.profile.businessName);
           try {
             const dashboardData = await this.http.get<any>(
-              `${environment.apiUrl}/ServiceProviderDashboard/${encodeURIComponent(this.profile.businessName)}`
+              `${environment.apiUrl}/ServiceProviderDashboard/user/${userId}`
             ).toPromise();
 
             console.log('Dashboard data loaded:', dashboardData);
+
+            // Store dashboard data
+            this.dashboardData = dashboardData;
 
             // Load appointments
             this.scheduledAppointments = dashboardData.upcomingAppointments?.appointments || [];
@@ -2283,8 +2386,12 @@ export class ServiceProviderDashboardComponent implements OnInit {
               this.reviews = dashboardData.reviews.items || [];
               
               // Update profile rating with average from reviews
-              if (this.profile && dashboardData.reviews.averageRating) {
-                this.profile.rating = dashboardData.reviews.averageRating;
+              if (this.profile) {
+                if (dashboardData.reviews.count > 0) {
+                  this.profile.rating = dashboardData.reviews.averageRating;
+                } else {
+                  this.profile.rating = undefined; // No reviews yet
+                }
               }
               
               // Calculate rating distribution
@@ -2339,26 +2446,13 @@ export class ServiceProviderDashboardComponent implements OnInit {
         
         // If profile doesn't exist yet (404), create a placeholder
         if (profileError.status === 404) {
-          console.log('Service provider profile not found - this may be a new registration');
-          this.profile = {
-            id: '',
-            businessName: user.fullName || 'Service Provider',
-            serviceTypes: 'General Maintenance',
-            isAvailable: true,
-            isActive: true,
-            totalJobs: 0,
-            completedJobs: 0
-          };
-          this.financialData = {
-            totalRevenue: 0,
-            last30DaysRevenue: 0,
-            last60DaysRevenue: 0,
-            revenueGrowth: 0,
-            totalJobsCompleted: 0,
-            averageJobValue: 0,
-            monthlyRevenue: []
-          };
-          this.snackBar.open('Welcome! Please complete your profile setup.', 'Close', { duration: 5000 });
+          console.log('Service provider profile not found - redirecting to profile creation');
+          this.snackBar.open('Please complete your service provider profile first.', 'Go to Profile', { duration: 5000 })
+            .onAction().subscribe(() => {
+              this.router.navigate(['/service-provider-profile/create']);
+            });
+          this.loading = false;
+          return;
         } else {
           throw profileError;
         }
@@ -2559,6 +2653,14 @@ export class ServiceProviderDashboardComponent implements OnInit {
   getMonthName(month: number): string {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return months[month - 1] || '';
+  }
+
+  navigateToRoadsideAssistance(): void {
+    this.router.navigate(['/service-provider-dashboard/roadside-assistance']);
+  }
+
+  navigateToServiceRequests(): void {
+    this.router.navigate(['/service-provider-dashboard/service-requests']);
   }
 
   async toggleAvailability(): Promise<void> {

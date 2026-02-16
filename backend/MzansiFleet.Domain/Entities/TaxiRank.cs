@@ -39,6 +39,7 @@ namespace MzansiFleet.Domain.Entities
         public ICollection<TaxiRankAdminProfile> Admins { get; set; } = new List<TaxiRankAdminProfile>();
         public ICollection<VehicleTaxiRank> AssignedVehicles { get; set; } = new List<VehicleTaxiRank>();
         public ICollection<TripSchedule> Schedules { get; set; } = new List<TripSchedule>();
+        public ICollection<DailyTaxiQueue> DailyQueues { get; set; } = new List<DailyTaxiQueue>();
         
         // Many-to-many relationship with Associations (Tenants)
         public ICollection<TaxiRankAssociation> Associations { get; set; } = new List<TaxiRankAssociation>();
@@ -145,8 +146,8 @@ namespace MzansiFleet.Domain.Entities
         public Guid Id { get; set; }
         public Guid TenantId { get; set; }
         public Guid VehicleId { get; set; }
-        public Guid DriverId { get; set; }
-        public Guid MarshalId { get; set; } // User ID of the marshal who captured this trip
+        public Guid? DriverId { get; set; }
+        public Guid? MarshalId { get; set; } // ID of the marshal profile who captured this trip
         public Guid TaxiRankId { get; set; } // The rank where this trip originated
         
         // Trip Details
@@ -172,7 +173,7 @@ namespace MzansiFleet.Domain.Entities
         // Navigation Properties
         public Vehicle? Vehicle { get; set; }
         public DriverProfile? Driver { get; set; }
-        public User? Marshal { get; set; }
+        public TaxiMarshalProfile? Marshal { get; set; }
         public TaxiRank? TaxiRank { get; set; }
         public ICollection<TripPassenger> Passengers { get; set; } = new List<TripPassenger>();
         public ICollection<TripCost> Costs { get; set; } = new List<TripCost>();
@@ -185,6 +186,7 @@ namespace MzansiFleet.Domain.Entities
     {
         public Guid Id { get; set; }
         public Guid TaxiRankTripId { get; set; }
+        public Guid UserId { get; set; } // User who made the booking
         
         // Passenger Details
         public string? PassengerName { get; set; }
@@ -204,6 +206,7 @@ namespace MzansiFleet.Domain.Entities
         
         // Navigation Property
         public TaxiRankTrip? TaxiRankTrip { get; set; }
+        public User? User { get; set; }
     }
 
     /// <summary>
@@ -227,6 +230,43 @@ namespace MzansiFleet.Domain.Entities
         // Navigation Properties
         public TaxiRankTrip? TaxiRankTrip { get; set; }
         public DriverProfile? AddedByDriver { get; set; }
+    }
+
+    /// <summary>
+    /// Daily queue of available taxis for a taxi rank
+    /// </summary>
+    public class DailyTaxiQueue
+    {
+        public Guid Id { get; set; }
+        public Guid TaxiRankId { get; set; }
+        public Guid VehicleId { get; set; }
+        public Guid? DriverId { get; set; }
+        public Guid TenantId { get; set; }
+        
+        // Queue Details
+        public DateTime QueueDate { get; set; } // Date for this queue entry
+        public TimeSpan AvailableFrom { get; set; } // When the taxi becomes available
+        public TimeSpan? AvailableUntil { get; set; } // When the taxi is no longer available
+        public int Priority { get; set; } = 1; // Priority in queue (1 = highest)
+        public string Status { get; set; } = "Available"; // Available, Assigned, OutOfService
+        
+        // Assignment Details (when taxi is assigned to a trip)
+        public Guid? AssignedTripId { get; set; } // ID of the trip this taxi was assigned to
+        public DateTime? AssignedAt { get; set; }
+        public Guid? AssignedByUserId { get; set; } // User who assigned this taxi
+        
+        // Metadata
+        public string? Notes { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
+        
+        // Navigation Properties
+        public TaxiRank? TaxiRank { get; set; }
+        public Vehicle? Vehicle { get; set; }
+        public DriverProfile? Driver { get; set; }
+        public User? AssignedByUser { get; set; }
+        public Trip? AssignedTrip { get; set; }
+        public Tenant? Tenant { get; set; }
     }
 
     /// <summary>

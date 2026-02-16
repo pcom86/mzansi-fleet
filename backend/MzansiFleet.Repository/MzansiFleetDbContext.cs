@@ -78,6 +78,9 @@ namespace MzansiFleet.Repository
         public DbSet<RentalOffer> RentalOffers { get; set; }
         public DbSet<VehicleRentalBooking> VehicleRentalBookings { get; set; }
         
+        // Messaging Module
+        public DbSet<Message> Messages { get; set; }
+        
         // Tracking Device Installation Module
         public DbSet<TrackingDeviceRequest> TrackingDeviceRequests { get; set; }
         public DbSet<TrackingDeviceOffer> TrackingDeviceOffers { get; set; }
@@ -133,6 +136,13 @@ namespace MzansiFleet.Repository
             modelBuilder.Entity<TripPassenger>().Property(t => t.Id).ValueGeneratedNever();
             modelBuilder.Entity<TripCost>().Property(t => t.Id).ValueGeneratedNever();
             modelBuilder.Entity<TaxiMarshalProfile>().Property(t => t.Id).ValueGeneratedNever();
+            
+            // Configure TaxiRankTrip foreign keys
+            modelBuilder.Entity<TaxiRankTrip>()
+                .HasOne(t => t.Marshal)
+                .WithMany()
+                .HasForeignKey(t => t.MarshalId)
+                .OnDelete(DeleteBehavior.SetNull);
             
             // Configure TaxiRankAssociation many-to-many relationship
             modelBuilder.Entity<TaxiRankAssociation>()
@@ -221,6 +231,16 @@ namespace MzansiFleet.Repository
                 .WithMany()
                 .HasForeignKey(r => r.ServiceProviderId)
                 .OnDelete(DeleteBehavior.SetNull);
+            
+            // Admin Dashboard Module - Trip and Passenger relationship
+            modelBuilder.Entity<Trip>()
+                .HasMany(t => t.Passengers)
+                .WithOne()
+                .HasForeignKey(p => p.TripId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            modelBuilder.Entity<Passenger>().Property(p => p.Id).ValueGeneratedNever();
+            modelBuilder.Entity<Trip>().Property(t => t.Id).ValueGeneratedNever();
         }
     }
 }

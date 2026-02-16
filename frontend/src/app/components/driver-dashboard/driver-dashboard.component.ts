@@ -21,6 +21,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { MessagingService } from '../../services/messaging.service';
 import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component';
 
 @Component({
@@ -60,6 +61,7 @@ export class DriverDashboardComponent implements OnInit {
   loadingRequests = false;
   sidebarCollapsed = false;
   unreadNotifications = 0;
+  unreadMessages = 0;
   tomorrowMaintenanceCount = 0;
   totalEarnings = 0;
   totalExpenses = 0;
@@ -75,11 +77,9 @@ export class DriverDashboardComponent implements OnInit {
 
   menuItems = [
     { title: 'Overview', icon: 'dashboard', route: 'overview' },
-    { title: 'My Vehicle', icon: 'directions_car', route: 'vehicle' },
-    { title: 'Earnings', icon: 'attach_money', route: 'earnings' },
-    { title: 'Expenses', icon: 'receipt', route: 'expenses' },
     { title: 'Maintenance', icon: 'build', route: 'maintenance', badge: '0' },
-    { title: 'Trip History', icon: 'map', route: 'trips' }
+    { title: 'Trip History', icon: 'map', route: 'trips' },
+    { title: 'Messages', icon: 'inbox', route: 'messages' }
   ];
 
   topMenuItems = [
@@ -91,6 +91,7 @@ export class DriverDashboardComponent implements OnInit {
     private router: Router,
     private route: ActivatedRoute,
     private http: HttpClient,
+    private messagingService: MessagingService,
     private dialog: MatDialog,
     private snackBar: MatSnackBar
   ) {}
@@ -101,6 +102,7 @@ export class DriverDashboardComponent implements OnInit {
       this.userData = JSON.parse(user);
     }
     this.loadDriverProfile();
+    this.loadUnreadMessages();
   }
 
   toggleSidebar(): void {
@@ -117,10 +119,26 @@ export class DriverDashboardComponent implements OnInit {
     this.router.navigate([route]);
   }
 
+  navigateToMessages(): void {
+    this.router.navigate(['/driver-dashboard/messages']);
+  }
+
   logout(): void {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     this.router.navigate(['/login']);
+  }
+
+  loadUnreadMessages(): void {
+    if (this.userData?.id || this.userData?.userId) {
+      const userId = this.userData.id || this.userData.userId;
+      this.messagingService.getUnreadCount(userId).subscribe({
+        next: (count) => {
+          this.unreadMessages = count;
+        },
+        error: (error) => console.error('Error loading unread messages:', error)
+      });
+    }
   }
 
   async loadDriverProfile() {

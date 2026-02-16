@@ -37,6 +37,35 @@ mat-card {
   }
 }
 
+.filters-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  background-color: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+
+  .filter-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .filter-field {
+      min-width: 200px;
+      flex: 1;
+    }
+
+    .clear-filters-btn {
+      align-self: flex-end;
+      min-width: 140px;
+    }
+  }
+}
+
 .loading-container {
   display: flex;
   flex-direction: column;

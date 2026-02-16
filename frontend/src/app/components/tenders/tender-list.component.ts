@@ -537,7 +537,15 @@ export class TenderListComponent implements OnInit {
   }
 
   viewTenderDetails(tenderId: string): void {
-    this.router.navigate(['/tenders', tenderId]);
+    // Check if we're in a dashboard context
+    const currentUrl = this.router.url;
+    if (currentUrl.includes('/owner-dashboard')) {
+      this.router.navigate(['/owner-dashboard/tenders', tenderId]);
+    } else if (currentUrl.includes('/user-dashboard')) {
+      this.router.navigate(['/user-dashboard/tenders', tenderId]);
+    } else {
+      this.router.navigate(['/tenders', tenderId]);
+    }
   }
 
   applyToTender(tenderId: string): void {
@@ -545,6 +553,14 @@ export class TenderListComponent implements OnInit {
   }
 
   navigateToPostTender(): void {
-    this.router.navigate(['/tenders/post']);
+    // Check if we're in a dashboard context
+    const currentUrl = this.router.url;
+    if (currentUrl.includes('/owner-dashboard')) {
+      this.router.navigate(['/owner-dashboard/tenders/post']);
+    } else if (currentUrl.includes('/user-dashboard')) {
+      this.router.navigate(['/user-dashboard/tenders/post']);
+    } else {
+      this.router.navigate(['/tenders/post']);
+    }
   }
 }

@@ -10,6 +10,10 @@ export interface RoadsideAssistanceRequest {
   vehicleMake?: string;
   vehicleModel?: string;
   
+  driverId?: string;
+  driverName?: string;
+  driverPhone?: string;
+  
   assistanceType: string;
   location: string;
   latitude?: string;

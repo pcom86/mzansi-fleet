@@ -4,6 +4,10 @@ import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatBadgeModule } from '@angular/material/badge';
+import { MatDividerModule } from '@angular/material/divider';
 import { environment } from '../../../../environments/environment';
 
 @Component({
@@ -12,10 +16,15 @@ import { environment } from '../../../../environments/environment';
   imports: [
     CommonModule,
     MatCardModule,
-    MatIconModule
+    MatIconModule,
+    MatButtonModule,
+    MatMenuModule,
+    MatBadgeModule,
+    MatDividerModule
   ],
   template: `
-    <div class="dashboard-cards">
+    <div class="marshal-dashboard">
+      <div class="dashboard-cards">
       <mat-card (click)="navigateToTripCapture()">
         <mat-card-header>
           <mat-card-title>
@@ -40,7 +49,7 @@ import { environment } from '../../../../environments/environment';
         </mat-card-content>
       </mat-card>
 
-      <mat-card>
+      <mat-card (click)="navigateToQueue()">
         <mat-card-header>
           <mat-card-title>
             <mat-icon>schedule</mat-icon>
@@ -109,6 +118,11 @@ import { environment } from '../../../../environments/environment';
       grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
       gap: 1.5rem;
       padding: 1.5rem;
+    }
+    .marshal-dashboard {
+      padding: 0 20px 20px 20px;
+      background-color: #f5f5f5;
+      min-height: 100vh;
     }
 
     mat-card {
@@ -249,5 +263,9 @@ export class MarshalOverviewComponent implements OnInit {
 
   navigateToTripHistory(): void {
     this.router.navigate(['/marshal-dashboard/trip-history']);
+  }
+
+  navigateToQueue(): void {
+    this.router.navigate(['/marshal-dashboard/queue']);
   }
 }

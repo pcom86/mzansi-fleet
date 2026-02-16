@@ -21,6 +21,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { HttpClient } from '@angular/common/http';
 import { AuthService, IdentityService } from '../../services';
 import { TenderService, Tender } from '../../services/tender.service';
+import { MessagingService } from '../../services/messaging.service';
 import { RentalMarketplaceComponent } from '../rental/rental-marketplace.component';
 import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component';
 import { ConfirmDialogComponent } from '../shared/confirm-dialog.component';
@@ -56,11 +57,12 @@ import { ConfirmDialogComponent } from '../shared/confirm-dialog.component';
 })
 export class OwnerDashboardComponent implements OnInit {
   userData: any;
-  ownerName: string = '';
+  companyName: string = 'Mzansi Fleet';
   sidebarCollapsed = false;
-  menuItems: any[] = [];
+  menuGroups: any[] = [];
   topMenuItems: any[] = [];
   unreadNotifications = 0;
+  unreadMessages = 0;
 
   tomorrowMaintenanceCount: number = 0;
   recentTenders: Tender[] = [];
@@ -77,6 +79,7 @@ export class OwnerDashboardComponent implements OnInit {
     private identityService: IdentityService,
     private http: HttpClient,
     private tenderService: TenderService,
+    private messagingService: MessagingService,
     private router: Router,
     private dialog: MatDialog
   ) {}
@@ -86,12 +89,13 @@ export class OwnerDashboardComponent implements OnInit {
     const user = localStorage.getItem('user');
     if (user) {
       this.userData = JSON.parse(user);
-      this.ownerName = this.userData.fullName || 'Fleet Owner';
+      // Company name is now hardcoded as 'Mzansi Fleet'
     }
     this.loadMaintenanceAlerts();
     this.loadRecentTenders();
     this.loadAllTenders();
     this.loadMenuItems();
+    this.loadUnreadMessages();
   }
 
   loadRecentTenders(): void {
@@ -205,7 +209,7 @@ export class OwnerDashboardComponent implements OnInit {
   }
 
   viewTenderDetails(tenderId: string): void {
-    this.router.navigate(['/tenders', tenderId]);
+    this.router.navigate(['/owner-dashboard/tenders', tenderId]);
   }
 
   applyToTender(tenderId: string): void {
@@ -239,8 +243,12 @@ export class OwnerDashboardComponent implements OnInit {
         }));
 
       this.tomorrowMaintenanceCount = this.countTomorrowMaintenance(ownerRequests);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading maintenance alerts:', error);
+      console.error('API URL:', this.apiUrl);
+      if (error.status === 404) {
+        console.error('404 Error - Endpoint not found. Check if backend is running on http://localhost:5000');
+      }
     }
   }
 
@@ -272,8 +280,16 @@ export class OwnerDashboardComponent implements OnInit {
     }
   }
 
+  toggleMenuGroup(group: any): void {
+    group.expanded = !group.expanded;
+  }
+
   navigateTo(route: string): void {
     this.router.navigate([route]);
+  }
+
+  navigateToMessages(): void {
+    this.router.navigate(['/owner-dashboard/messages']);
   }
 
   onTopMenuAction(action: string): void {
@@ -294,18 +310,54 @@ export class OwnerDashboardComponent implements OnInit {
   }
 
   private loadMenuItems(): void {
-    this.menuItems = [
-      { title: 'Dashboard', icon: 'dashboard', route: '/owner-dashboard', badge: null },
-      { title: 'Fleet Analytics', icon: 'analytics', route: '/owner-dashboard/analytics', badge: null },
-      { title: 'Vehicles', icon: 'directions_car', route: '/owner-dashboard/vehicles', badge: null },
-      { title: 'Drivers', icon: 'people', route: '/owner-dashboard/drivers', badge: null },
-      { title: 'Trips', icon: 'trip_origin', route: '/owner-dashboard/trips', badge: null },
-      { title: 'Maintenance', icon: 'build', route: '/owner-dashboard/maintenance', badge: this.tomorrowMaintenanceCount > 0 ? this.tomorrowMaintenanceCount.toString() : null },
-      { title: 'Tracking Device', icon: 'gps_fixed', route: '/owner-dashboard/tracking-device', badge: null },
-      { title: 'Roadside Assistance', icon: 'emergency', route: '/owner-dashboard/roadside-assistance', badge: null },
-      { title: 'Tenders', icon: 'description', route: '/owner-dashboard/tenders', badge: null },
-      { title: 'Rentals', icon: 'car_rental', route: '/owner-dashboard/rental/marketplace', badge: null },
-      { title: 'Users', icon: 'group', route: '/identity/users', badge: null }
+    this.menuGroups = [
+      {
+        title: 'Overview',
+        icon: 'dashboard',
+        expanded: true,
+        items: [
+          { title: 'Dashboard', icon: 'dashboard', route: '/owner-dashboard', badge: null },
+          { title: 'Fleet Analytics', icon: 'analytics', route: '/owner-dashboard/analytics', badge: null }
+        ]
+      },
+      {
+        title: 'Fleet Management',
+        icon: 'directions_car',
+        expanded: true,
+        items: [
+          { title: 'Vehicles', icon: 'directions_car', route: '/owner-dashboard/vehicles', badge: null },
+          { title: 'Drivers', icon: 'people', route: '/owner-dashboard/drivers', badge: null },
+          { title: 'Trips', icon: 'trip_origin', route: '/owner-dashboard/trips', badge: null }
+        ]
+      },
+      {
+        title: 'Operations',
+        icon: 'build',
+        expanded: true,
+        items: [
+          { title: 'Maintenance', icon: 'build', route: '/owner-dashboard/maintenance', badge: this.tomorrowMaintenanceCount > 0 ? this.tomorrowMaintenanceCount.toString() : null },
+          { title: 'Tracking Device', icon: 'gps_fixed', route: '/owner-dashboard/tracking-device', badge: null },
+          { title: 'Roadside Assistance', icon: 'emergency', route: '/owner-dashboard/roadside-assistance', badge: null }
+        ]
+      },
+      {
+        title: 'Business',
+        icon: 'business',
+        expanded: false,
+        items: [
+          { title: 'Tenders', icon: 'description', route: '/owner-dashboard/tenders', badge: null },
+          { title: 'Rentals', icon: 'car_rental', route: '/owner-dashboard/rental/marketplace', badge: null }
+        ]
+      },
+      {
+        title: 'Communication',
+        icon: 'message',
+        expanded: false,
+        items: [
+          { title: 'Messages', icon: 'inbox', route: '/owner-dashboard/messages', badge: null },
+          { title: 'Users', icon: 'group', route: '/identity/users', badge: null }
+        ]
+      }
     ];
 
     this.topMenuItems = [
@@ -314,6 +366,22 @@ export class OwnerDashboardComponent implements OnInit {
       { title: 'Trips', icon: 'trip_origin', action: 'trips', badge: null },
       { title: 'Maintenance', icon: 'build', action: 'maintenance', badge: this.tomorrowMaintenanceCount > 0 ? this.tomorrowMaintenanceCount.toString() : null }
     ];
+  }
+
+  loadUnreadMessages(): void {
+    if (this.userData?.id || this.userData?.userId) {
+      const userId = this.userData.id || this.userData.userId;
+      this.messagingService.getUnreadCount(userId).subscribe({
+        next: (count) => {
+          this.unreadMessages = count;
+        },
+        error: (error) => console.error('Error loading unread messages:', error)
+      });
+    }
+  }
+
+  isMobileView(): boolean {
+    return window.innerWidth <= 430;
   }
 }
 

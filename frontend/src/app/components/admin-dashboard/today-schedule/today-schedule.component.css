@@ -1,0 +1,48 @@
+.today-schedule-container {
+  padding: 20px;
+}
+
+.schedules-table {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.no-schedules {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.no-data-icon {
+  font-size: 48px;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.status-scheduled {
+  color: #2196f3;
+  font-weight: 500;
+}
+
+.status-in-progress {
+  color: #ff9800;
+  font-weight: 500;
+}
+
+.status-completed {
+  color: #4caf50;
+  font-weight: 500;
+}
+
+.status-cancelled {
+  color: #f44336;
+  font-weight: 500;
+}

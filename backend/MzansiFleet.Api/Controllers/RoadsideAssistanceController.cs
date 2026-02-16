@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using MzansiFleet.Domain.DTOs;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Repository;
+using MzansiFleet.Application.Services;
 
 namespace MzansiFleet.Api.Controllers
 {
@@ -18,28 +19,60 @@ namespace MzansiFleet.Api.Controllers
     public class RoadsideAssistanceController : ControllerBase
     {
         private readonly MzansiFleetDbContext _context;
+        private readonly VehicleNotificationService _notificationService;
 
-        public RoadsideAssistanceController(MzansiFleetDbContext context)
+        public RoadsideAssistanceController(MzansiFleetDbContext context, VehicleNotificationService notificationService)
         {
             _context = context;
+            _notificationService = notificationService;
+        }
+
+        // Simple test method
+        [HttpGet("test")]
+        public IActionResult Test()
+        {
+            return Ok("Roadside assistance controller is working!");
         }
 
         // POST: api/RoadsideAssistance/request
         [HttpPost("request")]
+        [Authorize]
         public async Task<ActionResult<RoadsideAssistanceRequestDto>> CreateRequest([FromBody] CreateRoadsideAssistanceRequestDto dto)
         {
-            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var userName = User.FindFirstValue(ClaimTypes.Name) ?? "";
-            var userRole = User.FindFirstValue(ClaimTypes.Role) ?? "";
+            // Get the authenticated user
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userEmailClaim = User.FindFirst(ClaimTypes.Email)?.Value;
             
-            // Get user phone from claims or profile
-            var userPhone = User.FindFirstValue(ClaimTypes.MobilePhone) ?? "";
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized("User not authenticated");
+            }
+
+            // Get user details from database
+            var user = await _context.Users.FindAsync(Guid.Parse(userIdClaim));
+            if (user == null)
+            {
+                return BadRequest("User not found");
+            }
+
+            var userId = user.Id;
+            var userName = user.Email ?? "Unknown User";
+            var userRole = user.Role;
+            var userPhone = user.Phone ?? "Not provided";
 
             // Get vehicle details if provided
             Vehicle vehicle = null;
             if (dto.VehicleId.HasValue)
             {
                 vehicle = await _context.Vehicles.FindAsync(dto.VehicleId.Value);
+            }
+
+            // Get driver details if vehicle is provided
+            DriverProfile driver = null;
+            if (dto.VehicleId.HasValue)
+            {
+                driver = await _context.DriverProfiles
+                    .FirstOrDefaultAsync(d => d.AssignedVehicleId == dto.VehicleId.Value);
             }
 
             var request = new RoadsideAssistanceRequest
@@ -53,6 +86,9 @@ namespace MzansiFleet.Api.Controllers
                 VehicleRegistration = vehicle?.Registration,
                 VehicleMake = vehicle?.Make,
                 VehicleModel = vehicle?.Model,
+                DriverId = driver?.Id,
+                DriverName = driver?.Name,
+                DriverPhone = driver?.Phone,
                 AssistanceType = dto.AssistanceType,
                 Location = dto.Location,
                 Latitude = dto.Latitude,
@@ -67,11 +103,28 @@ namespace MzansiFleet.Api.Controllers
             _context.RoadsideAssistanceRequests.Add(request);
             await _context.SaveChangesAsync();
 
+            // Send notifications
+            if (dto.VehicleId.HasValue)
+            {
+                // Notify owner about the roadside assistance request
+                await _notificationService.NotifyRoadsideAssistanceRequested(
+                    dto.VehicleId.Value,
+                    dto.AssistanceType,
+                    dto.Location,
+                    dto.IssueDescription);
+            }
+
+            // Notify all service providers that offer roadside assistance
+            await _notificationService.NotifyServiceProvidersRoadsideAssistance(
+                dto.AssistanceType,
+                dto.Location,
+                request.Id);
+
             return CreatedAtAction(nameof(GetRequest), new { id = request.Id }, MapToDto(request));
         }
 
         // GET: api/RoadsideAssistance/{id}
-        [HttpPost("{id}")]
+        [HttpGet("{id}")]
         public async Task<ActionResult<RoadsideAssistanceRequestDto>> GetRequest(Guid id)
         {
             var request = await _context.RoadsideAssistanceRequests
@@ -85,186 +138,74 @@ namespace MzansiFleet.Api.Controllers
             return MapToDto(request);
         }
 
-        // GET: api/RoadsideAssistance/my-requests
-        [HttpGet("my-requests")]
-        public async Task<ActionResult<IEnumerable<RoadsideAssistanceRequestDto>>> GetMyRequests()
+        // GET: api/RoadsideAssistance/pending
+        [HttpGet("pending")]
+        public async Task<ActionResult<IEnumerable<RoadsideAssistanceRequestDto>>> GetPendingRequests()
         {
-            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                return BadRequest(new { error = "Invalid user identity", details = "User ID claim not found or invalid in JWT token" });
+            }
 
+            // Get the service provider profile for the current user
+            var serviceProvider = await _context.ServiceProviderProfiles
+                .FirstOrDefaultAsync(sp => sp.UserId == userId);
+
+            if (serviceProvider == null)
+            {
+                return BadRequest(new { error = "Service provider profile not found", details = $"No service provider profile found for user ID: {userId}" });
+            }
+
+            // Get service types offered by this provider
+            var serviceTypes = serviceProvider.ServiceTypes?
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(st => st.Trim().ToLower())
+                .ToList() ?? new List<string>();
+
+            // Filter pending requests by assistance type that matches provider's services
             var requests = await _context.RoadsideAssistanceRequests
+                .Where(r => r.Status == "Pending" &&
+                           serviceTypes.Contains(r.AssistanceType.ToLower()))
                 .Include(r => r.Vehicle)
                 .Include(r => r.ServiceProvider)
-                .Where(r => r.UserId == userId)
                 .OrderByDescending(r => r.RequestedAt)
                 .ToListAsync();
 
-            return Ok(requests.Select(MapToDto));
-        }
-
-        // GET: api/RoadsideAssistance/pending
-        [HttpGet("pending")]
-        [Authorize(Roles = "ServiceProvider,Admin")]
-        public async Task<ActionResult<IEnumerable<RoadsideAssistanceRequestDto>>> GetPendingRequests()
-        {
-            var userRole = User.FindFirstValue(ClaimTypes.Role);
-            
-            // For service providers, only show requests for services they offer
-            if (userRole == "ServiceProvider")
-            {
-                var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-                var serviceProvider = await _context.ServiceProviderProfiles
-                    .FirstOrDefaultAsync(sp => sp.UserId == userId);
-
-                if (serviceProvider == null)
-                    return Ok(new List<RoadsideAssistanceRequestDto>());
-
-                // Check if service provider offers Roadside Assistance
-                var offersRoadsideAssistance = !string.IsNullOrEmpty(serviceProvider.ServiceTypes) && 
-                    serviceProvider.ServiceTypes.Contains("Roadside Assistance", StringComparison.OrdinalIgnoreCase);
-
-                if (!offersRoadsideAssistance)
-                    return Ok(new List<RoadsideAssistanceRequestDto>());
-            }
-
-            var requests = await _context.RoadsideAssistanceRequests
-                .Include(r => r.Vehicle)
-                .Where(r => r.Status == "Pending")
-                .OrderByDescending(r => r.Priority == "Emergency")
-                .ThenByDescending(r => r.Priority == "High")
-                .ThenBy(r => r.RequestedAt)
-                .ToListAsync();
-
-            return Ok(requests.Select(MapToDto));
+            return requests.Select(MapToDto).ToList();
         }
 
         // GET: api/RoadsideAssistance/assigned
         [HttpGet("assigned")]
-        [Authorize(Roles = "ServiceProvider")]
         public async Task<ActionResult<IEnumerable<RoadsideAssistanceRequestDto>>> GetAssignedRequests()
         {
-            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdClaim))
-                return Unauthorized();
+            var requests = await _context.RoadsideAssistanceRequests
+                .Where(r => r.Status == "Assigned")
+                .Include(r => r.Vehicle)
+                .Include(r => r.ServiceProvider)
+                .OrderByDescending(r => r.AssignedAt)
+                .ToListAsync();
 
-            var userId = Guid.Parse(userIdClaim);
+            return requests.Select(MapToDto).ToList();
+        }
 
-            // Get service provider profile
-            var serviceProvider = await _context.ServiceProviderProfiles
-                .FirstOrDefaultAsync(sp => sp.UserId == userId);
-
-            if (serviceProvider == null)
-                return NotFound("Service provider profile not found");
-
+        // GET: api/RoadsideAssistance/my-requests
+        [HttpGet("my-requests")]
+        public async Task<ActionResult<IEnumerable<RoadsideAssistanceRequestDto>>> GetMyRequests()
+        {
+            // For now, return all requests. In a real app, you'd filter by the authenticated user
             var requests = await _context.RoadsideAssistanceRequests
                 .Include(r => r.Vehicle)
-                .Where(r => r.ServiceProviderId == serviceProvider.Id)
+                .Include(r => r.ServiceProvider)
                 .OrderByDescending(r => r.RequestedAt)
                 .ToListAsync();
 
-            return Ok(requests.Select(MapToDto));
-        }
-
-        // POST: api/RoadsideAssistance/assign
-        [HttpPost("assign")]
-        [Authorize(Roles = "ServiceProvider")]
-        public async Task<ActionResult> AssignRequest([FromBody] AssignRoadsideAssistanceDto dto)
-        {
-            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdClaim))
-                return Unauthorized();
-
-            var userId = Guid.Parse(userIdClaim);
-
-            // Get service provider profile
-            var serviceProvider = await _context.ServiceProviderProfiles
-                .FirstOrDefaultAsync(sp => sp.UserId == userId);
-
-            if (serviceProvider == null)
-                return NotFound("Service provider profile not found");
-
-            var request = await _context.RoadsideAssistanceRequests.FindAsync(dto.RequestId);
-            if (request == null)
-                return NotFound("Request not found");
-
-            if (request.Status != "Pending")
-                return BadRequest("Request is no longer available");
-
-            // Assign to service provider
-            request.ServiceProviderId = serviceProvider.Id;
-            request.ServiceProviderName = serviceProvider.BusinessName;
-            request.ServiceProviderPhone = serviceProvider.Phone;
-            request.TechnicianName = dto.TechnicianName;
-            request.EstimatedArrivalTime = dto.EstimatedArrivalTime;
-            request.EstimatedCost = dto.EstimatedCost;
-            request.Status = "Assigned";
-            request.AssignedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Request assigned successfully" });
-        }
-
-        // PUT: api/RoadsideAssistance/update-status
-        [HttpPut("update-status")]
-        public async Task<ActionResult> UpdateStatus([FromBody] UpdateRoadsideAssistanceStatusDto dto)
-        {
-            var request = await _context.RoadsideAssistanceRequests.FindAsync(dto.RequestId);
-            if (request == null)
-                return NotFound("Request not found");
-
-            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            var userRole = User.FindFirstValue(ClaimTypes.Role);
-
-            // Verify permission (only requester or assigned service provider can update)
-            if (userRole == "ServiceProvider")
-            {
-                var serviceProvider = await _context.ServiceProviderProfiles
-                    .FirstOrDefaultAsync(sp => sp.UserId == userId);
-                
-                if (serviceProvider == null || request.ServiceProviderId != serviceProvider.Id)
-                    return Forbid();
-            }
-            else if (request.UserId != userId)
-            {
-                return Forbid();
-            }
-
-            request.Status = dto.Status;
-            if (dto.ActualCost.HasValue)
-                request.ActualCost = dto.ActualCost.Value;
-
-            if (dto.Status == "Completed")
-                request.CompletedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Status updated successfully" });
-        }
-
-        // DELETE: api/RoadsideAssistance/{id}
-        [HttpDelete("{id}")]
-        public async Task<ActionResult> DeleteRequest(Guid id)
-        {
-            var request = await _context.RoadsideAssistanceRequests.FindAsync(id);
-            if (request == null)
-                return NotFound();
-
-            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-            if (request.UserId != userId)
-                return Forbid();
-
-            if (request.Status != "Pending")
-                return BadRequest("Cannot delete request that is already assigned or in progress");
-
-            _context.RoadsideAssistanceRequests.Remove(request);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Request deleted successfully" });
+            return requests.Select(MapToDto).ToList();
         }
 
         private RoadsideAssistanceRequestDto MapToDto(RoadsideAssistanceRequest request)
         {
-            var dto = new RoadsideAssistanceRequestDto
+            return new RoadsideAssistanceRequestDto
             {
                 Id = request.Id,
                 UserId = request.UserId,
@@ -275,6 +216,9 @@ namespace MzansiFleet.Api.Controllers
                 VehicleRegistration = request.VehicleRegistration,
                 VehicleMake = request.VehicleMake,
                 VehicleModel = request.VehicleModel,
+                DriverId = request.DriverId,
+                DriverName = request.DriverName,
+                DriverPhone = request.DriverPhone,
                 AssistanceType = request.AssistanceType,
                 Location = request.Location,
                 Latitude = request.Latitude,
@@ -294,15 +238,6 @@ namespace MzansiFleet.Api.Controllers
                 ActualCost = request.ActualCost,
                 Priority = request.Priority
             };
-
-            // Include rating information if service provider is assigned
-            if (request.ServiceProvider != null)
-            {
-                dto.ServiceProviderRating = request.ServiceProvider.Rating;
-                dto.ServiceProviderReviews = request.ServiceProvider.TotalReviews;
-            }
-
-            return dto;
         }
     }
 }

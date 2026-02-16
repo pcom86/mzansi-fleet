@@ -63,20 +63,25 @@
         </div>
 
         <div class="form-row">
-          <mat-form-field appearance="outline" class="third-width">
+          <mat-form-field appearance="outline" class="half-width">
             <mat-label>Distance (km)</mat-label>
             <input matInput type="number" formControlName="distance" placeholder="0">
           </mat-form-field>
 
-          <mat-form-field appearance="outline" class="third-width">
+          <mat-form-field appearance="outline" class="half-width">
             <mat-label>Duration (minutes)</mat-label>
             <input matInput type="number" formControlName="estimatedDuration" placeholder="0">
           </mat-form-field>
+        </div>
 
-          <mat-form-field appearance="outline" class="third-width">
-            <mat-label>Fare Amount (R)</mat-label>
-            <input matInput type="number" formControlName="fareAmount" placeholder="0.00">
-          </mat-form-field>
+        <div class="destination-fares-section" *ngIf="getAllDestinations().length > 0">
+          <h4>Fare Amounts per Destination</h4>
+          <div class="fares-grid">
+            <mat-form-field appearance="outline" class="fare-field" *ngFor="let dest of getAllDestinations()" [formGroup]="destinationFaresFormGroup">
+              <mat-label>Fare to {{ dest }} (R)</mat-label>
+              <input matInput type="number" [formControlName]="dest" placeholder="0.00">
+            </mat-form-field>
+          </div>
         </div>
 
         <div class="form-actions">

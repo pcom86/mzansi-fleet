@@ -421,9 +421,12 @@ export class LoginComponent {
       } else if (response.role === 'ServiceProvider') {
         console.log('Redirecting to service provider dashboard');
         navigationPromise = this.router.navigate(['/service-provider-dashboard']);
-      } else if (response.role === 'TaxiRankAdmin') {
-        console.log('Redirecting to admin dashboard');
+      } else if (response.role === 'Admin') {
+        console.log('Redirecting to system admin dashboard');
         navigationPromise = this.router.navigate(['/admin/overview']);
+      } else if (response.role === 'TaxiRankAdmin') {
+        console.log('Redirecting to taxi rank admin dashboard');
+        navigationPromise = this.router.navigate(['/admin/rank-overview']);
       } else if (response.role === 'TaxiMarshal') {
         console.log('Redirecting to marshal dashboard');
         navigationPromise = this.router.navigate(['/marshal-dashboard']);

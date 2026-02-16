@@ -1,0 +1,170 @@
+<div class="profile-container" *ngIf="!isLoading; else loadingTemplate">
+  <div class="profile-header">
+    <mat-icon class="profile-avatar">account_circle</mat-icon>
+    <div class="profile-info">
+      <h1>{{ userProfile?.fullName || userProfile?.email }}</h1>
+      <p class="role-badge">{{ getRoleDisplayName(userProfile?.role || '') }}</p>
+    </div>
+  </div>
+
+  <mat-card class="profile-card">
+    <mat-card-content>
+      <mat-tab-group [(selectedIndex)]="activeTab">
+        <!-- Profile Information Tab -->
+        <mat-tab label="Profile Information">
+          <div class="tab-content">
+            <form class="profile-form">
+              <div class="form-row">
+                <mat-form-field appearance="outline" class="form-field">
+                  <mat-label>Full Name</mat-label>
+                  <input matInput [(ngModel)]="userProfile!.fullName" name="fullName" placeholder="Enter your full name">
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="form-field">
+                  <mat-label>Email</mat-label>
+                  <input matInput [value]="userProfile?.email" readonly name="email">
+                  <mat-hint>Email cannot be changed</mat-hint>
+                </mat-form-field>
+              </div>
+
+              <div class="form-row">
+                <mat-form-field appearance="outline" class="form-field">
+                  <mat-label>Phone Number</mat-label>
+                  <input matInput [(ngModel)]="userProfile!.phoneNumber" name="phoneNumber" placeholder="Enter your phone number">
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="form-field">
+                  <mat-label>Role</mat-label>
+                  <input matInput [value]="getRoleDisplayName(userProfile?.role || '')" readonly name="role">
+                </mat-form-field>
+              </div>
+
+              <!-- Role-specific fields -->
+              <div *ngIf="userProfile?.profile" class="role-specific-section">
+                <mat-divider></mat-divider>
+                <h3>{{ getRoleDisplayName(userProfile!.role) }} Details</h3>
+
+                <!-- Driver Profile -->
+                <div *ngIf="userProfile!.role.toLowerCase() === 'driver'" class="role-fields">
+                  <div class="form-row">
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>License Number</mat-label>
+                      <input matInput [(ngModel)]="userProfile!.profile.licenseNumber" name="licenseNumber">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Vehicle Registration</mat-label>
+                      <input matInput [(ngModel)]="userProfile!.profile.vehicleRegistration" name="vehicleRegistration">
+                    </mat-form-field>
+                  </div>
+                </div>
+
+                <!-- Owner Profile -->
+                <div *ngIf="userProfile!.role.toLowerCase() === 'owner'" class="role-fields">
+                  <div class="form-row">
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Business Name</mat-label>
+                      <input matInput [(ngModel)]="userProfile!.profile.businessName" name="businessName">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Contact Name</mat-label>
+                      <input matInput [(ngModel)]="userProfile!.profile.contactName" name="contactName">
+                    </mat-form-field>
+                  </div>
+                </div>
+
+                <!-- Service Provider Profile -->
+                <div *ngIf="userProfile!.role.toLowerCase() === 'serviceprovider'" class="role-fields">
+                  <div class="form-row">
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Business Name</mat-label>
+                      <input matInput [(ngModel)]="userProfile!.profile.businessName" name="businessName">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Service Types</mat-label>
+                      <input matInput [value]="userProfile!.profile.serviceTypes" readonly name="serviceTypes">
+                      <mat-hint>Contact admin to change service types</mat-hint>
+                    </mat-form-field>
+                  </div>
+                </div>
+
+                <!-- Taxi Rank Admin Profile -->
+                <div *ngIf="userProfile!.role.toLowerCase() === 'taxirankadmin'" class="role-fields">
+                  <div class="form-row">
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Full Name</mat-label>
+                      <input matInput [(ngModel)]="userProfile!.profile.fullName" name="fullName">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Rank Name</mat-label>
+                      <input matInput [value]="userProfile!.profile.rankName" readonly name="rankName">
+                    </mat-form-field>
+                  </div>
+                </div>
+
+                <!-- Taxi Marshal Profile -->
+                <div *ngIf="userProfile!.role.toLowerCase() === 'taximarshal'" class="role-fields">
+                  <div class="form-row">
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Full Name</mat-label>
+                      <input matInput [(ngModel)]="userProfile!.profile.fullName" name="fullName">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="form-field">
+                      <mat-label>Rank Name</mat-label>
+                      <input matInput [value]="userProfile!.profile.rankName" readonly name="rankName">
+                    </mat-form-field>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button mat-raised-button color="primary" (click)="saveProfile()" [disabled]="isSaving">
+                  <mat-icon *ngIf="isSaving">refresh</mat-icon>
+                  <mat-icon *ngIf="!isSaving">save</mat-icon>
+                  {{ isSaving ? 'Saving...' : 'Save Profile' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </mat-tab>
+
+        <!-- Change Password Tab -->
+        <mat-tab label="Change Password">
+          <div class="tab-content">
+            <form class="password-form">
+              <mat-form-field appearance="outline" class="form-field full-width">
+                <mat-label>Current Password</mat-label>
+                <input matInput type="password" [(ngModel)]="passwordForm.currentPassword" name="currentPassword" required>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="form-field full-width">
+                <mat-label>New Password</mat-label>
+                <input matInput type="password" [(ngModel)]="passwordForm.newPassword" name="newPassword" required>
+                <mat-hint>Password must be at least 6 characters long</mat-hint>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="form-field full-width">
+                <mat-label>Confirm New Password</mat-label>
+                <input matInput type="password" [(ngModel)]="passwordForm.confirmPassword" name="confirmPassword" required>
+              </mat-form-field>
+
+              <div class="form-actions">
+                <button mat-raised-button color="primary" (click)="changePassword()" [disabled]="isSaving">
+                  <mat-icon *ngIf="isSaving">refresh</mat-icon>
+                  <mat-icon *ngIf="!isSaving">lock</mat-icon>
+                  {{ isSaving ? 'Changing...' : 'Change Password' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+    </mat-card-content>
+  </mat-card>
+</div>
+
+<ng-template #loadingTemplate>
+  <div class="loading-container">
+    <mat-spinner diameter="50"></mat-spinner>
+    <p>Loading profile...</p>
+  </div>
+</ng-template>

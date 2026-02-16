@@ -13,6 +13,11 @@ import { MatTabsModule, MatTabGroup } from '@angular/material/tabs';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatNativeDateModule } from '@angular/material/core';
+import { FormsModule } from '@angular/forms';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { ScheduleServiceDialogComponent } from '../maintenance/schedule-service-dialog.component';
 
@@ -34,7 +39,12 @@ Chart.register(...registerables);
     MatTooltipModule,
     MatTabsModule,
     MatMenuModule,
-    MatSnackBarModule
+    MatSnackBarModule,
+    MatDatepickerModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatNativeDateModule,
+    FormsModule
   ],
   template: `
     <div class="owner-dashboard">
@@ -130,6 +140,32 @@ Chart.register(...registerables);
                 </mat-card>
               </div>
 
+              <!-- Date Filter for Fleet Earnings Chart -->
+              <mat-card class="filter-card" style="margin-bottom: 16px;">
+                <mat-card-content style="padding: 16px;">
+                  <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <mat-form-field style="width: 140px;">
+                      <mat-label>Start Date</mat-label>
+                      <input matInput [matDatepicker]="startPicker" [(ngModel)]="filterStartDate">
+                      <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+                      <mat-datepicker #startPicker></mat-datepicker>
+                    </mat-form-field>
+                    
+                    <mat-form-field style="width: 140px;">
+                      <mat-label>End Date</mat-label>
+                      <input matInput [matDatepicker]="endPicker" [(ngModel)]="filterEndDate">
+                      <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+                      <mat-datepicker #endPicker></mat-datepicker>
+                    </mat-form-field>
+                    
+                    <button mat-raised-button color="primary" (click)="applyDateFilter()" style="height: 40px;">
+                      <mat-icon>filter_list</mat-icon>
+                      Apply Filter
+                    </button>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
               <!-- Fleet Earnings vs Expenses Chart -->
               <mat-card class="chart-card">
                 <mat-card-header style="display: flex; align-items: flex-start;">
@@ -158,7 +194,7 @@ Chart.register(...registerables);
                     <div style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);">
                       <mat-icon style="color: white; font-size: 18px; width: 18px; height: 18px;">calendar_today</mat-icon>
                       <span style="font-size: 0.875rem; font-weight: 600; color: white; letter-spacing: 0.3px;">
-                        {{ periodStartDate | date: 'MMM d' }} - {{ periodEndDate | date: 'MMM d, yyyy' }}
+                        {{ filterStartDate | date: 'MMM d' }} - {{ filterEndDate | date: 'MMM d, yyyy' }}
                       </span>
                     </div>
                   </div>
@@ -749,13 +785,22 @@ Chart.register(...registerables);
     }
 
     .tab-content {
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
+        padding: 15px;
+      }
 
-    /* Metrics */
+      .dashboard-tabs {
+        font-size: 14px;
+      }
+
+      .dashboard-tabs .mat-tab-header {
+        height: 48px;
+      }
+
+      .dashboard-tabs .mat-tab-label {
+        min-width: 80px;
+        padding: 0 12px;
+        font-size: 13px;
+      }
     .metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -1192,17 +1237,1029 @@ Chart.register(...registerables);
     }
 
     @media (max-width: 768px) {
+      .owner-dashboard {
+        padding: 15px;
+      }
+
       .dashboard-header {
         flex-direction: column;
         gap: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      .welcome-section h1 {
+        font-size: 2.2rem;
+      }
+
+      .welcome-section p {
+        font-size: 1rem;
+      }
+
+      .alert-banner {
+        flex-direction: column;
+        text-align: center;
+        padding: 20px;
+        gap: 15px;
+      }
+
+      .alert-banner .alert-close {
+        display: none;
+      }
+
+      .tab-content {
+        padding: 20px;
+      }
+
+      .metrics-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 15px;
+      }
+
+      .metric-card mat-card-content {
+        padding: 18px !important;
+      }
+
+      .metric-icon {
+        width: 55px;
+        height: 55px;
+      }
+
+      .metric-icon mat-icon {
+        font-size: 30px;
+        width: 30px;
+        height: 30px;
+      }
+
+      .metric-info h3 {
+        font-size: 0.85rem;
+      }
+
+      .metric-info h2 {
+        font-size: 1.6rem;
+      }
+
+      .metric-detail {
+        font-size: 0.8rem;
+      }
+
+      .chart-container {
+        height: 350px;
+        padding: 20px;
+      }
+
+      .filter-card mat-card-content {
+        padding: 16px !important;
+      }
+
+      .filter-card mat-form-field {
+        width: 140px;
+      }
+
+      .filter-card button {
+        height: 40px;
       }
 
       .featured-vehicle {
         flex-direction: column;
+        gap: 25px;
+      }
+
+      .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .vehicles-table,
+      .performance-table,
+      .maintenance-table {
+        min-width: 650px;
+        font-size: 14px;
+      }
+
+      .vehicles-table .mat-header-cell,
+      .vehicles-table .mat-cell,
+      .performance-table .mat-header-cell,
+      .performance-table .mat-cell,
+      .maintenance-table .mat-header-cell,
+      .maintenance-table .mat-cell {
+        padding: 10px 6px;
+      }
+
+      .vehicle-details-cell {
+        min-width: 200px;
+      }
+
+      .status-column {
+        min-width: 100px;
+      }
+
+      .health-column {
+        min-width: 100px;
+      }
+
+      .driver-cell {
+        min-width: 120px;
+      }
+
+      .profit-column {
+        min-width: 100px;
+      }
+
+      .forecast-summary {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 16px;
+      }
+
+      .forecast-item {
+        padding: 20px;
+      }
+
+      .recommendations-list {
+        gap: 12px;
+      }
+
+      .recommendation-item {
+        padding: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .recommendation-icon {
+        align-self: flex-start;
+      }
+
+      .alerts-list {
+        gap: 12px;
+      }
+
+      .alert-item {
+        padding: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .alert-item mat-icon {
+        align-self: flex-start;
+      }
+
+      .dashboard-tabs .mat-tab-header {
+        height: 48px;
+      }
+
+      .dashboard-tabs .mat-tab-label {
+        min-width: 90px;
+        padding: 0 12px;
+        font-size: 14px;
+      }
+    }
+
+    /* Samsung S20 and similar small screens (360px width) */
+    @media (max-width: 430px) {
+      .owner-dashboard {
+        padding: 8px;
+      }
+
+      .dashboard-header {
+        padding: 20px 15px;
+        margin-bottom: 20px;
+      }
+
+      .welcome-section h1 {
+        font-size: 1.8rem;
+        margin: 0 0 6px 0;
+      }
+
+      .welcome-section p {
+        font-size: 1rem;
+        margin: 0;
+      }
+
+      .alert-banner {
+        margin: 15px 0;
+        padding: 15px 12px;
+        flex-direction: column;
+        text-align: center;
+        gap: 12px;
+      }
+
+      .alert-banner .alert-icon {
+        width: 50px;
+        height: 50px;
+      }
+
+      .alert-banner .alert-content {
+        flex: 1;
+        text-align: center;
+      }
+
+      .alert-banner .alert-content h3 {
+        font-size: 1.1rem;
+        margin: 0 0 4px 0;
+      }
+
+      .alert-banner .alert-content p {
+        font-size: 0.9rem;
+        margin: 0;
+      }
+
+      .alert-banner .alert-action {
+        width: 100%;
+      }
+
+      .alert-banner .alert-action button {
+        width: 100%;
+        max-width: 200px;
+      }
+
+      .alert-banner .alert-close {
+        display: none;
+      }
+
+      .tab-content {
+        padding: 16px;
       }
 
       .metrics-grid {
         grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .metric-card mat-card-content {
+        padding: 12px !important;
+        flex-direction: row;
+        gap: 12px;
+      }
+
+      .metric-icon {
+        width: 45px;
+        height: 45px;
+        flex-shrink: 0;
+      }
+
+      .metric-icon mat-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      .metric-info h3 {
+        font-size: 0.75rem;
+        margin: 0 0 2px 0;
+      }
+
+      .metric-info h2 {
+        font-size: 1.3rem;
+        margin: 0 0 2px 0;
+      }
+
+      .metric-detail {
+        font-size: 0.7rem;
+        margin: 0;
+      }
+
+      .chart-card mat-card-header {
+        padding: 16px 16px 8px 16px !important;
+      }
+
+      .chart-card .mat-card-header-text {
+        margin: 0 !important;
+      }
+
+      .chart-card mat-card-title {
+        font-size: 1.1rem;
+        margin-bottom: 4px;
+      }
+
+      .chart-card mat-card-subtitle {
+        font-size: 0.85rem;
+        line-height: 1.3;
+      }
+
+      .chart-container {
+        height: 280px;
+        padding: 16px;
+      }
+
+      .filter-card mat-card-content {
+        padding: 12px !important;
+      }
+
+      .filter-card mat-form-field {
+        width: 100%;
+        margin-bottom: 8px;
+      }
+
+      .filter-card mat-form-field .mat-form-field-wrapper {
+        padding-bottom: 0;
+      }
+
+      .filter-card button {
+        width: 100%;
+        height: 40px;
+      }
+
+      .featured-card mat-card-header {
+        padding: 16px 16px 8px 16px !important;
+      }
+
+      .featured-card mat-card-title {
+        font-size: 1.1rem;
+        margin-bottom: 4px;
+      }
+
+      .featured-card mat-card-subtitle {
+        font-size: 0.85rem;
+      }
+
+      .featured-vehicle {
+        flex-direction: column;
+        gap: 20px;
+        text-align: center;
+      }
+
+      .vehicle-info h2 {
+        font-size: 1.4rem;
+        margin: 0 0 4px 0;
+      }
+
+      .registration {
+        font-size: 0.9rem;
+        margin: 0 0 15px 0;
+      }
+
+      .profit-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid #eee;
+      }
+
+      .stat-row.highlight {
+        border-bottom: 2px solid #2196f3;
+        font-weight: 600;
+      }
+
+      .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -12px;
+        padding: 0 12px;
+      }
+
+      .vehicles-table {
+        min-width: 600px;
+        font-size: 12px;
+      }
+
+      .vehicles-table .mat-header-cell,
+      .vehicles-table .mat-cell {
+        padding: 8px 4px;
+        min-width: 80px;
+      }
+
+      .vehicle-details-cell {
+        min-width: 150px;
+      }
+
+      .status-column {
+        min-width: 80px;
+      }
+
+      .health-column {
+        min-width: 100px;
+      }
+
+      .driver-cell {
+        min-width: 100px;
+      }
+
+      .profit-column {
+        min-width: 80px;
+      }
+
+      .performance-table {
+        min-width: 700px;
+        font-size: 12px;
+      }
+
+      .performance-table .mat-header-cell,
+      .performance-table .mat-cell {
+        padding: 6px 3px;
+      }
+
+      .maintenance-table {
+        min-width: 800px;
+        font-size: 12px;
+      }
+
+      .maintenance-table .mat-header-cell,
+      .maintenance-table .mat-cell {
+        padding: 6px 3px;
+      }
+
+      .maintenance-table .issue-cell {
+        max-width: 200px;
+        white-space: normal;
+        line-height: 1.3;
+      }
+
+      .alerts-list {
+        gap: 10px;
+      }
+
+      .alert-item {
+        padding: 10px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .alert-item mat-icon {
+        align-self: flex-start;
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .alert-item h4 {
+        font-size: 1rem;
+        margin: 0 0 4px 0;
+      }
+
+      .alert-item p {
+        font-size: 0.85rem;
+        margin: 0 0 4px 0;
+      }
+
+      .alert-item small {
+        font-size: 0.8rem;
+      }
+
+      .recommendations-list {
+        gap: 10px;
+      }
+
+      .recommendation-item {
+        padding: 10px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .recommendation-icon {
+        width: 35px;
+        height: 35px;
+        align-self: flex-start;
+      }
+
+      .recommendation-icon mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .recommendation-item h4 {
+        font-size: 1rem;
+        margin: 0 0 4px 0;
+      }
+
+      .recommendation-item p {
+        font-size: 0.85rem;
+        margin: 0 0 4px 0;
+      }
+
+      .forecast-summary {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .forecast-item {
+        padding: 16px 12px;
+        text-align: center;
+      }
+
+      .forecast-icon {
+        font-size: 32px;
+        width: 32px;
+        height: 32px;
+        margin-bottom: 8px;
+      }
+
+      .forecast-item h3 {
+        font-size: 0.9rem;
+        margin: 8px 0;
+      }
+
+      .forecast-item h2 {
+        font-size: 1.6rem;
+        margin: 8px 0;
+      }
+
+      .forecast-notes {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px 12px;
+        text-align: center;
+      }
+
+      .forecast-notes mat-icon {
+        align-self: center;
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      .forecast-notes h4 {
+        margin: 0 0 8px 0;
+        font-size: 1rem;
+      }
+
+      .forecast-notes p {
+        margin: 0;
+        font-size: 0.85rem;
+        line-height: 1.4;
+      }
+
+      .no-data {
+        text-align: center;
+        padding: 40px 20px;
+      }
+
+      .no-data mat-icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        margin-bottom: 16px;
+        opacity: 0.3;
+      }
+
+      .no-data h3 {
+        font-size: 1.1rem;
+        margin: 8px 0;
+      }
+
+      .no-data p {
+        font-size: 0.85rem;
+        margin: 8px 0 16px;
+      }
+
+      .no-data button {
+        font-size: 0.9rem;
+        padding: 8px 16px;
+      }
+
+      .dashboard-tabs .mat-tab-header {
+        height: 44px;
+      }
+
+      .dashboard-tabs .mat-tab-label {
+        min-width: 70px;
+        padding: 0 8px;
+        font-size: 12px;
+        height: 44px;
+        line-height: 44px;
+      }
+
+      .loading-container {
+        padding: 40px 20px;
+      }
+
+      .loading-container p {
+        font-size: 0.9rem;
+        margin-top: 16px;
+      }
+    }
+
+    /* Samsung S20 Ultra specific optimizations (412px width) */
+    @media (max-width: 430px) and (min-width: 400px) {
+      .owner-dashboard {
+        padding: 12px;
+      }
+
+      .dashboard-header {
+        padding: 24px 16px;
+        margin-bottom: 24px;
+        border-radius: 16px;
+      }
+
+      .welcome-section h1 {
+        font-size: 2rem;
+        margin: 0 0 8px 0;
+        letter-spacing: -0.5px;
+      }
+
+      .welcome-section p {
+        font-size: 1.1rem;
+        margin: 0;
+        opacity: 0.95;
+      }
+
+      .alert-banner {
+        margin: 20px 0;
+        padding: 20px 16px;
+        border-radius: 16px;
+        gap: 16px;
+      }
+
+      .alert-banner .alert-icon {
+        width: 56px;
+        height: 56px;
+      }
+
+      .alert-banner .alert-icon mat-icon {
+        font-size: 32px;
+        width: 32px;
+        height: 32px;
+      }
+
+      .alert-banner .alert-content h3 {
+        font-size: 1.4rem;
+        margin: 0 0 6px 0;
+      }
+
+      .alert-banner .alert-content p {
+        font-size: 1.05rem;
+        margin: 0;
+      }
+
+      .tab-content {
+        padding: 20px;
+      }
+
+      .metrics-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+
+      .metric-card mat-card-content {
+        padding: 20px !important;
+        gap: 16px;
+      }
+
+      .metric-icon {
+        width: 52px;
+        height: 52px;
+        flex-shrink: 0;
+      }
+
+      .metric-icon mat-icon {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      .metric-info h3 {
+        font-size: 0.8rem;
+        margin: 0 0 4px 0;
+      }
+
+      .metric-info h2 {
+        font-size: 1.5rem;
+        margin: 0 0 4px 0;
+      }
+
+      .metric-detail {
+        font-size: 0.75rem;
+        margin: 0;
+      }
+
+      .chart-card mat-card-header {
+        padding: 20px 20px 12px 20px !important;
+      }
+
+      .chart-card .mat-card-header-text {
+        margin: 0 !important;
+      }
+
+      .chart-card mat-card-title {
+        font-size: 1.2rem;
+        margin-bottom: 6px;
+      }
+
+      .chart-card mat-card-subtitle {
+        font-size: 0.9rem;
+        line-height: 1.4;
+      }
+
+      .chart-container {
+        height: 320px;
+        padding: 20px;
+        border-radius: 16px;
+      }
+
+      .filter-card mat-card-content {
+        padding: 16px !important;
+      }
+
+      .filter-card mat-form-field {
+        width: 100%;
+        margin-bottom: 12px;
+      }
+
+      .filter-card mat-form-field .mat-form-field-wrapper {
+        padding-bottom: 0;
+      }
+
+      .filter-card button {
+        width: 100%;
+        height: 44px;
+        font-size: 1rem;
+      }
+
+      .featured-card mat-card-header {
+        padding: 20px 20px 12px 20px !important;
+      }
+
+      .featured-card mat-card-title {
+        font-size: 1.2rem;
+        margin-bottom: 6px;
+      }
+
+      .featured-card mat-card-subtitle {
+        font-size: 0.9rem;
+      }
+
+      .featured-vehicle {
+        flex-direction: column;
+        gap: 24px;
+        text-align: center;
+      }
+
+      .vehicle-info h2 {
+        font-size: 1.6rem;
+        margin: 0 0 6px 0;
+      }
+
+      .registration {
+        font-size: 1rem;
+        margin: 0 0 20px 0;
+      }
+
+      .profit-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+        font-size: 1rem;
+      }
+
+      .stat-row.highlight {
+        border-bottom: 2px solid #2196f3;
+        font-weight: 600;
+      }
+
+      .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -20px;
+        padding: 0 20px;
+        border-radius: 12px;
+      }
+
+      .vehicles-table {
+        min-width: 650px;
+        font-size: 13px;
+        border-radius: 12px;
+      }
+
+      .vehicles-table .mat-header-cell,
+      .vehicles-table .mat-cell {
+        padding: 10px 6px;
+        min-width: 90px;
+      }
+
+      .vehicle-details-cell {
+        min-width: 160px;
+      }
+
+      .status-column {
+        min-width: 90px;
+      }
+
+      .health-column {
+        min-width: 110px;
+      }
+
+      .driver-cell {
+        min-width: 110px;
+      }
+
+      .profit-column {
+        min-width: 90px;
+      }
+
+      .performance-table {
+        min-width: 750px;
+        font-size: 13px;
+      }
+
+      .performance-table .mat-header-cell,
+      .performance-table .mat-cell {
+        padding: 8px 4px;
+      }
+
+      .maintenance-table {
+        min-width: 850px;
+        font-size: 13px;
+      }
+
+      .maintenance-table .mat-header-cell,
+      .maintenance-table .mat-cell {
+        padding: 8px 4px;
+      }
+
+      .maintenance-table .issue-cell {
+        max-width: 220px;
+        white-space: normal;
+        line-height: 1.4;
+      }
+
+      .alerts-list {
+        gap: 12px;
+      }
+
+      .alert-item {
+        padding: 12px;
+        border-radius: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .alert-item mat-icon {
+        align-self: flex-start;
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .alert-item h4 {
+        font-size: 1.1rem;
+        margin: 0 0 6px 0;
+      }
+
+      .alert-item p {
+        font-size: 0.9rem;
+        margin: 0 0 6px 0;
+      }
+
+      .alert-item small {
+        font-size: 0.85rem;
+      }
+
+      .recommendations-list {
+        gap: 12px;
+      }
+
+      .recommendation-item {
+        padding: 12px;
+        border-radius: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .recommendation-icon {
+        width: 40px;
+        height: 40px;
+        align-self: flex-start;
+      }
+
+      .recommendation-icon mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .recommendation-item h4 {
+        font-size: 1.1rem;
+        margin: 0 0 6px 0;
+      }
+
+      .recommendation-item p {
+        font-size: 0.9rem;
+        margin: 0 0 6px 0;
+      }
+
+      .forecast-summary {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+
+      .forecast-item {
+        padding: 20px 16px;
+        text-align: center;
+        border-radius: 16px;
+      }
+
+      .forecast-icon {
+        font-size: 36px;
+        width: 36px;
+        height: 36px;
+        margin-bottom: 10px;
+      }
+
+      .forecast-item h3 {
+        font-size: 1rem;
+        margin: 10px 0;
+      }
+
+      .forecast-item h2 {
+        font-size: 1.8rem;
+        margin: 10px 0;
+      }
+
+      .forecast-notes {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px 16px;
+        text-align: center;
+        border-radius: 16px;
+      }
+
+      .forecast-notes mat-icon {
+        align-self: center;
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      .forecast-notes h4 {
+        margin: 0 0 10px 0;
+        font-size: 1.1rem;
+      }
+
+      .forecast-notes p {
+        margin: 0;
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+
+      .no-data {
+        text-align: center;
+        padding: 48px 24px;
+      }
+
+      .no-data mat-icon {
+        font-size: 56px;
+        width: 56px;
+        height: 56px;
+        margin-bottom: 20px;
+        opacity: 0.3;
+      }
+
+      .no-data h3 {
+        font-size: 1.2rem;
+        margin: 10px 0;
+      }
+
+      .no-data p {
+        font-size: 0.95rem;
+        margin: 10px 0 20px;
+      }
+
+      .no-data button {
+        font-size: 1rem;
+        padding: 10px 20px;
+      }
+
+      .dashboard-tabs .mat-tab-header {
+        height: 48px;
+        border-radius: 12px 12px 0 0;
+      }
+
+      .dashboard-tabs .mat-tab-label {
+        min-width: 80px;
+        padding: 0 12px;
+        font-size: 13px;
+        height: 48px;
+        line-height: 48px;
+      }
+
+      .loading-container {
+        padding: 48px 24px;
+      }
+
+      .loading-container p {
+        font-size: 1rem;
+        margin-top: 20px;
       }
     }
 
@@ -1318,6 +2375,16 @@ Chart.register(...registerables);
         flex-direction: column;
         text-align: center;
         padding: 20px;
+        gap: 15px;
+      }
+
+      .alert-banner .alert-content {
+        text-align: center;
+      }
+
+      .alert-banner .alert-action {
+        align-self: stretch;
+        text-align: center;
       }
 
       .alert-banner .alert-close {
@@ -1523,6 +2590,10 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
   periodStartDate = '';
   periodEndDate = '';
   
+  // Date filter properties
+  filterStartDate: Date = new Date();
+  filterEndDate: Date = new Date();
+  
   // Drill-down state
   drillDownLevel: 'month' | 'week' | 'day' = 'month';
   selectedVehicleId: string | null = null;
@@ -1567,6 +2638,11 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
   async ngOnInit() {
     const now = new Date();
     this.currentMonthName = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    
+    // Initialize filter dates to current month
+    this.filterStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    this.filterEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
     await this.loadDashboardData();
   }
 
@@ -1588,9 +2664,8 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
       this.activeVehicles = ownerVehicles.filter((v: any) => v.status === 'Active').length;
       this.inactiveVehicles = this.totalVehicles - this.activeVehicles;
 
-      const now = new Date();
-      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+      const startDate = this.filterStartDate.toISOString().split('T')[0];
+      const endDate = this.filterEndDate.toISOString().split('T')[0];
 
       // Store period for display
       this.periodStartDate = startDate;
@@ -1622,8 +2697,14 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
             this.isDateWithinDays(new Date(latestService.serviceDate), 7) &&
             latestService.serviceType !== 'Completed';
 
-          const totalEarnings = earnings?.reduce((sum: number, e: any) => sum + (e.amount || 0), 0) || 0;
-          const totalExpenses = expenses?.reduce((sum: number, e: any) => sum + (e.amount || 0), 0) || 0;
+          // Handle both array and single object responses
+          const earningsArray = Array.isArray(earnings) ? earnings : (earnings ? [earnings] : []);
+          const expensesArray = Array.isArray(expenses) ? expenses : (expenses ? [expenses] : []);
+
+          const totalEarnings = earningsArray.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+          const totalExpenses = expensesArray.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+
+          console.log(`Vehicle ${vehicle.registration}: Earnings=${totalEarnings}, Expenses=${totalExpenses}`);
 
           return {
             ...vehicle,
@@ -1637,7 +2718,8 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
               ? `${latestService.serviceType} - ${latestService.description || 'In progress'}`
               : ''
           };
-        } catch {
+        } catch (error) {
+          console.error(`Error loading data for vehicle ${vehicle.registration}:`, error);
           return {
             ...vehicle,
             earnings: 0,
@@ -1654,10 +2736,18 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
       this.vehiclePerformance = vehicleData;
       this.vehiclesInService = vehicleData.filter(v => v.isInService).length;
 
-      this.totalEarnings = vehicleData.reduce((sum, v) => sum + v.earnings, 0);
-      this.totalExpenses = vehicleData.reduce((sum, v) => sum + v.expenses, 0);
+      this.totalEarnings = vehicleData.reduce((sum, v) => sum + (v.earnings || 0), 0);
+      this.totalExpenses = vehicleData.reduce((sum, v) => sum + (v.expenses || 0), 0);
       this.totalProfit = this.totalEarnings - this.totalExpenses;
       this.avgProfitPerVehicle = this.totalVehicles > 0 ? this.totalProfit / this.totalVehicles : 0;
+
+      console.log('Dashboard Summary:', {
+        totalVehicles: this.totalVehicles,
+        totalEarnings: this.totalEarnings,
+        totalExpenses: this.totalExpenses,
+        totalProfit: this.totalProfit,
+        avgProfitPerVehicle: this.avgProfitPerVehicle
+      });
 
       if (vehicleData.length > 0) {
         this.mostProfitableVehicle = vehicleData.reduce((max, v) => v.profit > max.profit ? v : max);
@@ -1778,7 +2868,7 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
       options: {
         responsive: true,
         maintainAspectRatio: true,
-        aspectRatio: 2,
+        aspectRatio: window.innerWidth <= 430 ? 1.2 : 2,
         interaction: {
           mode: 'index',
           intersect: false,
@@ -1790,13 +2880,13 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
         plugins: {
           legend: {
             display: true,
-            position: 'top',
+            position: window.innerWidth <= 430 ? 'bottom' : 'top',
             labels: {
               usePointStyle: true,
               pointStyle: 'circle',
-              padding: 20,
+              padding: window.innerWidth <= 430 ? 10 : 20,
               font: {
-                size: 13,
+                size: window.innerWidth <= 430 ? 11 : 13,
                 weight: 600,
                 family: "'Inter', 'Segoe UI', sans-serif"
               },
@@ -2223,10 +3313,10 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
   }
 
   navigateToMaintenanceTab() {
-    // Navigate to the Maintenance Requests tab (index 3)
-    // Overview = 0, Performance = 1, Health & Maintenance = 2, Maintenance Requests = 3
+    // Navigate to the Maintenance Requests tab (index 4)
+    // Overview = 0, Fleet Vehicles = 1, Performance = 2, Health & Maintenance = 3, Maintenance Requests = 4
     if (this.tabGroup) {
-      this.tabGroup.selectedIndex = 3;
+      this.tabGroup.selectedIndex = 4;
       // Scroll to top of page
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -2441,6 +3531,14 @@ export class OwnerDashboardEnhancedComponent implements OnInit, AfterViewInit {
         this.loadDashboardData();
       }
     });
+  }
+
+  async applyDateFilter() {
+    this.loading = true;
+    this.drillDownLevel = 'month'; // Reset drill-down when applying new filter
+    this.selectedVehicleId = null;
+    this.selectedVehicleName = null;
+    await this.loadDashboardData();
   }
 
   logout() {

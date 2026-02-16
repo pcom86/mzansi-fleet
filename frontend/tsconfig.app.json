@@ -5,5 +5,18 @@
     "types": []
   },
   "files": ["src/main.ts"],
-  "include": ["src/**/*.d.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/app/components/identity/index.ts",
+    "src/app/components/index.ts",
+    "src/app/components/login/index.ts",
+    "src/app/components/owner-dashboard/index.ts",
+    "src/app/components/owner-profiles/index.ts",
+    "src/app/components/registration/index.ts",
+    "src/app/components/tenants/index.ts",
+    "src/app/components/users/index.ts",
+    "src/app/components/stuff-requests/passenger-stuff-requests.component.ts",
+    "src/app/components/owner-dashboard/schedule-maintenance-dialog.component.ts",
+    "src/environments/environment.prod.ts"
+  ]
 }

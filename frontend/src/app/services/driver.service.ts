@@ -20,6 +20,10 @@ export class DriverService {
     return this.http.get<DriverProfile>(`${this.apiUrl}/${id}`);
   }
 
+  getByVehicleId(vehicleId: string): Observable<DriverProfile> {
+    return this.http.get<DriverProfile>(`${this.apiUrl}/vehicle/${vehicleId}`);
+  }
+
   create(driver: DriverProfile): Observable<void> {
     return this.http.post<void>(this.apiUrl, driver);
   }

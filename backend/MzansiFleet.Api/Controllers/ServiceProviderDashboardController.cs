@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MzansiFleet.Repository;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -18,12 +19,44 @@ namespace MzansiFleet.Api.Controllers
             _context = context;
         }
 
-        [HttpGet("{serviceProviderName}")]
-        public async Task<IActionResult> GetDashboardData(string serviceProviderName)
+        [HttpGet("user/{userId}")]
+        public async Task<IActionResult> GetDashboardDataByUserId(string userId)
         {
             try
             {
-                Console.WriteLine($"ServiceProviderDashboard - Received request for: {serviceProviderName}");
+                if (!Guid.TryParse(userId, out Guid parsedUserId))
+                {
+                    return BadRequest("Invalid user ID format");
+                }
+
+                // Get the service provider profile to get the business name
+                var profile = await _context.ServiceProviderProfiles
+                    .FirstOrDefaultAsync(sp => sp.UserId == parsedUserId);
+
+                if (profile == null || string.IsNullOrEmpty(profile.BusinessName))
+                {
+                    Console.WriteLine($"ServiceProviderDashboard - No profile found for user: {parsedUserId}");
+                    return Ok(new
+                    {
+                        upcomingAppointments = new { count = 0, appointments = new List<object>() },
+                        pendingJobs = new { count = 0 },
+                        recentMaintenance = new { count = 0, records = new List<object>() },
+                        reviews = new { count = 0, averageRating = 0.0, items = new List<object>() },
+                        financial = new
+                        {
+                            totalRevenue = 0,
+                            last30DaysRevenue = 0,
+                            last60DaysRevenue = 0,
+                            revenueGrowth = 0,
+                            totalJobsCompleted = 0,
+                            averageJobValue = 0,
+                            monthlyRevenue = new List<object>()
+                        }
+                    });
+                }
+
+                var serviceProviderName = profile.BusinessName;
+                Console.WriteLine($"ServiceProviderDashboard - Received request for user: {parsedUserId}, business: {serviceProviderName}");
                 
                 // Get upcoming scheduled appointments
                 var upcomingAppointments = await _context.MechanicalRequests
@@ -50,6 +83,14 @@ namespace MzansiFleet.Api.Controllers
                     .ToListAsync();
 
                 Console.WriteLine($"Found {upcomingAppointments.Count} upcoming appointments");
+
+                // Get pending jobs count
+                var pendingJobsCount = await _context.MechanicalRequests
+                    .Where(mr => mr.ServiceProvider == serviceProviderName 
+                        && mr.State != "Completed")
+                    .CountAsync();
+
+                Console.WriteLine($"Found {pendingJobsCount} pending jobs");
 
                 // Get recently completed maintenance
                 var recentMaintenance = await _context.MaintenanceHistories
@@ -184,6 +225,10 @@ namespace MzansiFleet.Api.Controllers
                         count = upcomingAppointments.Count,
                         appointments = upcomingAppointments
                     },
+                    pendingJobs = new
+                    {
+                        count = pendingJobsCount
+                    },
                     recentMaintenance = new
                     {
                         count = recentMaintenance.Count,
@@ -217,11 +262,27 @@ namespace MzansiFleet.Api.Controllers
             }
         }
 
-        [HttpGet("{serviceProviderName}/appointments")]
-        public async Task<IActionResult> GetAppointments(string serviceProviderName, [FromQuery] string status = "all")
+        [HttpGet("user/{userId}/appointments")]
+        public async Task<IActionResult> GetAppointments(string userId, [FromQuery] string status = "all")
         {
             try
             {
+                if (!Guid.TryParse(userId, out Guid parsedUserId))
+                {
+                    return BadRequest("Invalid user ID format");
+                }
+
+                // Get the service provider profile to get the business name
+                var profile = await _context.ServiceProviderProfiles
+                    .FirstOrDefaultAsync(sp => sp.UserId == parsedUserId);
+
+                if (profile == null || string.IsNullOrEmpty(profile.BusinessName))
+                {
+                    return Ok(new List<object>());
+                }
+
+                var serviceProviderName = profile.BusinessName;
+
                 var query = _context.MechanicalRequests
                     .Where(mr => mr.ServiceProvider == serviceProviderName);
 
@@ -315,6 +376,92 @@ namespace MzansiFleet.Api.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "Error generating revenue report", error = ex.Message });
+            }
+        }
+
+        [HttpGet("user/{userId}/scheduled-alerts")]
+        public async Task<IActionResult> GetScheduledAlerts(string userId)
+        {
+            try
+            {
+                if (!Guid.TryParse(userId, out Guid parsedUserId))
+                {
+                    return Ok(new
+                    {
+                        upcomingJobsCount = 0,
+                        totalScheduledCount = 0,
+                        upcomingJobs = new List<object>()
+                    });
+                }
+
+                // Get the service provider profile to get the business name
+                var profile = await _context.ServiceProviderProfiles
+                    .FirstOrDefaultAsync(sp => sp.UserId == parsedUserId);
+
+                if (profile == null || string.IsNullOrEmpty(profile.BusinessName))
+                {
+                    return Ok(new
+                    {
+                        upcomingJobsCount = 0,
+                        totalScheduledCount = 0,
+                        upcomingJobs = new List<object>()
+                    });
+                }
+
+                var serviceProviderName = profile.BusinessName;
+
+                // Get upcoming scheduled appointments (next 7 days)
+                var sevenDaysFromNow = DateTime.UtcNow.AddDays(7);
+                var upcomingJobs = await _context.MechanicalRequests
+                    .Where(mr => mr.ServiceProvider == serviceProviderName 
+                        && mr.State == "Scheduled" 
+                        && mr.ScheduledDate.HasValue 
+                        && mr.ScheduledDate.Value >= DateTime.UtcNow
+                        && mr.ScheduledDate.Value <= sevenDaysFromNow)
+                    .OrderBy(mr => mr.ScheduledDate)
+                    .Select(mr => new
+                    {
+                        id = mr.Id,
+                        vehicleId = mr.VehicleId,
+                        vehicleRegistration = _context.Vehicles
+                            .Where(v => v.Id == mr.VehicleId)
+                            .Select(v => v.Registration)
+                            .FirstOrDefault(),
+                        vehicleMake = _context.Vehicles
+                            .Where(v => v.Id == mr.VehicleId)
+                            .Select(v => v.Make)
+                            .FirstOrDefault(),
+                        vehicleModel = _context.Vehicles
+                            .Where(v => v.Id == mr.VehicleId)
+                            .Select(v => v.Model)
+                            .FirstOrDefault(),
+                        scheduledDate = mr.ScheduledDate,
+                        category = mr.Category,
+                        description = mr.Description,
+                        location = mr.Location,
+                        priority = mr.Priority
+                    })
+                    .ToListAsync();
+
+                // Get total scheduled jobs count
+                var totalScheduled = await _context.MechanicalRequests
+                    .Where(mr => mr.ServiceProvider == serviceProviderName 
+                        && mr.State == "Scheduled" 
+                        && mr.ScheduledDate.HasValue 
+                        && mr.ScheduledDate.Value >= DateTime.UtcNow)
+                    .CountAsync();
+
+                return Ok(new
+                {
+                    upcomingJobsCount = upcomingJobs.Count,
+                    totalScheduledCount = totalScheduled,
+                    upcomingJobs = upcomingJobs
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching scheduled alerts: {ex.Message}");
+                return StatusCode(500, new { message = "Error fetching scheduled alerts", error = ex.Message });
             }
         }
 

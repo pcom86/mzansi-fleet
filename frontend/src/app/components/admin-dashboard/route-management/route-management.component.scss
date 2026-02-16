@@ -56,6 +56,29 @@
   }
 }
 
+.destination-fares-section {
+  margin: 24px 0;
+  padding: 16px;
+  background-color: #e8f5e8;
+  border-radius: 8px;
+  border: 1px solid #4caf50;
+
+  h4 {
+    margin: 0 0 16px 0;
+    color: #2e7d32;
+  }
+
+  .fares-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+
+    .fare-field {
+      width: 100%;
+    }
+  }
+}
+
 .form-actions {
   display: flex;
   gap: 16px;

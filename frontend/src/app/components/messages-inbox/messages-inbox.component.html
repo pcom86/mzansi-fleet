@@ -1,0 +1,168 @@
+<div class="messages-container">
+  <div class="messages-header">
+    <h1>
+      <mat-icon>inbox</mat-icon>
+      Messages
+      <span *ngIf="unreadCount > 0" [matBadge]="unreadCount" matBadgeColor="warn" class="unread-badge"></span>
+    </h1>
+    <button mat-raised-button color="primary" (click)="composeNewMessage()">
+      <mat-icon>add</mat-icon>
+      New Message
+    </button>
+  </div>
+
+  <mat-tab-group>
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <mat-icon>inbox</mat-icon>
+        Inbox
+        <span *ngIf="unreadCount > 0" class="tab-badge">{{ unreadCount }}</span>
+      </ng-template>
+
+      <div class="messages-content">
+        <table mat-table [dataSource]="inboxMessages" class="messages-table">
+          <ng-container matColumnDef="from">
+            <th mat-header-cell *matHeaderCellDef>From</th>
+            <td mat-cell *matCellDef="let message">
+              <div class="sender-info">
+                <mat-icon class="sender-icon">person</mat-icon>
+                <div class="sender-details">
+                  <span [class.unread-text]="!message.isRead">{{ formatSenderName(message) }}</span>
+                </div>
+              </div>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="subject">
+            <th mat-header-cell *matHeaderCellDef>Subject</th>
+            <td mat-cell *matCellDef="let message">
+              <div class="subject-cell" (click)="openMessage(message)" style="cursor: pointer;">
+                <div [class.unread-text]="!message.isRead">{{ message.subject }}</div>
+                <div class="message-preview">{{ stripHtml(message.content).substring(0, 80) }}...</div>
+                <mat-chip *ngIf="message.relatedEntityType" class="entity-chip">
+                  {{ message.relatedEntityType }}
+                </mat-chip>
+              </div>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="date">
+            <th mat-header-cell *matHeaderCellDef>Date</th>
+            <td mat-cell *matCellDef="let message">
+              {{ formatDate(message.createdAt) }}
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Status</th>
+            <td mat-cell *matCellDef="let message">
+              <mat-chip [class.read-chip]="message.isRead" [class.unread-chip]="!message.isRead">
+                {{ message.isRead ? 'Read' : 'Unread' }}
+              </mat-chip>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>Actions</th>
+            <td mat-cell *matCellDef="let message">
+              <div class="actions-cell">
+                <button mat-icon-button (click)="openMessage(message)" matTooltip="View">
+                  <mat-icon>visibility</mat-icon>
+                </button>
+                <button mat-icon-button (click)="replyToMessage(message)" matTooltip="Reply">
+                  <mat-icon>reply</mat-icon>
+                </button>
+                <button mat-icon-button (click)="deleteMessage(message, false)" matTooltip="Delete">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;" [class.unread-row]="!row.isRead"></tr>
+        </table>
+
+        <div *ngIf="inboxMessages.length === 0" class="no-messages">
+          <mat-icon>inbox</mat-icon>
+          <p>No messages in your inbox</p>
+        </div>
+      </div>
+    </mat-tab>
+
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <mat-icon>send</mat-icon>
+        Sent
+      </ng-template>
+
+      <div class="messages-content">
+        <table mat-table [dataSource]="sentMessages" class="messages-table">
+          <ng-container matColumnDef="to">
+            <th mat-header-cell *matHeaderCellDef>To</th>
+            <td mat-cell *matCellDef="let message">
+              <div class="sender-info">
+                <mat-icon class="sender-icon">person</mat-icon>
+                <div class="sender-details">
+                  <span>{{ message.receiverName }}</span>
+                  <span class="sender-email">{{ message.receiverEmail }}</span>
+                </div>
+              </div>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="subject">
+            <th mat-header-cell *matHeaderCellDef>Subject</th>
+            <td mat-cell *matCellDef="let message">
+              <div class="subject-cell" (click)="openMessage(message)" style="cursor: pointer;">
+                <div>{{ message.subject }}</div>
+                <div class="message-preview">{{ stripHtml(message.content).substring(0, 80) }}...</div>
+                <mat-chip *ngIf="message.relatedEntityType" class="entity-chip">
+                  {{ message.relatedEntityType }}
+                </mat-chip>
+              </div>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="date">
+            <th mat-header-cell *matHeaderCellDef>Date</th>
+            <td mat-cell *matCellDef="let message">
+              {{ formatDate(message.createdAt) }}
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Status</th>
+            <td mat-cell *matCellDef="let message">
+              <mat-chip [class.read-chip]="message.isRead" [class.unread-chip]="!message.isRead">
+                {{ message.isRead ? 'Read' : 'Delivered' }}
+              </mat-chip>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>Actions</th>
+            <td mat-cell *matCellDef="let message">
+              <div class="actions-cell">
+                <button mat-icon-button (click)="openMessage(message)" matTooltip="View">
+                  <mat-icon>visibility</mat-icon>
+                </button>
+                <button mat-icon-button (click)="deleteMessage(message, true)" matTooltip="Delete">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumnsSent"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumnsSent;"></tr>
+        </table>
+
+        <div *ngIf="sentMessages.length === 0" class="no-messages">
+          <mat-icon>send</mat-icon>
+          <p>No sent messages</p>
+        </div>
+      </div>
+    </mat-tab>
+  </mat-tab-group>
+</div>

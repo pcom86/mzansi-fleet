@@ -312,6 +312,36 @@ namespace MzansiFleet.Api.Controllers
                 _context.RentalOffers.Add(offer);
                 await _context.SaveChangesAsync();
 
+                // Send notification to rental requester
+                try
+                {
+                    var notificationMessage = new Message
+                    {
+                        Id = Guid.NewGuid(),
+                        SenderId = userId,
+                        ReceiverId = request.UserId,
+                        Subject = $"New Rental Offer for {request.VehicleType}",
+                        Content = $"<p><strong>{ownerProfile.CompanyName ?? ownerProfile.ContactName}</strong> has submitted an offer for your rental request.</p>" +
+                                 $"<p><strong>Vehicle:</strong> {vehicle.Make} {vehicle.Model} ({vehicle.Registration})</p>" +
+                                 $"<p><strong>Price per Day:</strong> R{dto.PricePerDay:N2}</p>" +
+                                 $"<p><strong>Total Price:</strong> R{totalPrice:N2}</p>" +
+                                 $"<p><strong>Message:</strong></p><p>{dto.OfferMessage ?? "No message provided"}</p>" +
+                                 $"<p>View the full offer details in your rental requests dashboard.</p>",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow,
+                        RelatedEntityType = "RentalRequest",
+                        RelatedEntityId = request.Id,
+                        IsDeletedBySender = false,
+                        IsDeletedByReceiver = false
+                    };
+                    _context.Messages.Add(notificationMessage);
+                    await _context.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to send offer notification: {ex.Message}");
+                }
+
                 // Build response
                 var allPhotos = new List<string>();
                 if (!string.IsNullOrEmpty(vehicle.PhotoBase64))
@@ -612,6 +642,42 @@ namespace MzansiFleet.Api.Controllers
                 offer.Status = "Accepted";
                 offer.ResponsedAt = DateTime.UtcNow;
 
+                // Send acceptance notification to owner
+                var ownerProfile = await _context.OwnerProfiles.FindAsync(offer.OwnerId);
+                var ownerUser = ownerProfile != null ? await _context.Users.FirstOrDefaultAsync(u => u.Id == ownerProfile.UserId) : null;
+                var vehicle = await _context.Vehicles.FindAsync(offer.VehicleId);
+                
+                if (ownerUser != null)
+                {
+                    try
+                    {
+                        var acceptanceMessage = new Message
+                        {
+                            Id = Guid.NewGuid(),
+                            SenderId = userId,
+                            ReceiverId = ownerUser.Id,
+                            Subject = $"🎉 Rental Offer Accepted: {vehicle?.Make} {vehicle?.Model}",
+                            Content = $"<p><strong>Great news!</strong> Your rental offer has been accepted!</p>" +
+                                     $"<p><strong>Vehicle:</strong> {vehicle?.Make} {vehicle?.Model} ({vehicle?.Registration})</p>" +
+                                     $"<p><strong>Rental Period:</strong> {request.StartDate:MMM dd} - {request.EndDate:MMM dd, yyyy}</p>" +
+                                     $"<p><strong>Total Amount:</strong> R{offer.TotalPrice:N2}</p>" +
+                                     $"<p><strong>Pickup:</strong> {request.PickupLocation}</p>" +
+                                     $"<p>Please prepare the vehicle for pickup. The renter will contact you shortly.</p>",
+                            IsRead = false,
+                            CreatedAt = DateTime.UtcNow,
+                            RelatedEntityType = "RentalBooking",
+                            RelatedEntityId = booking.Id,
+                            IsDeletedBySender = false,
+                            IsDeletedByReceiver = false
+                        };
+                        _context.Messages.Add(acceptanceMessage);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to send acceptance notification: {ex.Message}");
+                    }
+                }
+
                 // Reject all other offers
                 var otherOffers = await _context.RentalOffers
                     .Where(o => o.RentalRequestId == request.Id && o.Id != offer.Id && o.Status == "Pending")
@@ -621,13 +687,45 @@ namespace MzansiFleet.Api.Controllers
                 {
                     otherOffer.Status = "Rejected";
                     otherOffer.ResponsedAt = DateTime.UtcNow;
+
+                    // Send rejection notification to other owners
+                    var otherOwnerProfile = await _context.OwnerProfiles.FindAsync(otherOffer.OwnerId);
+                    var otherOwnerUser = otherOwnerProfile != null ? await _context.Users.FirstOrDefaultAsync(u => u.Id == otherOwnerProfile.UserId) : null;
+                    var otherVehicle = await _context.Vehicles.FindAsync(otherOffer.VehicleId);
+                    
+                    if (otherOwnerUser != null)
+                    {
+                        try
+                        {
+                            var rejectionMessage = new Message
+                            {
+                                Id = Guid.NewGuid(),
+                                SenderId = userId,
+                                ReceiverId = otherOwnerUser.Id,
+                                Subject = $"Rental Offer Update: {otherVehicle?.Make} {otherVehicle?.Model}",
+                                Content = $"<p>Thank you for submitting your rental offer.</p>" +
+                                         $"<p>The requester has chosen another vehicle for this rental period. We appreciate your offer and encourage you to check for other rental opportunities.</p>" +
+                                         $"<p><strong>Vehicle:</strong> {otherVehicle?.Make} {otherVehicle?.Model} ({otherVehicle?.Registration})</p>" +
+                                         $"<p><strong>Requested Period:</strong> {request.StartDate:MMM dd} - {request.EndDate:MMM dd, yyyy}</p>",
+                                IsRead = false,
+                                CreatedAt = DateTime.UtcNow,
+                                RelatedEntityType = "RentalRequest",
+                                RelatedEntityId = request.Id,
+                                IsDeletedBySender = false,
+                                IsDeletedByReceiver = false
+                            };
+                            _context.Messages.Add(rejectionMessage);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to send rejection notification: {ex.Message}");
+                        }
+                    }
                 }
 
                 await _context.SaveChangesAsync();
 
                 // Build response
-                var ownerProfile = await _context.OwnerProfiles.FindAsync(offer.OwnerId);
-                var vehicle = await _context.Vehicles.FindAsync(offer.VehicleId);
                 var renter = await _context.Users.FindAsync(request.UserId);
 
                 var allPhotos = new List<string>();
@@ -716,6 +814,41 @@ namespace MzansiFleet.Api.Controllers
                 // Update offer status
                 offer.Status = "Rejected";
                 offer.ResponsedAt = DateTime.UtcNow;
+
+                // Send rejection notification to owner
+                var ownerProfile = await _context.OwnerProfiles.FindAsync(offer.OwnerId);
+                var ownerUser = ownerProfile != null ? await _context.Users.FirstOrDefaultAsync(u => u.Id == ownerProfile.UserId) : null;
+                var vehicle = await _context.Vehicles.FindAsync(offer.VehicleId);
+                
+                if (ownerUser != null)
+                {
+                    try
+                    {
+                        var rejectionMessage = new Message
+                        {
+                            Id = Guid.NewGuid(),
+                            SenderId = userId,
+                            ReceiverId = ownerUser.Id,
+                            Subject = $"Rental Offer Update: {vehicle?.Make} {vehicle?.Model}",
+                            Content = $"<p>Thank you for submitting your rental offer.</p>" +
+                                     $"<p>After consideration, the requester has decided not to proceed with your offer at this time.</p>" +
+                                     $"<p><strong>Vehicle:</strong> {vehicle?.Make} {vehicle?.Model} ({vehicle?.Registration})</p>" +
+                                     $"<p><strong>Requested Period:</strong> {request.StartDate:MMM dd} - {request.EndDate:MMM dd, yyyy}</p>" +
+                                     $"<p>We appreciate your offer and encourage you to check for other rental opportunities.</p>",
+                            IsRead = false,
+                            CreatedAt = DateTime.UtcNow,
+                            RelatedEntityType = "RentalRequest",
+                            RelatedEntityId = request.Id,
+                            IsDeletedBySender = false,
+                            IsDeletedByReceiver = false
+                        };
+                        _context.Messages.Add(rejectionMessage);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to send rejection notification: {ex.Message}");
+                    }
+                }
 
                 await _context.SaveChangesAsync();
 

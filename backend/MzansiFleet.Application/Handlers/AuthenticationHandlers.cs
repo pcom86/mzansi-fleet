@@ -92,6 +92,12 @@ namespace MzansiFleet.Application.Handlers
                         .FirstOrDefault(d => d.UserId == user.Id);
                     fullName = driverProfile?.Name;
                 }
+                else if (user.Role == "Customer")
+                {
+                    var passengerProfile = _context.Set<Domain.Entities.PassengerProfile>()
+                        .FirstOrDefault(p => p.UserId == user.Id);
+                    fullName = passengerProfile?.Name;
+                }
                 else if (user.Role == "ServiceProvider")
                 {
                     var providerProfile = _context.Set<Domain.Entities.ServiceProviderProfile>()

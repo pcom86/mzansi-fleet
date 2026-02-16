@@ -22,6 +22,14 @@ interface Marshal {
   shiftStartTime: string;
   shiftEndTime: string;
   status: string;
+  taxiRankId?: string;
+  taxiRankName?: string;
+}
+
+interface TaxiRank {
+  id: string;
+  name: string;
+  location: string;
 }
 
 @Component({
@@ -46,7 +54,8 @@ interface Marshal {
 export class MarshalManagementComponent implements OnInit {
   marshalForm!: FormGroup;
   marshals: Marshal[] = [];
-  displayedColumns: string[] = ['marshalCode', 'name', 'email', 'phone', 'shift', 'status', 'actions'];
+  taxiRanks: TaxiRank[] = [];
+  displayedColumns: string[] = ['marshalCode', 'name', 'email', 'phone', 'taxiRank', 'shift', 'status', 'actions'];
   loading = false;
   editMode = false;
   editingMarshalId: string | null = null;
@@ -59,6 +68,7 @@ export class MarshalManagementComponent implements OnInit {
 
   ngOnInit(): void {
     this.initializeForm();
+    this.loadTaxiRanks();
     this.loadMarshals();
   }
 
@@ -72,7 +82,8 @@ export class MarshalManagementComponent implements OnInit {
       password: ['', [Validators.minLength(6)]],
       shiftStartTime: ['', Validators.required],
       shiftEndTime: ['', Validators.required],
-      status: ['Active']
+      status: ['Active'],
+      taxiRankId: ['']
     });
 
     // Auto-generate marshal code
@@ -109,8 +120,31 @@ export class MarshalManagementComponent implements OnInit {
     
     if (user) {
       const userData = JSON.parse(user);
-      tenantId = userData.tenantId;
-      userId = userData.id;
+      tenantId = userData.TenantId;
+      userId = userData.UserId || userData.id || userData.userId; // Try multiple property names for compatibility
+    }
+    
+    // If no userId, try to load marshals with just tenantId
+    if (!userId) {
+      console.warn('No user ID found, loading marshals with tenantId only');
+      const url = tenantId 
+        ? `${environment.apiUrl}/TaxiRankUsers/marshals?tenantId=${tenantId}`
+        : `${environment.apiUrl}/TaxiRankUsers/marshals`;
+      
+      this.http.get<Marshal[]>(url).subscribe({
+        next: (marshals) => {
+          console.log('Marshals loaded (fallback):', marshals);
+          this.marshals = marshals;
+          this.refreshMarshalList();
+          this.loading = false;
+        },
+        error: (error) => {
+          console.error('Error loading marshals:', error);
+          this.snackBar.open('Failed to load marshals', 'Close', { duration: 3000 });
+          this.loading = false;
+        }
+      });
+      return;
     }
     
     // First, get the admin profile to find the taxiRankId
@@ -132,6 +166,7 @@ export class MarshalManagementComponent implements OnInit {
             next: (marshals) => {
               console.log('Marshals loaded:', marshals);
               this.marshals = marshals;
+              this.refreshMarshalList();
               this.loading = false;
             },
             error: (error) => {
@@ -152,6 +187,7 @@ export class MarshalManagementComponent implements OnInit {
             next: (marshals) => {
               console.log('Marshals loaded (fallback):', marshals);
               this.marshals = marshals;
+              this.refreshMarshalList();
               this.loading = false;
             },
             error: (error) => {
@@ -160,6 +196,46 @@ export class MarshalManagementComponent implements OnInit {
               this.loading = false;
             }
           });
+        }
+      });
+  }
+
+  refreshMarshalList(): void {
+    if (this.marshals.length > 0) {
+      this.marshals = this.marshals.map(marshal => ({
+        ...marshal,
+        taxiRankName: marshal.taxiRankId 
+          ? this.taxiRanks.find(rank => rank.id === marshal.taxiRankId)?.name || 'Unknown Rank'
+          : 'Not Assigned'
+      }));
+    }
+  }
+
+  loadTaxiRanks(): void {
+    // Get tenantId from localStorage
+    const user = localStorage.getItem('user');
+    let tenantId = '';
+    if (user) {
+      const userData = JSON.parse(user);
+      tenantId = userData.tenantId;
+    }
+
+    if (!tenantId) {
+      console.error('No tenant ID found');
+      return;
+    }
+
+    this.http.get<TaxiRank[]>(`${environment.apiUrl}/TaxiRanks?tenantId=${tenantId}`)
+      .subscribe({
+        next: (taxiRanks) => {
+          console.log('Taxi ranks loaded:', taxiRanks);
+          this.taxiRanks = taxiRanks;
+          // Refresh marshal list to include taxi rank names
+          this.refreshMarshalList();
+        },
+        error: (error) => {
+          console.error('Error loading taxi ranks:', error);
+          this.snackBar.open('Failed to load taxi ranks', 'Close', { duration: 3000 });
         }
       });
   }
@@ -226,7 +302,8 @@ export class MarshalManagementComponent implements OnInit {
       phoneNumber: marshal.phoneNumber,
       shiftStartTime: marshal.shiftStartTime,
       shiftEndTime: marshal.shiftEndTime,
-      status: marshal.status
+      status: marshal.status,
+      taxiRankId: marshal.taxiRankId || ''
     });
 
     // Make password optional when editing
@@ -255,7 +332,7 @@ export class MarshalManagementComponent implements OnInit {
   resetForm(): void {
     this.editMode = false;
     this.editingMarshalId = null;
-    this.marshalForm.reset({ status: 'Active' });
+    this.marshalForm.reset({ status: 'Active', taxiRankId: '' });
     this.marshalForm.get('password')?.setValidators([Validators.minLength(6)]);
     this.marshalForm.get('password')?.updateValueAndValidity();
   }

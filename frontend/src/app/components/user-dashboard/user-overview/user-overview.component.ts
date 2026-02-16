@@ -905,10 +905,17 @@ export class UserOverviewComponent implements OnInit {
 
   async loadUserStats(): Promise<void> {
     try {
+      const userId = this.userData.id || this.userData.userId;
+      const userEmail = this.userData.email;
+      
       // Load tenders
       const tenders: any = await this.http.get('http://localhost:5000/api/Tenders').toPromise();
       const userTenders = Array.isArray(tenders) 
-        ? tenders.filter((t: any) => t.userId === this.userData.userId || t.createdBy === this.userData.email)
+        ? tenders.filter((t: any) => 
+            t.userId === userId || 
+            t.createdBy === userEmail ||
+            t.postedBy === userEmail
+          )
         : [];
       this.totalTendersCount = userTenders.length;
       this.activeTendersCount = userTenders.filter((t: any) => 
@@ -918,7 +925,11 @@ export class UserOverviewComponent implements OnInit {
       // Load rental requests
       const rentals: any = await this.http.get('http://localhost:5000/api/RentalRequests').toPromise();
       const userRentals = Array.isArray(rentals)
-        ? rentals.filter((r: any) => r.userId === this.userData.userId || r.requesterId === this.userData.userId)
+        ? rentals.filter((r: any) => 
+            r.userId === userId || 
+            r.requesterId === userId ||
+            r.requesterEmail === userEmail
+          )
         : [];
       this.totalRentalsCount = userRentals.length;
       this.activeRentalRequestsCount = userRentals.filter((r: any) => 
@@ -949,11 +960,17 @@ export class UserOverviewComponent implements OnInit {
   async loadRecentActivity(): Promise<void> {
     try {
       const activities: RecentActivity[] = [];
+      const userId = this.userData.id || this.userData.userId;
+      const userEmail = this.userData.email;
 
       // Load recent tenders
       const tenders: any = await this.http.get('http://localhost:5000/api/Tenders').toPromise();
       const userTenders = Array.isArray(tenders)
-        ? tenders.filter((t: any) => t.userId === this.userData.userId || t.createdBy === this.userData.email)
+        ? tenders.filter((t: any) => 
+            t.userId === userId || 
+            t.createdBy === userEmail ||
+            t.postedBy === userEmail
+          )
         : [];
       
       userTenders.slice(0, 3).forEach((tender: any) => {
@@ -971,7 +988,11 @@ export class UserOverviewComponent implements OnInit {
       // Load recent rentals
       const rentals: any = await this.http.get('http://localhost:5000/api/RentalRequests').toPromise();
       const userRentals = Array.isArray(rentals)
-        ? rentals.filter((r: any) => r.userId === this.userData.userId || r.requesterId === this.userData.userId)
+        ? rentals.filter((r: any) => 
+            r.userId === userId || 
+            r.requesterId === userId ||
+            r.requesterEmail === userEmail
+          )
         : [];
       
       userRentals.slice(0, 2).forEach((rental: any) => {

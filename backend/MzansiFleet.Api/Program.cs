@@ -12,8 +12,14 @@ using MzansiFleet.Api;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
 
 // Add JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -44,7 +50,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAngularApp",
         policy =>
         {
-            policy.WithOrigins("http://localhost:4200")
+            policy.WithOrigins("http://localhost:4200", "http://localhost:4201", "http://localhost:4202", "http://localhost:4203")
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials();
@@ -63,7 +69,8 @@ builder.Services.AddSwaggerGen();
 
 // Register DbContext
 builder.Services.AddDbContext<MzansiFleetDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
+           .ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
 // Register repositories
 builder.Services.AddScoped<VehicleRepository>();
@@ -78,6 +85,9 @@ builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IServiceH
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IMaintenanceHistoryRepository, MzansiFleet.Repository.Repositories.MaintenanceHistoryRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IVehicleDocumentRepository, MzansiFleet.Repository.Repositories.VehicleDocumentRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IMechanicalRequestRepository, MzansiFleet.Repository.Repositories.MechanicalRequestRepository>();
+
+// Register services
+builder.Services.AddScoped<MzansiFleet.Application.Services.VehicleNotificationService>();
 
 // Register Taxi Rank repositories
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITaxiRankRepository, MzansiFleet.Repository.Repositories.TaxiRankRepository>();
@@ -144,15 +154,52 @@ builder.Services.AddScoped<GetVehiclesNeedingServiceQueryHandler>();
 
 var app = builder.Build();
 
-// Apply migrations on startup
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+
+// Configure logging
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("Application starting up...");
+
+// Test database connection
 try
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    MigrationRunner.ApplyServiceProviderRatingMigration(connectionString);
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<MzansiFleetDbContext>();
+    await dbContext.Database.CanConnectAsync();
+    logger.LogInformation("Database connection successful");
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"Failed to apply migrations: {ex.Message}");
+    logger.LogWarning(ex, "Database connection failed, but continuing startup");
+}
+
+// Apply migrations on startup
+try
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<MzansiFleetDbContext>();
+    await dbContext.Database.MigrateAsync();
+    logger.LogInformation("Database migrations applied successfully");
+}
+catch (Exception ex)
+{
+    logger.LogWarning(ex, "Failed to apply database migrations, but continuing startup");
+}
+
+// Create taxi rank tables manually
+try
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    MigrationRunner.CreateTaxiRankTables(connectionString);
+    logger.LogInformation("Taxi rank tables created successfully");
+}
+catch (Exception ex)
+{
+    logger.LogWarning(ex, "Failed to create taxi rank tables");
 }
 
 app.UseSwagger();
@@ -164,4 +211,14 @@ app.UseCors("AllowAngularApp");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.Run();
+
+try
+{
+    logger.LogInformation("Starting application...");
+    app.Run();
+}
+catch (Exception ex)
+{
+    logger.LogError(ex, "Application failed to start");
+    throw;
+}

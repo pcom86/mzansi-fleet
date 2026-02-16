@@ -5,6 +5,7 @@ using MzansiFleet.Application.Queries;
 using MzansiFleet.Application.Handlers;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MzansiFleet.Api.Controllers
 {
@@ -40,6 +41,18 @@ namespace MzansiFleet.Api.Controllers
         {
             var driver = _getByIdHandler.Handle(new GetDriverByIdQuery { Id = id });
             if (driver == null) return NotFound();
+            return Ok(driver);
+        }
+
+        [HttpGet("vehicle/{vehicleId}")]
+        public ActionResult<DriverProfile> GetByVehicleId(Guid vehicleId)
+        {
+            var driver = _getAllHandler.Handle(new GetDriversQuery())
+                .FirstOrDefault(d => d.AssignedVehicleId == vehicleId);
+            
+            if (driver == null)
+                return NotFound(new { message = "No driver assigned to this vehicle" });
+            
             return Ok(driver);
         }
         [HttpPost]

@@ -257,9 +257,12 @@ mat-divider {
   padding: 16px;
   border-radius: 8px;
   margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 
   .passenger-card {
-    margin-bottom: 16px;
+    width: 100%;
     scroll-margin-top: 100px; // Offset for fixed headers if any
     transition: all 0.3s ease;
 
@@ -296,16 +299,19 @@ mat-divider {
     }
 
     .passenger-form-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-
-      .full-width {
-        grid-column: 1 / -1;
-      }
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 8px;
+      align-items: flex-start;
 
       mat-form-field {
-        width: 100%;
+        flex: 1 1 25%;
+        min-width: 0;
+        
+        ::ng-deep .mat-mdc-form-field-subscript-wrapper {
+          display: none;
+        }
       }
     }
   }
@@ -413,17 +419,28 @@ mat-divider {
 
   .filter-form {
     display: flex;
+    flex-direction: column;
     gap: 16px;
-    align-items: center;
-    flex-wrap: wrap;
 
-    mat-form-field {
-      flex: 1;
-      min-width: 200px;
-    }
+    .filter-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
 
-    button {
-      height: 56px;
+      mat-form-field {
+        flex: 1;
+        min-width: 180px;
+      }
+
+      .filter-actions {
+        display: flex;
+        gap: 8px;
+
+        button {
+          height: 56px;
+        }
+      }
     }
   }
 }
@@ -828,6 +845,355 @@ mat-divider {
           font-weight: 600;
           color: #333;
         }
+      }
+    }
+  }
+}
+
+// Schedule Selection Section
+.schedule-selection-section {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+  border-radius: 12px;
+  border: 1px solid #e0e0e0;
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #D4AF37;
+    margin: 0 0 8px 0;
+
+    mat-icon {
+      color: #D4AF37;
+    }
+  }
+
+  .section-hint {
+    color: #666;
+    font-size: 14px;
+    margin: 0 0 16px 0;
+  }
+
+  .schedule-mode-toggle {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
+    mat-radio-button {
+      font-size: 14px;
+    }
+  }
+
+  .loading-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    justify-content: center;
+    color: #666;
+  }
+
+  .no-schedules-message {
+    text-align: center;
+    padding: 24px;
+    background: white;
+    border-radius: 8px;
+    color: #666;
+
+    mat-icon {
+      font-size: 48px;
+      width: 48px;
+      height: 48px;
+      color: #ccc;
+      display: block;
+      margin: 0 auto 12px;
+    }
+
+    a {
+      color: #D4AF37;
+      font-weight: 500;
+    }
+  }
+
+  .schedules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .schedule-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    border-radius: 12px;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      border-color: rgba(212, 175, 55, 0.3);
+    }
+
+    &.selected {
+      border-color: #D4AF37;
+      background: linear-gradient(135deg, rgba(212, 175, 55, 0.1), rgba(212, 175, 55, 0.05));
+      box-shadow: 0 4px 12px rgba(212, 175, 55, 0.2);
+    }
+
+    mat-card-content {
+      padding: 16px;
+    }
+
+    .schedule-route {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 15px;
+
+      mat-icon {
+        color: #D4AF37;
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+    }
+
+    .vehicle-details {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px 12px;
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-radius: 8px;
+      margin-bottom: 12px;
+      border-left: 3px solid #D4AF37;
+
+      .vehicle-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        mat-icon {
+          color: #D4AF37;
+          font-size: 20px;
+          width: 20px;
+          height: 20px;
+        }
+
+        .vehicle-reg {
+          font-weight: 600;
+          font-size: 15px;
+          color: #333;
+          letter-spacing: 0.5px;
+        }
+      }
+
+      .vehicle-info {
+        padding-left: 28px;
+
+        .vehicle-make-model {
+          font-size: 13px;
+          color: #666;
+        }
+      }
+
+      &.no-vehicle {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        background: #fff5f5;
+        border-left-color: #dc3545;
+        
+        mat-icon {
+          color: #dc3545;
+        }
+
+        span {
+          color: #dc3545;
+          font-size: 13px;
+        }
+      }
+    }
+
+    .schedule-details {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+
+      .detail-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 13px;
+        color: #666;
+
+        mat-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          color: #999;
+        }
+
+        &.has-passengers {
+          background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+          padding: 4px 8px;
+          border-radius: 16px;
+          color: #2e7d32;
+
+          mat-icon {
+            color: #4caf50;
+          }
+
+          .auto-load-hint {
+            font-size: 14px;
+            width: 14px;
+            height: 14px;
+            color: #D4AF37;
+            margin-left: 4px;
+          }
+        }
+      }
+    }
+
+    .schedule-status {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 12px;
+      display: inline-block;
+
+      &.scheduled {
+        background-color: #e3f2fd;
+        color: #1976d2;
+      }
+
+      &.pending {
+        background-color: #fff8e1;
+        color: #ff8f00;
+      }
+
+      &.in-progress, &.inprogress {
+        background-color: #fff3e0;
+        color: #f57c00;
+      }
+
+      &.completed {
+        background-color: #e8f5e9;
+        color: #4caf50;
+      }
+    }
+  }
+
+  .selected-schedule-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(212, 175, 55, 0.1));
+    border-radius: 8px;
+    margin-top: 16px;
+    border: 1px solid rgba(212, 175, 55, 0.3);
+
+    mat-icon {
+      color: #D4AF37;
+    }
+
+    .schedule-info {
+      flex: 1;
+      font-size: 14px;
+
+      strong {
+        color: #333;
+      }
+
+      span {
+        color: #666;
+      }
+    }
+
+    button {
+      color: #999;
+
+      &:hover {
+        color: #666;
+      }
+    }
+  }
+
+  .schedule-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    padding: 16px;
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
+    .filter-field {
+      flex: 1;
+      min-width: 150px;
+      max-width: 200px;
+
+      ::ng-deep .mat-mdc-form-field-subscript-wrapper {
+        display: none;
+      }
+    }
+
+    .clear-filters-btn {
+      height: 40px;
+      color: #666;
+      
+      mat-icon {
+        margin-right: 4px;
+      }
+
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+      }
+    }
+  }
+
+  .schedule-count {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 12px;
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  .schedule-selection-section {
+    padding: 16px;
+
+    .schedules-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .schedule-mode-toggle {
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .schedule-filters {
+      flex-direction: column;
+      
+      .filter-field {
+        max-width: 100%;
+        width: 100%;
       }
     }
   }

@@ -383,14 +383,45 @@ namespace MzansiFleet.Api.Controllers
             _context.TenderApplications.Add(application);
             await _context.SaveChangesAsync();
 
+            // Send automatic notification message to tender publisher
+            try
+            {
+                var tenderPublisher = await _context.Users.FindAsync(tender.TenderPublisherId);
+                var notificationMessage = new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SenderId = userId,
+                    ReceiverId = tender.TenderPublisherId,
+                    Subject = $"New Application for: {tender.Title}",
+                    Content = $"<p><strong>{ownerProfile.CompanyName ?? ownerProfile.ContactName}</strong> has submitted an application for your tender.</p>" +
+                             $"<p><strong>Proposed Budget:</strong> R{dto.ProposedBudget:N2}</p>" +
+                             $"<p><strong>Available Vehicles:</strong> {dto.AvailableVehicles}</p>" +
+                             $"<p><strong>Message:</strong></p><p>{dto.ApplicationMessage}</p>" +
+                             $"<p>View the full application details in your tender management dashboard.</p>",
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow,
+                    RelatedEntityType = "Tender",
+                    RelatedEntityId = tender.Id,
+                    IsDeletedBySender = false,
+                    IsDeletedByReceiver = false
+                };
+                _context.Messages.Add(notificationMessage);
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail the application
+                Console.WriteLine($"Failed to send notification message: {ex.Message}");
+            }
+
             return Ok(new TenderApplicationDto
             {
                 Id = application.Id,
                 TenderId = application.TenderId,
                 TenderTitle = tender.Title,
                 OwnerId = application.OwnerId,
-                OwnerCompanyName = ownerProfile.CompanyName,
-                OwnerContactName = ownerProfile.ContactName,
+                OwnerCompanyName = ownerProfile?.CompanyName ?? "",
+                OwnerContactName = ownerProfile?.ContactName ?? "",
                 ApplicationMessage = application.ApplicationMessage,
                 ProposedBudget = application.ProposedBudget,
                 ProposalDetails = application.ProposalDetails,
@@ -626,12 +657,46 @@ namespace MzansiFleet.Api.Controllers
             application.ReviewedAt = DateTime.UtcNow;
             application.ReviewNotes = dto.ReviewNotes;
 
+            // Get owner and tender publisher info for notifications
+            var ownerProfile = await _context.OwnerProfiles.FindAsync(application.OwnerId);
+            var ownerUser = ownerProfile != null ? await _context.Users.FirstOrDefaultAsync(u => u.Id == ownerProfile.UserId) : null;
+
             // If accepting this application, award the tender
             if (dto.Status == "Accepted")
             {
                 application.Tender.Status = "Awarded";
                 application.Tender.AwardedToOwnerId = application.OwnerId;
                 application.Tender.UpdatedAt = DateTime.UtcNow;
+
+                // Send acceptance notification
+                if (ownerUser != null)
+                {
+                    try
+                    {
+                        var acceptanceMessage = new Message
+                        {
+                            Id = Guid.NewGuid(),
+                            SenderId = userId,
+                            ReceiverId = ownerUser.Id,
+                            Subject = $"🎉 Application Accepted: {application.Tender.Title}",
+                            Content = $"<p><strong>Congratulations!</strong> Your application for <strong>{application.Tender.Title}</strong> has been accepted!</p>" +
+                                     $"<p><strong>Proposed Budget:</strong> R{application.ProposedBudget:N2}</p>" +
+                                     $"<p><strong>Review Notes:</strong></p><p>{dto.ReviewNotes ?? "No additional notes provided."}</p>" +
+                                     $"<p>The tender publisher will contact you shortly with further details.</p>",
+                            IsRead = false,
+                            CreatedAt = DateTime.UtcNow,
+                            RelatedEntityType = "Tender",
+                            RelatedEntityId = application.TenderId,
+                            IsDeletedBySender = false,
+                            IsDeletedByReceiver = false
+                        };
+                        _context.Messages.Add(acceptanceMessage);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to send acceptance notification: {ex.Message}");
+                    }
+                }
 
                 // Reject all other applications
                 var otherApplications = await _context.TenderApplications
@@ -643,6 +708,67 @@ namespace MzansiFleet.Api.Controllers
                     otherApp.Status = "Rejected";
                     otherApp.ReviewedAt = DateTime.UtcNow;
                     otherApp.ReviewNotes = "Tender awarded to another applicant";
+
+                    // Send rejection notification
+                    var otherOwnerProfile = await _context.OwnerProfiles.FindAsync(otherApp.OwnerId);
+                    var otherOwnerUser = otherOwnerProfile != null ? await _context.Users.FirstOrDefaultAsync(u => u.Id == otherOwnerProfile.UserId) : null;
+                    
+                    if (otherOwnerUser != null)
+                    {
+                        try
+                        {
+                            var rejectionMessage = new Message
+                            {
+                                Id = Guid.NewGuid(),
+                                SenderId = userId,
+                                ReceiverId = otherOwnerUser.Id,
+                                Subject = $"Application Update: {application.Tender.Title}",
+                                Content = $"<p>Thank you for your interest in <strong>{application.Tender.Title}</strong>.</p>" +
+                                         $"<p>Unfortunately, your application was not selected at this time. The tender has been awarded to another applicant.</p>" +
+                                         $"<p>We appreciate your submission and encourage you to apply for future opportunities.</p>",
+                                IsRead = false,
+                                CreatedAt = DateTime.UtcNow,
+                                RelatedEntityType = "Tender",
+                                RelatedEntityId = application.TenderId,
+                                IsDeletedBySender = false,
+                                IsDeletedByReceiver = false
+                            };
+                            _context.Messages.Add(rejectionMessage);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to send rejection notification: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            else if (dto.Status == "Rejected" && ownerUser != null)
+            {
+                // Send rejection notification for individually rejected application
+                try
+                {
+                    var rejectionMessage = new Message
+                    {
+                        Id = Guid.NewGuid(),
+                        SenderId = userId,
+                        ReceiverId = ownerUser.Id,
+                        Subject = $"Application Update: {application.Tender.Title}",
+                        Content = $"<p>Thank you for your interest in <strong>{application.Tender.Title}</strong>.</p>" +
+                                 $"<p>After careful review, we have decided not to move forward with your application.</p>" +
+                                 $"<p><strong>Review Notes:</strong></p><p>{dto.ReviewNotes ?? "No additional notes provided."}</p>" +
+                                 $"<p>We appreciate your submission and encourage you to apply for future opportunities.</p>",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow,
+                        RelatedEntityType = "Tender",
+                        RelatedEntityId = application.TenderId,
+                        IsDeletedBySender = false,
+                        IsDeletedByReceiver = false
+                    };
+                    _context.Messages.Add(rejectionMessage);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to send rejection notification: {ex.Message}");
                 }
             }
 

@@ -10,6 +10,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
+import { MessagingService } from '../../services/messaging.service';
 import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component';
 
 @Component({
@@ -37,23 +38,21 @@ export class UserDashboardComponent implements OnInit {
   userEmail: string = '';
   sidebarCollapsed = false;
   unreadNotifications = 0;
+  unreadMessages = 0;
 
   menuItems = [
     { title: 'Overview', icon: 'dashboard', route: 'overview' },
+    { title: 'Today\'s Schedule', icon: 'schedule', route: 'schedule' },
     { title: 'My Tenders', icon: 'description', route: 'tenders' },
     { title: 'Rent a Car', icon: 'car_rental', route: 'rental' },
-    { title: 'Call a Cab', icon: 'local_taxi', route: 'cab' },
-    { title: 'My Trips', icon: 'map', route: 'trips' }
-  ];
-
-  topMenuItems = [
-    { title: 'Active Tenders', icon: 'description', badge: '0', action: 'tenders' },
-    { title: 'Bookings', icon: 'event', badge: '0', action: 'bookings' }
+    { title: 'My Trips', icon: 'map', route: 'trips' },
+    { title: 'Messages', icon: 'inbox', route: 'messages' }
   ];
 
   constructor(
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private messagingService: MessagingService
   ) {}
 
   ngOnInit(): void {
@@ -70,6 +69,7 @@ export class UserDashboardComponent implements OnInit {
       this.userData = JSON.parse(user);
     }
     this.userEmail = email || 'User';
+    this.loadUnreadMessages();
   }
 
   toggleSidebar(): void {
@@ -82,19 +82,12 @@ export class UserDashboardComponent implements OnInit {
     }
   }
 
-  onTopMenuAction(action: string): void {
-    switch(action) {
-      case 'tenders':
-        this.router.navigate(['tenders'], { relativeTo: this.route });
-        break;
-      case 'bookings':
-        this.router.navigate(['trips'], { relativeTo: this.route });
-        break;
-    }
-  }
-
   navigateTo(route: string): void {
     this.router.navigate([route]);
+  }
+
+  navigateToMessages(): void {
+    this.router.navigate(['messages'], { relativeTo: this.route });
   }
 
   logout(): void {
@@ -104,4 +97,14 @@ export class UserDashboardComponent implements OnInit {
     localStorage.removeItem('userId');
     this.router.navigate(['/login']);
   }
-}
+  loadUnreadMessages(): void {
+    if (this.userData?.id || this.userData?.userId) {
+      const userId = this.userData.id || this.userData.userId;
+      this.messagingService.getUnreadCount(userId).subscribe({
+        next: (count) => {
+          this.unreadMessages = count;
+        },
+        error: (error) => console.error('Error loading unread messages:', error)
+      });
+    }
+  }}

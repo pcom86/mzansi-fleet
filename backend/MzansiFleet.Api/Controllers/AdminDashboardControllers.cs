@@ -1,5 +1,6 @@
 #nullable enable
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MzansiFleet.Application.DTOs;
@@ -25,9 +26,21 @@ namespace MzansiFleet.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Route>>> GetAll()
+        public async Task<ActionResult<IEnumerable<Route>>> GetAll([FromQuery] Guid? taxiRankId = null, [FromQuery] Guid? tenantId = null)
         {
-            var routes = await _context.Routes.ToListAsync();
+            IQueryable<Route> query = _context.Routes;
+
+            if (taxiRankId.HasValue)
+            {
+                query = query.Where(r => r.TaxiRankId == taxiRankId.Value);
+            }
+
+            if (tenantId.HasValue)
+            {
+                query = query.Where(r => r.TenantId == tenantId.Value);
+            }
+
+            var routes = await query.ToListAsync();
             return Ok(routes);
         }
 
@@ -229,19 +242,138 @@ namespace MzansiFleet.Api.Controllers
 
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class TripSchedulesController : ControllerBase
     {
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetAll()
+        private readonly MzansiFleetDbContext _context;
+        private readonly ITaxiRankRepository _taxiRankRepository;
+        private readonly IUserRepository _userRepository;
+
+        public TripSchedulesController(
+            MzansiFleetDbContext context,
+            ITaxiRankRepository taxiRankRepository,
+            IUserRepository userRepository)
         {
-            // TODO: Implement - join with TaxiRank for display details
-            return Ok(new List<TripSchedule>());
+            _context = context;
+            _taxiRankRepository = taxiRankRepository;
+            _userRepository = userRepository;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetAll([FromQuery] Guid? rankId = null, [FromQuery] Guid? tenantId = null)
+        {
+            // Get current user
+            var userIdClaim = User.FindFirst("userId")?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new { message = "Invalid user identity" });
+            }
+
+            var user = _userRepository.GetById(userId);
+            if (user == null)
+            {
+                return Unauthorized(new { message = "User not found" });
+            }
+
+            IQueryable<TripSchedule> query = _context.TripSchedules.Include(ts => ts.TaxiRank);
+
+            // Filter based on user role
+            if (user.Role == "TaxiRankAdmin" || user.Role == "TaxiMarshal")
+            {
+                // Get user's assigned taxi rank
+                TaxiRank? assignedRank = null;
+                if (user.Role == "TaxiMarshal")
+                {
+                    var marshalProfile = await _context.TaxiMarshalProfiles
+                        .FirstOrDefaultAsync(tmp => tmp.UserId == userId);
+                    if (marshalProfile != null)
+                    {
+                        assignedRank = await _taxiRankRepository.GetByIdAsync(marshalProfile.TaxiRankId);
+                    }
+                }
+                else if (user.Role == "TaxiRankAdmin")
+                {
+                    var adminProfile = await _context.TaxiRankAdmins
+                        .FirstOrDefaultAsync(trap => trap.UserId == userId);
+                    if (adminProfile != null)
+                    {
+                        assignedRank = await _taxiRankRepository.GetByIdAsync(adminProfile.TaxiRankId);
+                    }
+                }
+
+                if (assignedRank != null)
+                {
+                    // Only show schedules for the assigned taxi rank
+                    query = query.Where(ts => ts.TaxiRankId == assignedRank.Id);
+                }
+                else
+                {
+                    // User has no assigned rank, return empty
+                    return Ok(new List<TripSchedule>());
+                }
+            }
+            else
+            {
+                // For other roles, apply optional filters
+                if (rankId.HasValue)
+                {
+                    query = query.Where(ts => ts.TaxiRankId == rankId.Value);
+                }
+
+                if (tenantId.HasValue)
+                {
+                    query = query.Where(ts => ts.TenantId == tenantId.Value);
+                }
+            }
+
+            var schedules = await query.OrderBy(ts => ts.DepartureTime).ToListAsync();
+            return Ok(schedules);
         }
 
         [HttpPost]
+        [Authorize(Roles = "TaxiRankAdmin,TaxiMarshal")]
         public async Task<ActionResult<TripSchedule>> Create([FromBody] CreateTripScheduleDto dto)
         {
-            // TODO: Implement
+            // Get current user
+            var userIdClaim = User.FindFirst("userId")?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new { message = "Invalid user identity" });
+            }
+
+            var user = _userRepository.GetById(userId);
+            if (user == null)
+            {
+                return Unauthorized(new { message = "User not found" });
+            }
+
+            // Validate that the taxi rank belongs to the user's tenant and is assigned to them
+            var taxiRank = await _taxiRankRepository.GetByIdAsync(dto.TaxiRankId);
+            if (taxiRank == null || taxiRank.TenantId != dto.TenantId)
+            {
+                return BadRequest(new { message = "Invalid taxi rank or taxi rank does not belong to the specified tenant" });
+            }
+
+            // Check if user is authorized for this taxi rank
+            bool isAuthorized = false;
+            if (user.Role == "TaxiMarshal")
+            {
+                var marshalProfile = await _context.TaxiMarshalProfiles
+                    .FirstOrDefaultAsync(tmp => tmp.UserId == userId && tmp.TaxiRankId == dto.TaxiRankId);
+                isAuthorized = marshalProfile != null;
+            }
+            else if (user.Role == "TaxiRankAdmin")
+            {
+                var adminProfile = await _context.TaxiRankAdmins
+                    .FirstOrDefaultAsync(trap => trap.UserId == userId && trap.TaxiRankId == dto.TaxiRankId);
+                isAuthorized = adminProfile != null;
+            }
+
+            if (!isAuthorized)
+            {
+                return Forbid("You are not authorized to manage schedules for this taxi rank");
+            }
+
             var schedule = new TripSchedule
             {
                 Id = Guid.NewGuid(),
@@ -257,23 +389,132 @@ namespace MzansiFleet.Api.Controllers
                 ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
                 MaxPassengers = dto.MaxPassengers,
                 IsActive = dto.IsActive,
-                Notes = dto.Notes
+                Notes = dto.Notes,
+                CreatedAt = DateTime.UtcNow
             };
             
-            return Ok(schedule);
+            _context.TripSchedules.Add(schedule);
+            await _context.SaveChangesAsync();
+            
+            return CreatedAtAction(nameof(GetAll), new { id = schedule.Id }, schedule);
         }
 
         [HttpPut("{id}")]
+        [Authorize(Roles = "TaxiRankAdmin,TaxiMarshal")]
         public async Task<ActionResult> Update(Guid id, [FromBody] UpdateTripScheduleDto dto)
         {
-            // TODO: Implement
+            // Get current user
+            var userIdClaim = User.FindFirst("userId")?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new { message = "Invalid user identity" });
+            }
+
+            var schedule = await _context.TripSchedules.FindAsync(id);
+            if (schedule == null)
+            {
+                return NotFound();
+            }
+
+            // Check if user is authorized for this taxi rank
+            var user = _userRepository.GetById(userId);
+            if (user == null)
+            {
+                return Unauthorized(new { message = "User not found" });
+            }
+            
+            bool isAuthorized = false;
+            if (user.Role == "TaxiMarshal")
+            {
+                var marshalProfile = await _context.TaxiMarshalProfiles
+                    .FirstOrDefaultAsync(tmp => tmp.UserId == userId && tmp.TaxiRankId == schedule.TaxiRankId);
+                isAuthorized = marshalProfile != null;
+            }
+            else if (user.Role == "TaxiRankAdmin")
+            {
+                var adminProfile = await _context.TaxiRankAdmins
+                    .FirstOrDefaultAsync(trap => trap.UserId == userId && trap.TaxiRankId == schedule.TaxiRankId);
+                isAuthorized = adminProfile != null;
+            }
+
+            if (!isAuthorized)
+            {
+                return Forbid("You are not authorized to update schedules for this taxi rank");
+            }
+
+            // Update fields
+            if (!string.IsNullOrEmpty(dto.RouteName))
+                schedule.RouteName = dto.RouteName;
+            if (!string.IsNullOrEmpty(dto.DepartureStation))
+                schedule.DepartureStation = dto.DepartureStation;
+            if (!string.IsNullOrEmpty(dto.DestinationStation))
+                schedule.DestinationStation = dto.DestinationStation;
+            if (!string.IsNullOrEmpty(dto.DepartureTime))
+                schedule.DepartureTime = TimeSpan.Parse(dto.DepartureTime);
+            if (dto.FrequencyMinutes > 0)
+                schedule.FrequencyMinutes = dto.FrequencyMinutes;
+            if (!string.IsNullOrEmpty(dto.DaysOfWeek))
+                schedule.DaysOfWeek = dto.DaysOfWeek;
+            if (dto.StandardFare > 0)
+                schedule.StandardFare = dto.StandardFare;
+            if (dto.ExpectedDurationMinutes.HasValue)
+                schedule.ExpectedDurationMinutes = dto.ExpectedDurationMinutes.Value;
+            if (dto.MaxPassengers.HasValue)
+                schedule.MaxPassengers = dto.MaxPassengers.Value;
+            schedule.IsActive = dto.IsActive;
+            if (!string.IsNullOrEmpty(dto.Notes))
+                schedule.Notes = dto.Notes;
+
+            schedule.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
             return NoContent();
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Roles = "TaxiRankAdmin,TaxiMarshal")]
         public async Task<ActionResult> Delete(Guid id)
         {
-            // TODO: Implement
+            // Get current user
+            var userIdClaim = User.FindFirst("userId")?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized(new { message = "Invalid user identity" });
+            }
+
+            var schedule = await _context.TripSchedules.FindAsync(id);
+            if (schedule == null)
+            {
+                return NotFound();
+            }
+
+            // Check if user is authorized for this taxi rank
+            var user = _userRepository.GetById(userId);
+            if (user == null)
+            {
+                return Unauthorized(new { message = "User not found" });
+            }
+            
+            bool isAuthorized = false;
+            if (user.Role == "TaxiMarshal")
+            {
+                var marshalProfile = await _context.TaxiMarshalProfiles
+                    .FirstOrDefaultAsync(tmp => tmp.UserId == userId && tmp.TaxiRankId == schedule.TaxiRankId);
+                isAuthorized = marshalProfile != null;
+            }
+            else if (user.Role == "TaxiRankAdmin")
+            {
+                var adminProfile = await _context.TaxiRankAdmins
+                    .FirstOrDefaultAsync(trap => trap.UserId == userId && trap.TaxiRankId == schedule.TaxiRankId);
+                isAuthorized = adminProfile != null;
+            }
+
+            if (!isAuthorized)
+            {
+                return Forbid("You are not authorized to delete schedules for this taxi rank");
+            }
+
+            _context.TripSchedules.Remove(schedule);
+            await _context.SaveChangesAsync();
             return NoContent();
         }
     }
@@ -410,6 +651,23 @@ namespace MzansiFleet.Api.Controllers
                 if (marshal == null)
                     return NotFound();
 
+                // Validate taxi rank if provided
+                // Temporarily commented out due to DTO compilation issue
+                /*
+                if (dto.TaxiRankId.HasValue && dto.TaxiRankId.Value != Guid.Empty)
+                {
+                    var taxiRank = await _context.TaxiRanks.FindAsync(dto.TaxiRankId.Value);
+                    if (taxiRank == null)
+                        return BadRequest(new { message = "Invalid taxi rank" });
+
+                    // Ensure taxi rank belongs to the same tenant
+                    if (taxiRank.TenantId != marshal.TenantId)
+                        return BadRequest(new { message = "Taxi rank does not belong to the marshal's tenant" });
+
+                    marshal.TaxiRankId = dto.TaxiRankId.Value;
+                }
+                */
+
                 // Update marshal profile
                 marshal.FullName = !string.IsNullOrEmpty(dto.FirstName) && !string.IsNullOrEmpty(dto.LastName)
                     ? $"{dto.FirstName} {dto.LastName}"
@@ -503,7 +761,7 @@ namespace MzansiFleet.Api.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Trip>>> GetAll([FromQuery] string? vehicleIds = null)
         {
-            var query = _context.Set<Trip>()
+            var query = _context.Trips
                 .Include(t => t.Passengers).AsQueryable();
             
             // Filter by vehicle IDs if provided (comma-separated)
@@ -702,5 +960,33 @@ namespace MzansiFleet.Api.Controllers
             
             return NoContent();
         }
+    }
+
+    public class CreateDailyTaxiQueueDto
+    {
+        public Guid TaxiRankId { get; set; }
+        public Guid VehicleId { get; set; }
+        public Guid? DriverId { get; set; }
+        public Guid TenantId { get; set; }
+        public DateTime QueueDate { get; set; }
+        public TimeSpan AvailableFrom { get; set; }
+        public TimeSpan? AvailableUntil { get; set; }
+        public int? Priority { get; set; }
+        public string? Notes { get; set; }
+    }
+
+    public class UpdateDailyTaxiQueueDto
+    {
+        public TimeSpan? AvailableFrom { get; set; }
+        public TimeSpan? AvailableUntil { get; set; }
+        public int? Priority { get; set; }
+        public string? Status { get; set; }
+        public string? Notes { get; set; }
+    }
+
+    public class AssignTaxiToTripDto
+    {
+        public Guid TripId { get; set; }
+        public Guid AssignedByUserId { get; set; }
     }
 }

@@ -16,12 +16,13 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 import { forkJoin } from 'rxjs';
 import { RentalMarketplaceService, RentalRequestDto, RentalOfferDto, CreateRentalOfferDto } from '../../services/rental-marketplace.service';
+import { SendMessageButtonComponent } from '../send-message-button/send-message-button.component';
 
 @Component({
   selector: 'app-rental-marketplace',
   standalone: true,
   imports: [CommonModule, MatCardModule, MatButtonModule, MatChipsModule, MatIconModule, 
-            MatDialogModule, MatSnackBarModule, MatTabsModule, MatBadgeModule],
+            MatDialogModule, MatSnackBarModule, MatTabsModule, MatBadgeModule, SendMessageButtonComponent],
   template: `
     <div class="marketplace-container">
       <div class="header-section">
@@ -110,6 +111,15 @@ import { RentalMarketplaceService, RentalRequestDto, RentalOfferDto, CreateRenta
                   </div>
                 </mat-card-content>
                 <mat-card-actions>
+                  <app-send-message-button
+                    [receiverId]="request.userId"
+                    [receiverName]="request.userEmail"
+                    [subject]="'Inquiry about rental request: ' + request.vehicleType"
+                    [relatedEntityType]="'RentalRequest'"
+                    [relatedEntityId]="request.id"
+                    buttonText="Contact Requester"
+                    color="accent">
+                  </app-send-message-button>
                   <button mat-raised-button color="primary" (click)="submitOffer(request)" 
                           [disabled]="request.hasMyOffer">
                     <mat-icon>{{ request.hasMyOffer ? 'check' : 'send' }}</mat-icon>
@@ -235,6 +245,16 @@ import { RentalMarketplaceService, RentalRequestDto, RentalOfferDto, CreateRenta
                 </mat-card-content>
                 
                 <mat-card-actions>
+                  <app-send-message-button
+                    *ngIf="getRequestForOffer(offer.rentalRequestId)?.userId"
+                    [receiverId]="getRequestForOffer(offer.rentalRequestId)!.userId"
+                    [receiverName]="getRequestForOffer(offer.rentalRequestId)!.userEmail || 'Requester'"
+                    [subject]="'About your rental offer: ' + offer.vehicleMake + ' ' + offer.vehicleModel"
+                    [relatedEntityType]="'RentalOffer'"
+                    [relatedEntityId]="offer.id"
+                    buttonText="Message Requester"
+                    color="accent">
+                  </app-send-message-button>
                   <button mat-button *ngIf="offer.status === 'Pending'">
                     <mat-icon>edit</mat-icon>
                     Edit Offer
@@ -751,6 +771,10 @@ export class RentalMarketplaceComponent implements OnInit {
   isTripCompleted(offerId: string): boolean {
     console.log('Checking if trip completed:', offerId, 'Result:', this.completedTrips.has(offerId));
     return this.completedTrips.has(offerId);
+  }
+
+  getRequestForOffer(requestId: string): RentalRequestDto | undefined {
+    return this.requests.find(r => r.id === requestId);
   }
 
   getStatusClass(status: string): string {

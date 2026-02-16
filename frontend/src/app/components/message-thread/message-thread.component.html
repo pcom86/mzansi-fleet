@@ -1,0 +1,53 @@
+<div class="message-thread-dialog">
+  <div class="thread-header">
+    <h2 mat-dialog-title>
+      <mat-icon>email</mat-icon>
+      {{ message.subject }}
+    </h2>
+    <button mat-icon-button (click)="close()">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <mat-dialog-content>
+    <mat-card class="message-card">
+      <mat-card-header>
+        <mat-icon mat-card-avatar>person</mat-icon>
+        <mat-card-title>
+          {{ message.senderId === currentUserId ? 'You' : message.senderName }}
+        </mat-card-title>
+        <mat-card-subtitle>
+          To: {{ message.receiverId === currentUserId ? 'You' : message.receiverName }}
+          <br>
+          {{ formatDate(message.createdAt) }}
+        </mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        <div class="message-content" [innerHTML]="getSafeHtml(message.content)">
+        </div>
+
+        <div *ngIf="message.relatedEntityType" class="related-entity-info">
+          <mat-icon>link</mat-icon>
+          <span>Related to: <strong>{{ message.relatedEntityType }}</strong></span>
+        </div>
+
+        <div *ngIf="message.isRead && message.readAt" class="read-receipt">
+          <mat-icon>done_all</mat-icon>
+          <span>Read on {{ formatDate(message.readAt) }}</span>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button (click)="deleteMessage()">
+      <mat-icon>delete</mat-icon>
+      Delete
+    </button>
+    <button mat-raised-button color="primary" (click)="reply()">
+      <mat-icon>reply</mat-icon>
+      Reply
+    </button>
+  </mat-dialog-actions>
+</div>

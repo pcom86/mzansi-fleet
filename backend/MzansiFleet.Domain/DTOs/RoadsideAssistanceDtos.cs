@@ -29,6 +29,10 @@ namespace MzansiFleet.Domain.DTOs
         public string? VehicleMake { get; set; }
         public string? VehicleModel { get; set; }
         
+        public Guid? DriverId { get; set; }
+        public string? DriverName { get; set; }
+        public string? DriverPhone { get; set; }
+        
         public string AssistanceType { get; set; } = string.Empty;
         public string Location { get; set; } = string.Empty;
         public string? Latitude { get; set; }

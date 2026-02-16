@@ -4,6 +4,7 @@ using MzansiFleet.Domain.Entities;
 using MzansiFleet.Application.Handlers;
 using MzansiFleet.Domain.Interfaces.IRepositories;
 using MzansiFleet.Repository;
+using MzansiFleet.Application.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -19,19 +20,22 @@ namespace MzansiFleet.Api.Controllers
         private readonly IMaintenanceHistoryRepository _maintenanceHistoryRepository;
         private readonly IVehicleRepository _vehicleRepository;
         private readonly MzansiFleetDbContext _context;
+        private readonly VehicleNotificationService _notificationService;
         
         public MechanicalRequestsController(
             CreateMechanicalRequestCommandHandler createMechanicalRequestHandler,
             IMechanicalRequestRepository repository,
             IMaintenanceHistoryRepository maintenanceHistoryRepository,
             IVehicleRepository vehicleRepository,
-            MzansiFleetDbContext context)
+            MzansiFleetDbContext context,
+            VehicleNotificationService notificationService)
         {
             _createMechanicalRequestHandler = createMechanicalRequestHandler;
             _repository = repository;
             _maintenanceHistoryRepository = maintenanceHistoryRepository;
             _vehicleRepository = vehicleRepository;
             _context = context;
+            _notificationService = notificationService;
         }
 
         [HttpGet]
@@ -41,15 +45,35 @@ namespace MzansiFleet.Api.Controllers
             return Ok(requests);
         }
 
-        [HttpPost]
-        public ActionResult<MechanicalRequest> Create([FromBody] CreateMechanicalRequestCommand command)
+        [HttpGet("{id}")]
+        public ActionResult<MechanicalRequest> GetById(Guid id)
         {
-            var result = _createMechanicalRequestHandler.Handle(command, CancellationToken.None).Result;
+            var request = _repository.GetById(id);
+            if (request == null)
+                return NotFound();
+            
+            return Ok(request);
+        }
+
+        [HttpPost]
+        public async System.Threading.Tasks.Task<ActionResult<MechanicalRequest>> Create([FromBody] CreateMechanicalRequestCommand command)
+        {
+            var result = await _createMechanicalRequestHandler.Handle(command, CancellationToken.None);
+            
+            // Send notification to owner about the maintenance request
+            if (result.VehicleId.HasValue)
+            {
+                await _notificationService.NotifyMaintenanceRequested(
+                    result.VehicleId.Value,
+                    result.Category,
+                    result.Description);
+            }
+            
             return CreatedAtAction(nameof(Create), new { id = result.Id }, result);
         }
 
         [HttpPut("{id}/approve")]
-        public ActionResult Approve(Guid id)
+        public async System.Threading.Tasks.Task<ActionResult> Approve(Guid id)
         {
             var request = _repository.GetById(id);
             if (request == null)
@@ -58,11 +82,20 @@ namespace MzansiFleet.Api.Controllers
             request.State = "Approved";
             _repository.Update(request);
             
+            // Send notification to driver about the approved request (only if requested by driver)
+            if (request.RequestedBy.HasValue && request.VehicleId.HasValue && request.RequestedByType == "Driver")
+            {
+                await _notificationService.NotifyDriverMaintenanceApproved(
+                    request.RequestedBy.Value,
+                    request.VehicleId.Value,
+                    request.Category);
+            }
+            
             return Ok(request);
         }
 
         [HttpPut("{id}/decline")]
-        public ActionResult Decline(Guid id, [FromBody] DeclineRequestDto dto)
+        public async System.Threading.Tasks.Task<ActionResult> Decline(Guid id, [FromBody] DeclineRequestDto dto)
         {
             var request = _repository.GetById(id);
             if (request == null)
@@ -72,11 +105,21 @@ namespace MzansiFleet.Api.Controllers
             request.DeclineReason = dto.Reason;
             _repository.Update(request);
             
+            // Send notification to driver about the declined request (only if requested by driver)
+            if (request.RequestedBy.HasValue && request.VehicleId.HasValue && request.RequestedByType == "Driver")
+            {
+                await _notificationService.NotifyDriverMaintenanceDeclined(
+                    request.RequestedBy.Value,
+                    request.VehicleId.Value,
+                    request.Category,
+                    dto.Reason ?? "No reason provided");
+            }
+            
             return Ok(request);
         }
 
         [HttpPut("{id}/schedule")]
-        public ActionResult Schedule(Guid id, [FromBody] ScheduleServiceDto dto)
+        public async System.Threading.Tasks.Task<ActionResult> Schedule(Guid id, [FromBody] ScheduleServiceDto dto)
         {
             var request = _repository.GetById(id);
             if (request == null)
@@ -87,6 +130,37 @@ namespace MzansiFleet.Api.Controllers
             request.ScheduledDate = dto.ScheduledDate;
             request.ScheduledBy = dto.ScheduledBy;
             _repository.Update(request);
+            
+            // Send notification to owner about the scheduled maintenance
+            if (request.VehicleId.HasValue && request.ScheduledDate.HasValue)
+            {
+                await _notificationService.NotifyMaintenanceScheduled(
+                    request.VehicleId.Value,
+                    request.Category,
+                    request.ScheduledDate.Value);
+            }
+            
+            // Send notification to driver about the approved/scheduled request
+            if (request.RequestedBy.HasValue && request.VehicleId.HasValue && request.ScheduledDate.HasValue)
+            {
+                await _notificationService.NotifyDriverMaintenanceScheduled(
+                    request.RequestedBy.Value,
+                    request.VehicleId.Value,
+                    request.Category,
+                    request.ScheduledDate.Value,
+                    request.ServiceProvider ?? "Service Provider");
+            }
+            
+            // Send notification to service provider about the assigned job
+            if (!string.IsNullOrEmpty(request.ServiceProvider) && request.VehicleId.HasValue && request.ScheduledDate.HasValue)
+            {
+                await _notificationService.NotifyServiceProviderMaintenanceScheduled(
+                    request.ServiceProvider,
+                    request.VehicleId.Value,
+                    request.Category,
+                    request.ScheduledDate.Value,
+                    request.Description ?? "No description provided");
+            }
             
             return Ok(request);
         }
@@ -170,6 +244,13 @@ namespace MzansiFleet.Api.Controllers
                     
                     await _vehicleRepository.UpdateAsync(vehicle);
                 }
+                
+                // Send notification to owner about the completed maintenance
+                await _notificationService.NotifyMaintenanceCompleted(
+                    request.VehicleId.Value,
+                    request.Category,
+                    dto.ServiceCost ?? 0,
+                    completedDate);
             }
             
             return Ok(request);

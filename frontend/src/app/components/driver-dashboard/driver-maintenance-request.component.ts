@@ -213,7 +213,7 @@ import { ScheduleServiceDialogComponent } from '../maintenance/schedule-service-
                 </div>
 
                 <div *ngIf="request.status === 'Pending'" class="action-section">
-                  <button mat-raised-button color="primary" (click)="editRequest(request)">
+                  <button mat-raised-button color="primary" (click)="editRequest(request)" style="margin-right: 10px;">
                     <mat-icon>edit</mat-icon>
                     Edit
                   </button>
@@ -513,16 +513,21 @@ export class DriverMaintenanceRequestComponent implements OnInit {
       }
 
       const user = JSON.parse(userStr);
+      const userId = user.id || user.userId;
       console.log('Driver user info:', user);
 
       // Get driver profile to find assigned vehicle
       const driverProfiles: any = await this.http.get(`${this.apiUrl}/Drivers`).toPromise();
-      const driverProfile = driverProfiles.find((d: any) => d.userId === user.userId);
+      const driverProfile = driverProfiles.find((d: any) => 
+        d.userId === userId || 
+        d.id === userId ||
+        d.email === user.email
+      );
       
       console.log('Driver profile:', driverProfile);
 
       if (!driverProfile) {
-        console.error('Driver profile not found for user:', user.userId);
+        console.error('Driver profile not found for user:', userId);
         this.loading = false;
         return;
       }

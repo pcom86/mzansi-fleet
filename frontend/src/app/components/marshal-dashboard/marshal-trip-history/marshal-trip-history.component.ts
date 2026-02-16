@@ -11,6 +11,12 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog, MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { FormsModule } from '@angular/forms';
 import { environment } from '../../../../environments/environment';
 
 interface Trip {
@@ -57,13 +63,20 @@ interface Passenger {
     MatToolbarModule,
     MatSnackBarModule,
     MatTooltipModule,
-    MatDialogModule
+    MatDialogModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    FormsModule
   ],
   templateUrl: './marshal-trip-history.component.html',
   styleUrls: ['./marshal-trip-history.component.scss']
 })
 export class MarshalTripHistoryComponent implements OnInit {
   trips: Trip[] = [];
+  filteredTrips: Trip[] = [];
   loading = false;
   displayedColumns: string[] = ['tripDate', 'vehicle', 'route', 'driver', 'departure', 'passengers', 'fare', 'status', 'actions'];
   userData: any;
@@ -71,6 +84,14 @@ export class MarshalTripHistoryComponent implements OnInit {
   vehicles: any[] = [];
   routes: any[] = [];
   drivers: any[] = [];
+
+  // Filter properties
+  filterDateFrom: string = '';
+  filterDateTo: string = '';
+  filterVehicle: string = '';
+  filterRoute: string = '';
+  filterDriver: string = '';
+  filterStatus: string = '';
 
   constructor(
     private http: HttpClient,
@@ -164,6 +185,59 @@ export class MarshalTripHistoryComponent implements OnInit {
 
     // Sort by date descending
     this.trips.sort((a, b) => new Date(b.tripDate).getTime() - new Date(a.tripDate).getTime());
+    
+    // Apply filters
+    this.applyFilters();
+  }
+
+  applyFilters(): void {
+    this.filteredTrips = this.trips.filter(trip => {
+      // Date from filter
+      if (this.filterDateFrom && new Date(trip.tripDate) < new Date(this.filterDateFrom)) {
+        return false;
+      }
+      
+      // Date to filter
+      if (this.filterDateTo && new Date(trip.tripDate) > new Date(this.filterDateTo + 'T23:59:59')) {
+        return false;
+      }
+      
+      // Vehicle filter
+      if (this.filterVehicle && trip.vehicleId !== this.filterVehicle) {
+        return false;
+      }
+      
+      // Route filter
+      if (this.filterRoute && trip.routeId !== this.filterRoute) {
+        return false;
+      }
+      
+      // Driver filter
+      if (this.filterDriver && trip.driverId !== this.filterDriver) {
+        return false;
+      }
+      
+      // Status filter
+      if (this.filterStatus && trip.status !== this.filterStatus) {
+        return false;
+      }
+      
+      return true;
+    });
+  }
+
+  onFilterChange(): void {
+    this.applyFilters();
+  }
+
+  clearFilters(): void {
+    this.filterDateFrom = '';
+    this.filterDateTo = '';
+    this.filterVehicle = '';
+    this.filterRoute = '';
+    this.filterDriver = '';
+    this.filterStatus = '';
+    this.applyFilters();
   }
 
   formatDate(dateString: string): string {

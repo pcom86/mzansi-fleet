@@ -10,6 +10,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatDividerModule } from '@angular/material/divider';
+import { MessagingService } from '../../services/messaging.service';
 import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component';
 
 @Component({
@@ -37,26 +38,65 @@ export class AdminDashboardComponent implements OnInit {
   taxiRankName = '';
   sidebarCollapsed = false;
   menuItems: any[] = [];
-  topMenuItems: any[] = [];
   unreadNotifications = 3;
-  
-  // Role-based menu configurations
+  unreadMessages = 0;
+
+  topMenuItems = [
+    { title: 'Active Trips', icon: 'local_taxi', badge: '0', action: 'trips' },
+    { title: 'Pending Tasks', icon: 'assignment', badge: '0', action: 'tasks' },
+    { title: 'Rank Status', icon: 'info', badge: '0', action: 'status' }
+  ];
+
+  // Role-based menu configurations with grouping
   private roleMenuConfig: { [key: string]: any[] } = {
     'TaxiRankAdmin': [
-      { title: 'Overview', icon: 'dashboard', route: '/admin/overview' },
-      { title: 'Route Management', icon: 'alt_route', route: '/admin/routes' },
-      { title: 'Owner Assignment', icon: 'group_add', route: '/admin/owners' },
-      { title: 'Vehicle Assignment', icon: 'directions_car', route: '/admin/vehicles' },
-      { title: 'Marshal Management', icon: 'security', route: '/admin/marshals' },
-      { title: 'Trip Schedule', icon: 'event', route: '/admin/schedule' },
-      { title: 'Trip Details', icon: 'list_alt', route: '/admin/trip-details' }
+      {
+        group: 'Rank Management',
+        icon: 'local_taxi',
+        items: [
+          { title: 'Taxi Rank', icon: 'local_taxi', route: '/admin/rank-overview' },
+          { title: 'Route Management', icon: 'alt_route', route: '/admin/routes' }
+        ]
+      },
+      {
+        group: 'Operations',
+        icon: 'settings',
+        items: [
+          { title: 'Owner Assignment', icon: 'group_add', route: '/admin/owners' },
+          { title: 'Vehicle Assignment', icon: 'directions_car', route: '/admin/vehicles' },
+          { title: 'Marshal Management', icon: 'security', route: '/admin/marshals' },
+          { title: 'Passenger Capture', icon: 'people', route: '/admin/capture' }
+        ]
+      },
+      {
+        group: 'Scheduling',
+        icon: 'schedule',
+        items: [
+          { title: 'Today\'s Schedule', icon: 'today', route: '/admin/schedule' },
+          { title: 'Trip Details', icon: 'list_alt', route: '/admin/trip-details' }
+        ]
+      },
+      {
+        group: 'Communication',
+        icon: 'message',
+        items: [
+          { title: 'Messages', icon: 'inbox', route: '/admin/messages' }
+        ]
+      }
     ],
     'TaxiMarshal': [
-      { title: 'Dashboard', icon: 'dashboard', route: '/marshal/dashboard' },
-      { title: 'Capture Trip', icon: 'add_circle', route: '/marshal/capture-trip' },
-      { title: 'My Trips', icon: 'list_alt', route: '/marshal/trips' },
-      { title: 'Passenger Queue', icon: 'people', route: '/marshal/queue' },
-      { title: 'Rank Operations', icon: 'local_taxi', route: '/marshal/operations' }
+      {
+        group: 'Operations',
+        icon: 'settings',
+        items: [
+          { title: 'Dashboard', icon: 'dashboard', route: '/marshal/dashboard' },
+          { title: 'Capture Trip', icon: 'add_circle', route: '/marshal/capture-trip' },
+          { title: 'Scheduled Trips', icon: 'schedule', route: '/marshal/scheduled-trips' },
+          { title: 'My Trips', icon: 'list_alt', route: '/marshal/trips' },
+          { title: 'Passenger Queue', icon: 'people', route: '/marshal/queue' },
+          { title: 'Rank Operations', icon: 'local_taxi', route: '/marshal/operations' }
+        ]
+      }
     ],
     'Owner': [
       { title: 'Dashboard', icon: 'dashboard', route: '/owner/dashboard' },
@@ -84,40 +124,15 @@ export class AdminDashboardComponent implements OnInit {
       { title: 'User Management', icon: 'people', route: '/admin/users' },
       { title: 'Tenant Management', icon: 'business', route: '/admin/tenants' },
       { title: 'System Settings', icon: 'settings', route: '/admin/settings' },
-      { title: 'Reports', icon: 'assessment', route: '/admin/reports' }
+      { title: 'Reports', icon: 'assessment', route: '/admin/reports' },
+      { title: 'Messages', icon: 'inbox', route: '/admin/messages' }
     ]
   };
 
-  // Top menu configurations by role
-  private roleTopMenuConfig: { [key: string]: any[] } = {
-    'TaxiRankAdmin': [
-      { title: 'Quick Stats', icon: 'analytics', action: 'stats' },
-      { title: 'Active Trips', icon: 'local_taxi', badge: '5', action: 'trips' },
-      { title: 'Messages', icon: 'message', badge: '2', action: 'messages' }
-    ],
-    'TaxiMarshal': [
-      { title: 'Active Queue', icon: 'people', badge: '12', action: 'queue' },
-      { title: 'Today\'s Trips', icon: 'local_taxi', badge: '8', action: 'trips' }
-    ],
-    'Owner': [
-      { title: 'Active Vehicles', icon: 'directions_car', badge: '4', action: 'vehicles' },
-      { title: 'Today\'s Earnings', icon: 'attach_money', action: 'earnings' }
-    ],
-    'Driver': [
-      { title: 'Current Trip', icon: 'navigation', action: 'current-trip' },
-      { title: 'Messages', icon: 'message', badge: '1', action: 'messages' }
-    ],
-    'ServiceProvider': [
-      { title: 'Pending Requests', icon: 'pending', badge: '3', action: 'requests' },
-      { title: 'In Progress', icon: 'build', badge: '2', action: 'progress' }
-    ],
-    'Admin': [
-      { title: 'System Health', icon: 'health_and_safety', action: 'health' },
-      { title: 'Active Users', icon: 'people', badge: '142', action: 'users' }
-    ]
-  };
-
-  constructor(private router: Router) {}
+  constructor(
+    private router: Router,
+    private messagingService: MessagingService
+  ) {}
 
   ngOnInit(): void {
     // Get user info from local storage
@@ -126,17 +141,15 @@ export class AdminDashboardComponent implements OnInit {
       this.userData = JSON.parse(user);
       this.loadMenuForRole();
     }
+    this.loadUnreadMessages();
   }
 
   private loadMenuForRole(): void {
     const userRole = this.userData?.role || 'TaxiRankAdmin';
-    
+
     // Load sidebar menu items based on role
     this.menuItems = this.roleMenuConfig[userRole] || this.roleMenuConfig['TaxiRankAdmin'];
-    
-    // Load top menu items based on role
-    this.topMenuItems = this.roleTopMenuConfig[userRole] || [];
-    
+
     // Set rank name if available
     if (this.userData?.taxiRankName) {
       this.taxiRankName = this.userData.taxiRankName;
@@ -161,6 +174,10 @@ export class AdminDashboardComponent implements OnInit {
     return this.userData?.role === 'TaxiRankAdmin';
   }
 
+  isSystemAdmin(): boolean {
+    return this.userData?.role === 'Admin';
+  }
+
   onMenuItemClick(): void {
     // Optional: Add any additional logic when menu item is clicked
     // For mobile, you might want to collapse the sidebar
@@ -169,47 +186,24 @@ export class AdminDashboardComponent implements OnInit {
     }
   }
 
-  onTopMenuAction(action: string): void {
-    // Handle top menu actions based on role
-    switch(action) {
-      case 'stats':
-        this.router.navigate(['/admin/stats']);
-        break;
-      case 'trips':
-        this.router.navigate(['/admin/trips']);
-        break;
-      case 'messages':
-        this.router.navigate(['/messages']);
-        break;
-      case 'queue':
-        this.router.navigate(['/marshal/queue']);
-        break;
-      case 'earnings':
-        this.router.navigate(['/earnings']);
-        break;
-      case 'vehicles':
-        this.router.navigate(['/owner/vehicles']);
-        break;
-      case 'current-trip':
-        this.router.navigate(['/driver/current-trip']);
-        break;
-      case 'requests':
-        this.router.navigate(['/service-provider/requests']);
-        break;
-      case 'progress':
-        this.router.navigate(['/service-provider/progress']);
-        break;
-      case 'health':
-        this.router.navigate(['/admin/system-health']);
-        break;
-      case 'users':
-        this.router.navigate(['/admin/users']);
-        break;
-    }
-  }
-
   toggleSidebar(): void {
     this.sidebarCollapsed = !this.sidebarCollapsed;
+  }
+
+  onTopMenuAction(action: string): void {
+    switch (action) {
+      case 'trips':
+        this.navigateTo('/admin/schedule');
+        break;
+      case 'tasks':
+        this.navigateTo('/admin/trip-details');
+        break;
+      case 'status':
+        this.navigateTo('/admin/rank-overview');
+        break;
+      default:
+        break;
+    }
   }
 
   logout(): void {
@@ -220,5 +214,21 @@ export class AdminDashboardComponent implements OnInit {
 
   navigateTo(route: string): void {
     this.router.navigate([route]);
+  }
+
+  navigateToMessages(): void {
+    this.router.navigate(['/admin/messages']);
+  }
+
+  loadUnreadMessages(): void {
+    if (this.userData?.id || this.userData?.userId) {
+      const userId = this.userData.id || this.userData.userId;
+      this.messagingService.getUnreadCount(userId).subscribe({
+        next: (count) => {
+          this.unreadMessages = count;
+        },
+        error: (error) => console.error('Error loading unread messages:', error)
+      });
+    }
   }
 }

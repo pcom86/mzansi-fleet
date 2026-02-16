@@ -381,6 +381,7 @@ namespace MzansiFleet.Repository.Repositories
             return await _context.TaxiRankTrips
                 .Include(t => t.Vehicle)
                 .Include(t => t.Driver)
+                .Include(t => t.Marshal)
                 .Include(t => t.TaxiRank)
                 .Include(t => t.Passengers)
                 .Include(t => t.Costs)
@@ -393,6 +394,7 @@ namespace MzansiFleet.Repository.Repositories
             return await _context.TaxiRankTrips
                 .Include(t => t.Vehicle)
                 .Include(t => t.Driver)
+                .Include(t => t.Marshal)
                 .Include(t => t.TaxiRank)
                 .Include(t => t.Passengers)
                 .Include(t => t.Costs)
@@ -405,6 +407,7 @@ namespace MzansiFleet.Repository.Repositories
         {
             return await _context.TaxiRankTrips
                 .Include(t => t.Driver)
+                .Include(t => t.Marshal)
                 .Include(t => t.TaxiRank)
                 .Include(t => t.Passengers)
                 .Include(t => t.Costs)
@@ -417,6 +420,7 @@ namespace MzansiFleet.Repository.Repositories
         {
             return await _context.TaxiRankTrips
                 .Include(t => t.Vehicle)
+                .Include(t => t.Marshal)
                 .Include(t => t.Passengers)
                 .Include(t => t.Costs)
                 .Where(t => t.DriverId == driverId)

@@ -77,6 +77,20 @@ namespace MzansiFleet.Api.Controllers
             return Ok(admin);
         }
 
+        // GET: api/TaxiRankAdmin/user/{userId}
+        [HttpGet("user/{userId}")]
+        public async Task<ActionResult<TaxiRankAdminProfile>> GetAdminByUserId(Guid userId)
+        {
+            var admin = await _context.TaxiRankAdmins
+                .Include(a => a.TaxiRank)
+                .FirstOrDefaultAsync(a => a.UserId == userId);
+            
+            if (admin == null)
+                return NotFound(new { message = "Admin profile not found for this user" });
+
+            return Ok(admin);
+        }
+
         // NOTE: Registration moved to TaxiRankUsersController
         // Use POST: api/TaxiRankUsers/register with Role="TaxiRankAdmin"
 

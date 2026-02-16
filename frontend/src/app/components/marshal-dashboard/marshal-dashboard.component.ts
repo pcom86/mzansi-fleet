@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterModule, ActivatedRoute } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -11,6 +11,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatDividerModule } from '@angular/material/divider';
+import { MessagingService } from '../../services/messaging.service';
 import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component';
 import { environment } from '../../../environments/environment';
 
@@ -40,24 +41,39 @@ export class MarshalDashboardComponent implements OnInit {
   sidebarCollapsed = false;
   taxiRankName = '';
   unreadNotifications = 0;
-  
-  menuItems = [
-    { title: 'Dashboard', icon: 'dashboard', route: 'overview' },
-    { title: 'Capture Trip', icon: 'add_circle', route: 'trip-details' },
-    { title: 'My Trips', icon: 'list_alt', route: 'trip-history' },
-    { title: 'Passenger Queue', icon: 'people', route: 'queue' },
-    { title: 'Rank Operations', icon: 'local_taxi', route: 'operations' }
+  unreadMessages = 0;
+
+  topMenuItems = [
+    { title: 'Active Trips', icon: 'local_taxi', badge: '0', action: 'trips' },
+    { title: 'Queue Status', icon: 'people', badge: '0', action: 'queue' },
+    { title: 'Incidents', icon: 'report_problem', badge: '0', action: 'incidents' }
   ];
   
-  topMenuItems = [
-    { title: 'Active Queue', icon: 'people', badge: '0', action: 'queue' },
-    { title: 'Today\'s Trips', icon: 'local_taxi', badge: '0', action: 'trips' }
+  menuItems = [
+    {
+      group: 'Operations',
+      icon: 'settings',
+      items: [
+        { title: 'Dashboard', icon: 'dashboard', route: 'overview' },
+        { title: 'Capture Trip', icon: 'add_circle', route: 'trip-details' },
+        { title: 'Scheduled Trips', icon: 'schedule', route: 'scheduled-trips' },
+        { title: 'My Trips', icon: 'list_alt', route: 'trip-history' },
+        { title: 'Rank Operations', icon: 'local_taxi', route: 'operations' }
+      ]
+    },
+    {
+      group: 'Communication',
+      icon: 'message',
+      items: [
+        { title: 'Messages', icon: 'inbox', route: 'messages' }
+      ]
+    }
   ];
 
   constructor(
     private router: Router,
     private http: HttpClient,
-    private route: ActivatedRoute
+    private messagingService: MessagingService
   ) {}
 
   ngOnInit(): void {
@@ -68,40 +84,70 @@ export class MarshalDashboardComponent implements OnInit {
         this.taxiRankName = this.userData.taxiRankName;
       }
     }
+    this.loadUnreadMessages();
   }
-  
-  getRoleDisplayName(): string {
-    return 'Taxi Marshal';
-  }
-  
+
   toggleSidebar(): void {
     this.sidebarCollapsed = !this.sidebarCollapsed;
   }
-  
+
   onMenuItemClick(): void {
-    if (window.innerWidth < 768) {
+    if (window.innerWidth <= 768) {
       this.sidebarCollapsed = true;
     }
   }
-  
+
+  getRoleDisplayName(): string {
+    return 'Taxi Marshal';
+  }
+
+  navigateTo(route: string): void {
+    this.router.navigate([route]);
+  }
+
   onTopMenuAction(action: string): void {
-    switch(action) {
-      case 'queue':
-        this.router.navigate(['queue'], { relativeTo: this.route });
-        break;
+    switch (action) {
       case 'trips':
-        this.router.navigate(['trip-history'], { relativeTo: this.route });
+        this.router.navigate(['/marshal-dashboard/trip-history']);
+        break;
+      case 'queue':
+        this.router.navigate(['/marshal-dashboard/queue']);
+        break;
+      case 'incidents':
+        // Navigate to incidents page or show incidents dialog
+        break;
+      default:
         break;
     }
   }
-  
-  navigateTo(route: string): void {
-    this.router.navigate([route]);
+
+  navigateToMessages(): void {
+    this.router.navigate(['/marshal-dashboard/messages']);
+  }
+
+  navigateToProfile(): void {
+    this.router.navigate(['/profile']);
+  }
+
+  navigateToSettings(): void {
+    this.router.navigate(['/settings']);
   }
 
   logout(): void {
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     this.router.navigate(['/login']);
+  }
+
+  loadUnreadMessages(): void {
+    if (this.userData?.id || this.userData?.userId) {
+      const userId = this.userData.id || this.userData.userId;
+      this.messagingService.getUnreadCount(userId).subscribe({
+        next: (count) => {
+          this.unreadMessages = count;
+        },
+        error: (error) => console.error('Error loading unread messages:', error)
+      });
+    }
   }
 }

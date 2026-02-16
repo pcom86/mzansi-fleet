@@ -124,4 +124,10 @@ export class IdentityService {
       newPassword
     });
   }
+
+  adminResetPassword(userId: string, newPassword: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/users/${userId}/reset-password`, {
+      newPassword
+    });
+  }
 }

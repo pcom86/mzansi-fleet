@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Repository;
+using MzansiFleet.Application.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,10 +15,12 @@ namespace MzansiFleet.Api.Controllers
     public class VehicleExpensesController : ControllerBase
     {
         private readonly MzansiFleetDbContext _context;
+        private readonly VehicleNotificationService _notificationService;
 
-        public VehicleExpensesController(MzansiFleetDbContext context)
+        public VehicleExpensesController(MzansiFleetDbContext context, VehicleNotificationService notificationService)
         {
             _context = context;
+            _notificationService = notificationService;
         }
 
         [HttpGet("vehicle/{vehicleId}")]
@@ -72,6 +75,14 @@ namespace MzansiFleet.Api.Controllers
 
             _context.VehicleExpenses.Add(expense);
             await _context.SaveChangesAsync();
+            
+            // Send notification to owner
+            await _notificationService.NotifyExpenseRecorded(
+                expense.VehicleId,
+                expense.Category,
+                expense.Amount,
+                expense.Date,
+                expense.Description ?? "No description provided");
 
             return CreatedAtAction(nameof(GetByVehicleId), new { vehicleId = expense.VehicleId }, expense);
         }

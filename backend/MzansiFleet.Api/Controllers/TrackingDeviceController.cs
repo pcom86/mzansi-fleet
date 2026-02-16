@@ -117,7 +117,7 @@ namespace MzansiFleet.Api.Controllers
             }
 
             // Check if provider offers tracking services
-            if (!serviceProvider.ServiceTypes.Contains("Tracking"))
+            if (!serviceProvider.ServiceTypes.ToLower().Contains("tracking"))
             {
                 return BadRequest("This service provider does not offer tracking device installation services");
             }

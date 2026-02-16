@@ -69,6 +69,20 @@ namespace MzansiFleet.Api.Controllers
 
                 _context.Users.Add(user);
 
+                // Create passenger profile for Customer role
+                if (user.Role == "Customer")
+                {
+                    var passengerProfile = new Domain.Entities.PassengerProfile
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = user.Id,
+                        Name = dto.FullName ?? dto.Email,
+                        Phone = dto.Phone ?? "",
+                        Email = dto.Email
+                    };
+                    _context.Set<Domain.Entities.PassengerProfile>().Add(passengerProfile);
+                }
+
                 await _context.SaveChangesAsync();
 
                 return Ok(new

@@ -1,0 +1,112 @@
+.compose-message-dialog {
+  min-width: 500px;
+}
+
+.message-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 0;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.related-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #666;
+}
+
+.related-info mat-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}
+
+mat-dialog-actions button {
+  margin-left: 8px;
+}
+
+mat-dialog-actions button mat-icon {
+  margin-right: 4px;
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}
+.user-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.user-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.user-role {
+  font-size: 12px;
+  color: #666;
+  background-color: #e0e0e0;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.recipient-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background-color: #e3f2fd;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.recipient-display mat-icon {
+  color: #1976d2;
+}
+
+.recipient-display span {
+  font-size: 14px;
+  color: #333;
+}
+
+mat-spinner {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+/* Quill Editor Styles */
+.quill-editor-container {
+  margin-bottom: 16px;
+}
+
+.editor-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.6);
+  margin-bottom: 8px;
+}
+
+.char-count {
+  text-align: right;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.54);
+  margin-top: 4px;
+  padding-right: 4px;
+}
+
+.error-message {
+  font-size: 12px;
+  color: #f44336;
+  margin-top: 4px;
+}

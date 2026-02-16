@@ -1,0 +1,74 @@
+<div class="marshal-operations">
+  <mat-toolbar color="primary" class="page-toolbar">
+    <button mat-icon-button (click)="goToDashboard()">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <span>Rank Operations</span>
+    <span class="spacer"></span>
+    <button mat-raised-button color="accent" (click)="goToDashboard()">
+      <mat-icon>dashboard</mat-icon>
+      Dashboard
+    </button>
+  </mat-toolbar>
+
+  <div class="content-container">
+    <mat-card>
+      <mat-card-header>
+        <mat-card-title>Taxi Rank Operations</mat-card-title>
+        <mat-card-subtitle>Manage and execute rank-level operations</mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        <div *ngIf="loading" class="loading-container">
+          <mat-spinner></mat-spinner>
+          <p>Loading operations...</p>
+        </div>
+
+        <div *ngIf="!loading && operations.length === 0" class="no-data">
+          <mat-icon>assignment</mat-icon>
+          <p>No operations available</p>
+        </div>
+
+        <div *ngIf="!loading && operations.length > 0" class="operations-list">
+          <mat-list>
+            <mat-list-item *ngFor="let operation of operations" class="operation-item">
+              <div class="operation-content">
+                <div class="operation-header">
+                  <h3>{{ operation.title }}</h3>
+                  <div class="operation-badges">
+                    <mat-chip [color]="getStatusColor(operation.status)" selected>
+                      {{ operation.status | titlecase }}
+                    </mat-chip>
+                    <mat-chip [color]="getPriorityColor(operation.priority)" selected>
+                      {{ operation.priority | titlecase }} Priority
+                    </mat-chip>
+                  </div>
+                </div>
+
+                <p class="operation-description">{{ operation.description }}</p>
+
+                <div class="operation-meta">
+                  <span class="operation-date">
+                    <mat-icon>schedule</mat-icon>
+                    {{ formatDate(operation.createdAt) }}
+                  </span>
+                  <span class="operation-assignee" *ngIf="operation.assignedTo">
+                    <mat-icon>person</mat-icon>
+                    {{ operation.assignedTo }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="operation-actions" *ngIf="operation.status !== 'completed'">
+                <button mat-raised-button color="primary" (click)="executeOperation(operation)">
+                  <mat-icon>play_arrow</mat-icon>
+                  Execute
+                </button>
+              </div>
+            </mat-list-item>
+          </mat-list>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </div>
+</div>

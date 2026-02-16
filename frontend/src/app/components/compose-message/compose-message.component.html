@@ -1,0 +1,76 @@
+<div class="compose-message-dialog">
+  <h2 mat-dialog-title>{{ data.receiverName ? 'Send Message to ' + data.receiverName : 'Compose New Message' }}</h2>
+  
+  <mat-dialog-content>
+    <form [formGroup]="messageForm" class="message-form">
+      <!-- Recipient Search -->
+      <mat-form-field appearance="outline" class="full-width" *ngIf="allowRecipientSearch && !data.receiverId">
+        <mat-label>To (Recipient)</mat-label>
+        <input 
+          type="text" 
+          matInput 
+          [formControl]="recipientControl"
+          [matAutocomplete]="auto"
+          placeholder="Search for a user...">
+        <mat-icon matSuffix *ngIf="isSearching"><mat-spinner diameter="20"></mat-spinner></mat-icon>
+        <mat-icon matSuffix *ngIf="!isSearching">search</mat-icon>
+        <mat-autocomplete 
+          #auto="matAutocomplete" 
+          [displayWith]="displayUser.bind(this)"
+          (optionSelected)="onUserSelected($event.option.value)">
+          <mat-option *ngFor="let user of filteredUsers | async" [value]="user">
+            <div class="user-option">
+              <span class="user-name">{{ user.fullName || user.email }}</span>
+              <span class="user-role" *ngIf="user.role">{{ user.role }}</span>
+            </div>
+          </mat-option>
+        </mat-autocomplete>
+      </mat-form-field>
+
+      <!-- Show recipient if pre-filled -->
+      <div class="recipient-display" *ngIf="data.receiverId && data.receiverName">
+        <mat-icon>person</mat-icon>
+        <span><strong>To:</strong> {{ data.receiverName }}</span>
+      </div>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Subject</mat-label>
+        <input matInput formControlName="subject" placeholder="Enter message subject" maxlength="500">
+        <mat-error *ngIf="messageForm.get('subject')?.hasError('required')">
+          Subject is required
+        </mat-error>
+      </mat-form-field>
+
+      <div class="quill-editor-container">
+        <label class="editor-label">Message</label>
+        <quill-editor 
+          formControlName="content"
+          [modules]="quillConfig"
+          [styles]="editorStyle"
+          placeholder="Type your message here...">
+        </quill-editor>
+        <div class="char-count">{{ messageForm.get('content')?.value?.length || 0 }}/5000</div>
+        <mat-error *ngIf="messageForm.get('content')?.hasError('required')" class="error-message">
+          Message content is required
+        </mat-error>
+      </div>
+
+      <div *ngIf="data.relatedEntityType" class="related-info">
+        <mat-icon>link</mat-icon>
+        <span>Related to: {{ data.relatedEntityType }}</span>
+      </div>
+    </form>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button (click)="onCancel()" [disabled]="isSending">Cancel</button>
+    <button 
+      mat-raised-button 
+      color="primary" 
+      (click)="onSend()" 
+      [disabled]="!messageForm.valid || isSending">
+      <mat-icon>send</mat-icon>
+      {{ isSending ? 'Sending...' : 'Send Message' }}
+    </button>
+  </mat-dialog-actions>
+</div>

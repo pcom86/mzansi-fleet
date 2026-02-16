@@ -1,0 +1,498 @@
+<div class="passenger-booking-container">
+  <div class="content-wrapper">
+    <div class="tab-content-wrapper">
+    <mat-tab-group #tabGroup [(selectedIndex)]="selectedTabIndex" (selectedTabChange)="onTabChange($event)">
+      <mat-tab label="Book a Trip">
+        <div class="tab-content">
+          <div class="booking-section">
+            <!-- Step 1: Search for trips -->
+            <div *ngIf="step === 0" class="search-section">
+              <div class="section-title">
+                <mat-icon>search</mat-icon>
+                <h3>Find Available Trips</h3>
+              </div>
+              <form [formGroup]="searchForm" class="search-form">
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Select Taxi Rank</mat-label>
+                    <mat-select formControlName="taxiRankId">
+                      <mat-option *ngFor="let rank of taxiRanks" [value]="rank.id">
+                        {{ rank.name }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline">
+                    <mat-label>Select Route</mat-label>
+                    <mat-select formControlName="routeId">
+                      <mat-option *ngFor="let route of routes" [value]="route.id">
+                        {{ route.origin }} → {{ route.destination }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                </div>
+
+                <button mat-raised-button color="primary" (click)="searchTrips()" [disabled]="searchForm.invalid || loading">
+                  <mat-icon>search</mat-icon>
+                  Search Trips
+                </button>
+              </form>
+            </div>
+
+              <!-- Step 2: Select trip -->
+              <div *ngIf="step === 1" class="trip-selection">
+                <div class="section-header">
+                  <div class="section-title">
+                    <mat-icon>directions_bus</mat-icon>
+                    <h3>Available Trips</h3>
+                  </div>
+                  <button mat-button (click)="goBack()">
+                    <mat-icon>arrow_back</mat-icon>
+                    Back to Search
+                  </button>
+                </div>
+
+                <!-- Filters -->
+                <div class="filters-section">
+                  <mat-form-field appearance="outline" class="filter-field">
+                    <mat-label>Search</mat-label>
+                    <input matInput [(ngModel)]="tripSearchTerm" (input)="filterTrips()" placeholder="Search vehicles, drivers...">
+                    <mat-icon matSuffix>search</mat-icon>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="filter-field">
+                    <mat-label>Vehicle Type</mat-label>
+                    <mat-select [(ngModel)]="vehicleTypeFilter" (selectionChange)="filterTrips()">
+                      <mat-option value="">All Types</mat-option>
+                      <mat-option *ngFor="let type of getUniqueVehicleTypes()" [value]="type">
+                        {{ type }}
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="filter-field">
+                    <mat-label>Driver Status</mat-label>
+                    <mat-select [(ngModel)]="driverStatusFilter" (selectionChange)="filterTrips()">
+                      <mat-option value="">All</mat-option>
+                      <mat-option value="available">Available</mat-option>
+                      <mat-option value="active">Active</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+
+                  <button mat-stroked-button (click)="clearFilters()">
+                    <mat-icon>clear</mat-icon>
+                    Clear Filters
+                  </button>
+                </div>
+
+                <!-- Trips table -->
+                <div class="trips-table-container">
+                  <table mat-table [dataSource]="filteredTrips" class="trips-table">
+                    <ng-container matColumnDef="departureDateTime">
+                      <th mat-header-cell *matHeaderCellDef>Departure</th>
+                      <td mat-cell *matCellDef="let trip">
+                        <div class="departure-info">
+                          <div class="date">{{ trip.departureDate }}</div>
+                          <div class="time">{{ trip.departureTime }}</div>
+                        </div>
+                      </td>
+                    </ng-container>
+
+                    <ng-container matColumnDef="vehicle">
+                      <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+                      <td mat-cell *matCellDef="let trip">
+                        <div class="vehicle-info">
+                          <div class="registration">{{ trip.vehicleRegistration }}</div>
+                          <div class="model">{{ trip.vehicleMake }} {{ trip.vehicleModel }}</div>
+                        </div>
+                      </td>
+                    </ng-container>
+
+                    <ng-container matColumnDef="driver">
+                      <th mat-header-cell *matHeaderCellDef>Driver</th>
+                      <td mat-cell *matCellDef="let trip">
+                        <div class="driver-info">
+                          <div class="name">{{ trip.driverName }}</div>
+                          <div class="phone">{{ trip.driverPhone }}</div>
+                        </div>
+                      </td>
+                    </ng-container>
+
+                    <ng-container matColumnDef="availableSeats">
+                      <th mat-header-cell *matHeaderCellDef>Available Seats</th>
+                      <td mat-cell *matCellDef="let trip">
+                        <span class="seats-count">{{ trip.availableSeats }}</span>
+                      </td>
+                    </ng-container>
+
+                    <ng-container matColumnDef="fareAmount">
+                      <th mat-header-cell *matHeaderCellDef>Fare</th>
+                      <td mat-cell *matCellDef="let trip">
+                        <span class="fare-amount">R{{ trip.fareAmount }}</span>
+                      </td>
+                    </ng-container>
+
+                    <ng-container matColumnDef="actions">
+                      <th mat-header-cell *matHeaderCellDef>Actions</th>
+                      <td mat-cell *matCellDef="let trip">
+                        <button mat-raised-button color="primary" (click)="selectTrip(trip)" [disabled]="trip.availableSeats <= 0">
+                          Book Now
+                        </button>
+                      </td>
+                    </ng-container>
+
+                    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+                    <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+                  </table>
+
+                  <div *ngIf="filteredTrips.length === 0 && !loading" class="no-trips">
+                    <mat-icon>info</mat-icon>
+                    <p>No trips found matching your criteria.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 3: Booking details -->
+              <div *ngIf="step === 2" class="booking-details">
+                <div class="section-header">
+                  <div class="section-title">
+                    <mat-icon>event_note</mat-icon>
+                    <h3>Booking Details</h3>
+                  </div>
+                  <button mat-button (click)="goBack()">
+                    <mat-icon>arrow_back</mat-icon>
+                    Back
+                  </button>
+                </div>
+
+                <div class="selected-trip-summary">
+                  <h4>Selected Trip</h4>
+                  <div class="trip-summary-card">
+                    <div class="summary-row">
+                      <span class="label">Route:</span>
+                      <span class="value">{{ getSelectedRoute()?.origin }} → {{ getSelectedRoute()?.destination }}</span>
+                    </div>
+                    <div class="summary-row">
+                      <span class="label">Departure:</span>
+                      <span class="value">{{ selectedTrip?.departureDate }} at {{ selectedTrip?.departureTime }}</span>
+                    </div>
+                    <div class="summary-row">
+                      <span class="label">Vehicle:</span>
+                      <span class="value">{{ selectedTrip?.vehicleRegistration }} ({{ selectedTrip?.vehicleMake }} {{ selectedTrip?.vehicleModel }})</span>
+                    </div>
+                    <div class="summary-row">
+                      <span class="label">Driver:</span>
+                      <span class="value">{{ selectedTrip?.driverName }}</span>
+                    </div>
+                    <div class="summary-row">
+                      <span class="label">Fare per seat:</span>
+                      <span class="value">R{{ selectedTrip?.fareAmount }}</span>
+                    </div>
+                    <div class="summary-row">
+                      <span class="label">Available Seats:</span>
+                      <span class="value">{{ (selectedTrip?.availableSeats || 0) - passengerCart.length }} of {{ selectedTrip?.availableSeats }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Passenger Cart -->
+                <div class="passenger-cart" *ngIf="passengerCart.length > 0">
+                  <h4><mat-icon>people</mat-icon> Passengers to Book ({{ passengerCart.length }})</h4>
+                  <div class="cart-list">
+                    <div class="cart-item" *ngFor="let passenger of passengerCart; let i = index">
+                      <div class="passenger-info">
+                        <span class="passenger-name">{{ passenger.passengerName }}</span>
+                        <span class="passenger-phone">{{ passenger.passengerPhone }}</span>
+                        <span class="passenger-route">{{ passenger.departureStation }} → {{ passenger.arrivalStation }}</span>
+                        <span class="passenger-amount">R{{ passenger.amount }}</span>
+                      </div>
+                      <button mat-icon-button color="warn" (click)="removePassengerFromCart(i)" aria-label="Remove passenger">
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="cart-total">
+                    <span class="label">Total Amount:</span>
+                    <span class="value">R{{ getCartTotal() }}</span>
+                  </div>
+                </div>
+
+                <div class="add-passenger-section">
+                  <h4><mat-icon>person_add</mat-icon> Add Passenger</h4>
+                  <form [formGroup]="bookingForm" class="booking-form">
+                    <div class="form-row">
+                      <mat-form-field appearance="outline">
+                        <mat-label>Passenger Name</mat-label>
+                        <input matInput formControlName="passengerName" required>
+                        <mat-error *ngIf="bookingForm.get('passengerName')?.invalid && bookingForm.get('passengerName')?.touched">
+                          Passenger name is required
+                        </mat-error>
+                      </mat-form-field>
+
+                      <mat-form-field appearance="outline">
+                        <mat-label>Phone Number</mat-label>
+                        <input matInput formControlName="passengerPhone" placeholder="e.g., 0712345678" required>
+                        <mat-error *ngIf="bookingForm.get('passengerPhone')?.invalid && bookingForm.get('passengerPhone')?.touched">
+                          Please enter a valid South African phone number
+                        </mat-error>
+                      </mat-form-field>
+                    </div>
+
+                    <div class="form-row">
+                      <mat-form-field appearance="outline">
+                        <mat-label>Departure Station</mat-label>
+                        <input matInput formControlName="departureStation" required>
+                      </mat-form-field>
+
+                      <mat-form-field appearance="outline">
+                        <mat-label>Arrival Station</mat-label>
+                        <input matInput formControlName="arrivalStation" required>
+                      </mat-form-field>
+                    </div>
+
+                    <div class="form-row">
+                      <mat-form-field appearance="outline">
+                        <mat-label>Seat Number (Optional)</mat-label>
+                        <input matInput formControlName="seatNumber" type="number" min="1">
+                      </mat-form-field>
+
+                      <mat-form-field appearance="outline">
+                        <mat-label>Payment Method</mat-label>
+                        <mat-select formControlName="paymentMethod" required>
+                          <mat-option value="eft">EFT</mat-option>
+                          <mat-option value="cash">Cash</mat-option>
+                          <mat-option value="card">Card</mat-option>
+                        </mat-select>
+                      </mat-form-field>
+                    </div>
+
+                    <mat-form-field appearance="outline" class="full-width">
+                      <mat-label>Notes (Optional)</mat-label>
+                      <textarea matInput formControlName="notes" rows="2"></textarea>
+                    </mat-form-field>
+
+                    <div class="form-actions">
+                      <button mat-stroked-button color="primary" type="button" (click)="addPassengerToCart()" 
+                              [disabled]="bookingForm.invalid || passengerCart.length >= (selectedTrip?.availableSeats || 0)">
+                        <mat-icon>person_add</mat-icon>
+                        Add Passenger
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div class="booking-actions">
+                  <button mat-button (click)="goBack()">Back</button>
+                  <button mat-raised-button color="primary" (click)="proceedToPayment()" 
+                          [disabled]="passengerCart.length === 0">
+                    <mat-icon>payment</mat-icon>
+                    Proceed to Payment ({{ passengerCart.length }} passenger{{ passengerCart.length !== 1 ? 's' : '' }})
+                  </button>
+                </div>
+              </div>
+
+              <!-- Step 4: Payment -->
+              <div *ngIf="step === 3" class="payment-section">
+                <div class="section-header">
+                  <h3>Payment & Confirmation</h3>
+                  <button mat-button (click)="goBack()">
+                    <mat-icon>arrow_back</mat-icon>
+                    Back
+                  </button>
+                </div>
+
+                <div class="booking-summary">
+                  <h4>Booking Summary</h4>
+                  
+                  <div class="trip-info-summary">
+                    <div class="summary-item">
+                      <span class="label">Route:</span>
+                      <span class="value">{{ getSelectedRoute()?.origin }} → {{ getSelectedRoute()?.destination }}</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="label">Departure:</span>
+                      <span class="value">{{ selectedTrip?.departureDate }} at {{ selectedTrip?.departureTime }}</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="label">Vehicle:</span>
+                      <span class="value">{{ selectedTrip?.vehicleRegistration }}</span>
+                    </div>
+                    <div class="summary-item">
+                      <span class="label">Payment Method:</span>
+                      <span class="value">{{ bookingForm.value.paymentMethod?.toUpperCase() }}</span>
+                    </div>
+                  </div>
+
+                  <h4>Passengers ({{ passengerCart.length }})</h4>
+                  <div class="passengers-summary">
+                    <div class="passenger-summary-item" *ngFor="let passenger of passengerCart; let i = index">
+                      <div class="passenger-number">{{ i + 1 }}</div>
+                      <div class="passenger-details">
+                        <span class="name">{{ passenger.passengerName }}</span>
+                        <span class="phone">{{ passenger.passengerPhone }}</span>
+                        <span class="route">{{ passenger.departureStation }} → {{ passenger.arrivalStation }}</span>
+                      </div>
+                      <div class="passenger-fare">R{{ passenger.amount }}</div>
+                    </div>
+                  </div>
+
+                  <div class="summary-card total-section">
+                    <div class="summary-item total">
+                      <span class="label">Total Passengers:</span>
+                      <span class="value">{{ passengerCart.length }}</span>
+                    </div>
+                    <div class="summary-item total grand-total">
+                      <span class="label">Grand Total:</span>
+                      <span class="value">R{{ getCartTotal() }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="payment-notice">
+                  <mat-icon>info</mat-icon>
+                  <p>Please ensure you have the payment ready. You will pay the driver directly upon boarding.</p>
+                </div>
+
+                <div class="form-actions">
+                  <button mat-button (click)="goBack()">Back</button>
+                  <button mat-raised-button color="primary" (click)="confirmBooking()" [disabled]="loading">
+                    <mat-icon *ngIf="loading">hourglass_empty</mat-icon>
+                    <mat-icon *ngIf="!loading">check_circle</mat-icon>
+                    Confirm Booking (R{{ getCartTotal() }})
+                  </button>
+                </div>
+              </div>
+
+              <!-- Step 5: Confirmation -->
+              <div *ngIf="step === 4" class="confirmation-section">
+                <div class="confirmation-card">
+                  <mat-icon class="success-icon">check_circle</mat-icon>
+                  <h3>Booking Confirmed!</h3>
+                  <p>{{ passengerCart.length }} passenger{{ passengerCart.length !== 1 ? 's have' : ' has' }} been successfully booked!</p>
+                  <p>You will receive a confirmation message shortly.</p>
+                  
+                  <div class="confirmed-details">
+                    <p><strong>Trip Details:</strong></p>
+                    <ul>
+                      <li>Route: {{ getSelectedRoute()?.origin }} → {{ getSelectedRoute()?.destination }}</li>
+                      <li>Departure: {{ selectedTrip?.departureDate }} at {{ selectedTrip?.departureTime }}</li>
+                      <li>Vehicle: {{ selectedTrip?.vehicleRegistration }}</li>
+                    </ul>
+                    
+                    <p><strong>Booked Passengers:</strong></p>
+                    <ul>
+                      <li *ngFor="let passenger of passengerCart">
+                        {{ passenger.passengerName }} ({{ passenger.passengerPhone }}) - R{{ passenger.amount }}
+                      </li>
+                    </ul>
+                    
+                    <p class="total-paid"><strong>Total Paid: R{{ getCartTotal() }}</strong></p>
+                  </div>
+                  
+                  <div class="confirmation-actions">
+                    <button mat-raised-button color="primary" (click)="resetBooking()">
+                      Book Another Trip
+                    </button>
+                    <button mat-stroked-button color="primary" (click)="selectedTabIndex = 1">
+                      View My Bookings
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <mat-tab label="My Bookings">
+          <div class="tab-content">
+            <div class="bookings-section">
+              <div class="section-title">
+                <mat-icon>event_note</mat-icon>
+                <h3>Your Booked Trips</h3>
+              </div>
+
+              <div *ngIf="bookedTrips.length === 0" class="no-bookings">
+                <mat-icon>event_note</mat-icon>
+                <p *ngIf="authService.isLoggedIn()">No bookings found for your account.</p>
+                <p *ngIf="!authService.isLoggedIn()">Please log in to view your bookings.</p>
+                <p style="font-size: 14px; color: #666; margin-top: 10px;">
+                  Note: Bookings are now tracked by user account. Previous bookings made before this feature may not be visible.
+                </p>
+                <button mat-raised-button color="primary" (click)="resetBooking()" *ngIf="authService.isLoggedIn()">
+                  Book Your First Trip
+                </button>
+                <button mat-raised-button color="primary" routerLink="/login" *ngIf="!authService.isLoggedIn()">
+                  Log In
+                </button>
+              </div>
+
+              <div *ngIf="bookedTrips.length > 0" class="bookings-table-container">
+                <table mat-table [dataSource]="bookedTrips" class="bookings-table">
+                  <ng-container matColumnDef="bookingDate">
+                    <th mat-header-cell *matHeaderCellDef>Booking Date</th>
+                    <td mat-cell *matCellDef="let booking">{{ booking.bookingDate }}</td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="departureDateTime">
+                    <th mat-header-cell *matHeaderCellDef>Departure</th>
+                    <td mat-cell *matCellDef="let booking">
+                      <div class="departure-info">
+                        <div class="date">{{ booking.departureDate }}</div>
+                        <div class="time">{{ booking.departureTime }}</div>
+                      </div>
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="route">
+                    <th mat-header-cell *matHeaderCellDef>Route</th>
+                    <td mat-cell *matCellDef="let booking">
+                      {{ booking.departureStation }} → {{ booking.destinationStation }}
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="vehicle">
+                    <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+                    <td mat-cell *matCellDef="let booking">
+                      <div class="vehicle-info">
+                        <div class="registration">{{ booking.vehicleRegistration }}</div>
+                        <div class="model">{{ booking.vehicleMake }} {{ booking.vehicleModel }}</div>
+                      </div>
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="driver">
+                    <th mat-header-cell *matHeaderCellDef>Driver</th>
+                    <td mat-cell *matCellDef="let booking">
+                      <div class="driver-info">
+                        <div class="name">{{ booking.driverName }}</div>
+                        <div class="phone">{{ booking.driverPhone }}</div>
+                      </div>
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="amount">
+                    <th mat-header-cell *matHeaderCellDef>Amount</th>
+                    <td mat-cell *matCellDef="let booking">
+                      <span class="amount">R{{ booking.amount }}</span>
+                    </td>
+                  </ng-container>
+
+                  <ng-container matColumnDef="status">
+                    <th mat-header-cell *matHeaderCellDef>Status</th>
+                    <td mat-cell *matCellDef="let booking">
+                      <span class="status-chip" [ngClass]="getStatusClass(booking.status)">
+                        {{ booking.status }}
+                      </span>
+                    </td>
+                  </ng-container>
+
+                  <tr mat-header-row *matHeaderRowDef="bookingColumns"></tr>
+                  <tr mat-row *matRowDef="let row; columns: bookingColumns;"></tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+    </div>
+  </div>

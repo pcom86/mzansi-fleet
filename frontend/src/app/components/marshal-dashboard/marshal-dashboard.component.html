@@ -15,23 +15,32 @@
     </div>
     
     <nav class="sidebar-nav">
-      <div class="nav-section">
-        <p class="section-label" *ngIf="!sidebarCollapsed">Dashboard</p>
-        <a class="nav-item" 
-           *ngFor="let item of menuItems" 
-           [routerLink]="item.route"
-           routerLinkActive="active"
-           [routerLinkActiveOptions]="{exact: false}"
-           [title]="item.title"
-           (click)="onMenuItemClick()">
-          <mat-icon>{{ item.icon }}</mat-icon>
-          <span *ngIf="!sidebarCollapsed">{{ item.title }}</span>
-          <mat-icon class="nav-arrow" *ngIf="!sidebarCollapsed">chevron_right</mat-icon>
-        </a>
+      <div class="nav-section" *ngFor="let group of menuItems">
+        <div class="group-header" *ngIf="!sidebarCollapsed">
+          <mat-icon class="group-icon">{{ group.icon }}</mat-icon>
+          <span class="group-title">{{ group.group }}</span>
+          <mat-icon class="expand-icon">expand_more</mat-icon>
+        </div>
+        <div class="group-items">
+          <a class="nav-item" 
+             *ngFor="let item of group.items" 
+             [routerLink]="item.route"
+             routerLinkActive="active"
+             [routerLinkActiveOptions]="{exact: false}"
+             [title]="item.title"
+             (click)="onMenuItemClick()">
+            <mat-icon>{{ item.icon }}</mat-icon>
+            <span *ngIf="!sidebarCollapsed">{{ item.title }}</span>
+            <mat-icon class="nav-arrow" *ngIf="!sidebarCollapsed">chevron_right</mat-icon>
+          </a>
+        </div>
       </div>
 
       <div class="nav-section">
         <p class="section-label" *ngIf="!sidebarCollapsed">Account</p>
+        <div class="user-welcome" *ngIf="!sidebarCollapsed">
+          <span class="welcome-text">Welcome, {{ userData?.fullName || userData?.name || 'Marshal' }}</span>
+        </div>
         <a class="nav-item clickable" (click)="navigateTo('/profile')" title="Profile">
           <mat-icon>person</mat-icon>
           <span *ngIf="!sidebarCollapsed">Profile</span>
@@ -52,18 +61,15 @@
   <main class="main-content" [class.expanded]="sidebarCollapsed">
     <header class="top-bar">
       <div class="left-section">
-        <button class="menu-toggle" (click)="toggleSidebar()">
-          <mat-icon>menu</mat-icon>
-        </button>
         <div class="breadcrumb">
           <mat-icon>local_taxi</mat-icon>
-          <span>{{ taxiRankName || 'Marshal Dashboard' }}</span>
+          <span>Marshal Dashboard</span>
         </div>
       </div>
 
       <div class="center-section">
-        <button 
-          *ngFor="let item of topMenuItems" 
+        <button
+          *ngFor="let item of topMenuItems"
           class="quick-action-btn"
           (click)="onTopMenuAction(item.action)"
           [title]="item.title"
@@ -74,6 +80,10 @@
       </div>
 
       <div class="right-section">
+        <button class="notifications-btn" (click)="navigateToMessages()" title="Messages">
+          <mat-icon [matBadge]="unreadMessages > 0 ? unreadMessages.toString() : null" [matBadgeHidden]="unreadMessages === 0" matBadgeColor="warn" matBadgeSize="small">mail</mat-icon>
+        </button>
+
         <button class="notifications-btn" [matMenuTriggerFor]="notifMenu" [title]="'Notifications'" [attr.aria-label]="'Notifications' + (unreadNotifications > 0 ? ': ' + unreadNotifications + ' unread' : '')">
           <mat-icon [matBadge]="unreadNotifications > 0 ? unreadNotifications.toString() : null" [matBadgeHidden]="unreadNotifications === 0" matBadgeColor="warn" matBadgeSize="small" aria-hidden="false">notifications</mat-icon>
         </button>
@@ -88,60 +98,41 @@
             <mat-icon class="notif-icon info">info</mat-icon>
             <div class="notif-content">
               <p class="notif-title">No new notifications</p>
-              <p class="notif-time">All caught up!</p>
+              <p class="notif-time">Just now</p>
             </div>
-          </button>
-          <mat-divider></mat-divider>
-          <button mat-menu-item class="view-all-notif">
-            <span>View All Notifications</span>
           </button>
         </mat-menu>
 
-        <button class="settings-btn" (click)="navigateTo('/settings')" [title]="'Settings'">
-          <mat-icon>settings</mat-icon>
-        </button>
-
-        <div class="user-menu-btn" [matMenuTriggerFor]="userMenu">
-          <div class="user-avatar">
+        <div class="user-menu">
+          <button mat-icon-button [matMenuTriggerFor]="userMenu" class="user-btn">
             <mat-icon>account_circle</mat-icon>
-          </div>
-          <div class="user-info">
-            <p class="user-name">{{ userData?.fullName || 'Marshal' }}</p>
-            <p class="user-role">{{ getRoleDisplayName() }}</p>
-          </div>
-          <mat-icon class="dropdown-icon">expand_more</mat-icon>
+          </button>
+          <mat-menu #userMenu="matMenu" class="user-dropdown">
+            <div class="user-info">
+              <div class="user-avatar">
+                <mat-icon>account_circle</mat-icon>
+              </div>
+              <div class="user-details">
+                <div class="user-name">{{ userData?.fullName || userData?.name || 'Marshal' }}</div>
+                <div class="user-role">Taxi Marshal</div>
+              </div>
+            </div>
+            <mat-divider></mat-divider>
+            <button mat-menu-item (click)="navigateToProfile()">
+              <mat-icon>person</mat-icon>
+              <span>Profile</span>
+            </button>
+            <button mat-menu-item (click)="navigateToSettings()">
+              <mat-icon>settings</mat-icon>
+              <span>Settings</span>
+            </button>
+            <mat-divider></mat-divider>
+            <button mat-menu-item class="logout-btn" (click)="logout()">
+              <mat-icon>logout</mat-icon>
+              <span>Logout</span>
+            </button>
+          </mat-menu>
         </div>
-
-        <mat-menu #userMenu="matMenu" class="user-dropdown">
-          <div class="menu-user-info">
-            <div class="menu-avatar">
-              <mat-icon>account_circle</mat-icon>
-            </div>
-            <div>
-              <p class="menu-user-name">{{ userData?.fullName || 'Marshal' }}</p>
-              <p class="menu-user-role">{{ getRoleDisplayName() }}</p>
-              <p class="menu-user-email">{{ userData?.email }}</p>
-            </div>
-          </div>
-          <mat-divider></mat-divider>
-          <button mat-menu-item (click)="navigateTo('/profile')">
-            <mat-icon>person</mat-icon>
-            <span>My Profile</span>
-          </button>
-          <button mat-menu-item (click)="navigateTo('/settings')">
-            <mat-icon>settings</mat-icon>
-            <span>Account Settings</span>
-          </button>
-          <button mat-menu-item (click)="navigateTo('/help')">
-            <mat-icon>help</mat-icon>
-            <span>Help & Support</span>
-          </button>
-          <mat-divider></mat-divider>
-          <button mat-menu-item (click)="logout()" class="logout-menu-item">
-            <mat-icon>logout</mat-icon>
-            <span>Sign Out</span>
-          </button>
-        </mat-menu>
       </div>
     </header>
 

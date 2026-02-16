@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using MzansiFleet.Application.Handlers;
+using MzansiFleet.Application.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MzansiFleet.Repository;
@@ -20,6 +21,9 @@ namespace MzansiFleet.Api
             services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IVehicleRepository, MzansiFleet.Repository.Repositories.VehicleRepository>();
             services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IServiceProviderRepository, MzansiFleet.Repository.Repositories.ServiceProviderRepository>();
             services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IServiceProviderProfileRepository, MzansiFleet.Repository.Repositories.ServiceProviderProfileRepository>();
+            
+            // Register services
+            services.AddScoped<VehicleNotificationService>();
             
             // Register command handlers
             services.AddScoped<CreateVehicleCommandHandler>();

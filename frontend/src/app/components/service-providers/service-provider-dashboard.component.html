@@ -19,9 +19,10 @@
         <p class="section-label" *ngIf="!sidebarCollapsed">Dashboard</p>
         <a class="nav-item" 
            *ngFor="let item of menuItems" 
-           [title]="item.title"
-           (click)="onMenuItemClick(item.section)"
-           style="cursor: pointer;">
+           [routerLink]="item.route"
+           routerLinkActive="active"
+           [routerLinkActiveOptions]="{exact: item.route === '/service-provider-dashboard/overview'}"
+           [title]="item.title">
           <mat-icon [matBadge]="item.badge || null" [matBadgeHidden]="!item.badge" matBadgeColor="warn" matBadgeSize="small">{{ item.icon }}</mat-icon>
           <span *ngIf="!sidebarCollapsed">{{ item.title }}</span>
           <mat-icon class="nav-arrow" *ngIf="!sidebarCollapsed">chevron_right</mat-icon>
@@ -108,6 +109,32 @@
     <div class="content-wrapper">
       <!-- Appointment Alerts -->
       <div class="appointment-alerts" *ngIf="!loading">
+        <!-- New Service Requests Alert -->
+        <div class="alert alert-info" *ngIf="newServiceRequests.length > 0">
+          <mat-icon>assignment</mat-icon>
+          <div class="alert-content">
+            <h3>New Service Requests!</h3>
+            <p>There are <strong>{{ newServiceRequests.length }}</strong> new service requests in your area that match your services.</p>
+          </div>
+          <button mat-raised-button color="primary" (click)="navigateToServiceRequests()">
+            <mat-icon>visibility</mat-icon>
+            View Requests
+          </button>
+        </div>
+
+        <!-- Roadside Assistance Requests Alert -->
+        <div class="alert alert-info" *ngIf="roadsideAssistanceRequests.length > 0">
+          <mat-icon>local_shipping</mat-icon>
+          <div class="alert-content">
+            <h3>New Roadside Assistance Requests!</h3>
+            <p>You have <strong>{{ roadsideAssistanceRequests.length }}</strong> pending roadside assistance request(s)</p>
+          </div>
+          <button mat-raised-button color="primary" (click)="navigateToRoadsideAssistance()">
+            <mat-icon>visibility</mat-icon>
+            View Requests
+          </button>
+        </div>
+
         <!-- Today's Appointments Alert -->
         <div class="alert alert-urgent" *ngIf="todayAppointments.length > 0">
           <mat-icon>warning</mat-icon>
@@ -171,6 +198,14 @@
             </div>
           </mat-card>
 
+          <mat-card class="stat-card pending">
+            <mat-icon>pending</mat-icon>
+            <div class="stat-content">
+              <h3>{{ dashboardData?.pendingJobs?.count || 0 }}</h3>
+              <p>Pending Jobs</p>
+            </div>
+          </mat-card>
+
           <mat-card class="stat-card appointments" (click)="toggleAppointmentsList()" style="cursor: pointer;">
             <mat-icon [matBadge]="scheduledAppointments.length" matBadgeColor="warn">calendar_today</mat-icon>
             <div class="stat-content">
@@ -184,6 +219,9 @@
         <!-- Note: The rest of the content (marketplace, appointments details, calendar, etc.) would go here -->
         <!-- For brevity, I'm indicating where it continues -->
       </div>
+
+      <!-- Router outlet for child components -->
+      <router-outlet></router-outlet>
     </div>
   </main>
 </div>

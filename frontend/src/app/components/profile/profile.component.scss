@@ -1,0 +1,147 @@
+.profile-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+
+  .profile-avatar {
+    font-size: 64px;
+    width: 64px;
+    height: 64px;
+    margin-right: 16px;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .profile-info {
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 28px;
+      font-weight: 500;
+    }
+
+    .role-badge {
+      margin: 0;
+      font-size: 16px;
+      opacity: 0.9;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 4px 12px;
+      border-radius: 20px;
+      display: inline-block;
+    }
+  }
+}
+
+.profile-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+
+  ::ng-deep .mat-mdc-tab-group {
+    .mat-mdc-tab-header {
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .mat-mdc-tab {
+      min-width: 160px;
+    }
+  }
+}
+
+.tab-content {
+  padding: 24px 0;
+}
+
+.profile-form, .password-form {
+  max-width: 800px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+.form-field {
+  flex: 1;
+
+  &.full-width {
+    width: 100%;
+  }
+}
+
+.role-specific-section {
+  margin-top: 32px;
+
+  h3 {
+    color: #666;
+    margin-bottom: 16px;
+    font-size: 18px;
+  }
+
+  mat-divider {
+    margin-bottom: 24px;
+  }
+}
+
+.role-fields {
+  .form-row {
+    margin-bottom: 16px;
+  }
+}
+
+.form-actions {
+  margin-top: 32px;
+  display: flex;
+  justify-content: flex-end;
+
+  button {
+    min-width: 140px;
+
+    mat-icon {
+      margin-right: 8px;
+    }
+  }
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: #666;
+
+  p {
+    margin-top: 16px;
+    font-size: 16px;
+  }
+}
+
+// Dark theme support
+@media (prefers-color-scheme: dark) {
+  .profile-header {
+    background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+  }
+
+  .profile-card {
+    background: #2d3748;
+    color: #e2e8f0;
+  }
+
+  .role-specific-section h3 {
+    color: #a0aec0;
+  }
+}

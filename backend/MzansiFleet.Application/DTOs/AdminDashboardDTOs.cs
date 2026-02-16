@@ -135,5 +135,6 @@ namespace MzansiFleet.Application.DTOs
         public string? ShiftStartTime { get; set; }
         public string? ShiftEndTime { get; set; }
         public string? Status { get; set; }
+        public Guid? TaxiRankId { get; set; }
     }
 }

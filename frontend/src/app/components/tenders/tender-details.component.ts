@@ -11,6 +11,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { ConfirmDialogComponent } from '../shared/confirm-dialog.component';
+import { SendMessageButtonComponent } from '../send-message-button/send-message-button.component';
 
 interface Tender {
   id: string;
@@ -51,7 +52,8 @@ interface Tender {
     MatDividerModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
-    MatDialogModule
+    MatDialogModule,
+    SendMessageButtonComponent
   ],
   template: `
     <div class="tender-details-container">
@@ -82,6 +84,16 @@ interface Tender {
             Back
           </button>
           <div class="action-buttons">
+            <app-send-message-button
+              *ngIf="!isMyTender && tender.tenderPublisherId"
+              [receiverId]="tender.tenderPublisherId"
+              [receiverName]="tender.publisherName"
+              [subject]="'Inquiry about: ' + tender.title"
+              [relatedEntityType]="'Tender'"
+              [relatedEntityId]="tender.id"
+              buttonText="Contact Publisher"
+              color="accent">
+            </app-send-message-button>
             <button mat-raised-button color="accent" (click)="viewApplications()" *ngIf="isMyTender && tender.applicationCount > 0">
               <mat-icon>inbox</mat-icon>
               View {{ tender.applicationCount }} Application(s)
@@ -618,7 +630,7 @@ export class TenderDetailsComponent implements OnInit {
 
   viewApplications(): void {
     if (!this.tender) return;
-    this.router.navigate(['/tenders', this.tender.id, 'applications']);
+    this.router.navigate(['/owner-dashboard/tenders', this.tender.id, 'applications']);
   }
 
   goBack(): void {

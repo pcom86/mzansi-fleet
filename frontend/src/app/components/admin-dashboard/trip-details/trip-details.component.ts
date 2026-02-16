@@ -1,8 +1,8 @@
 import { Component, OnInit, Inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, FormArray } from '@angular/forms';
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, FormArray, FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -20,6 +20,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatDialog, MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { environment } from '../../../../environments/environment';
+import { AuthService } from '../../../services/auth.service';
 
 interface Vehicle {
   id: string;
@@ -46,12 +47,48 @@ interface Driver {
   assignedVehicleId?: string;
 }
 
+interface TripSchedule {
+  id: string;
+  vehicleId: string;
+  routeId?: string;
+  driverId?: string;
+  marshalId?: string;
+  taxiRankId: string;
+  departureStation: string;
+  destinationStation: string;
+  departureTime: string;
+  status: string;
+  passengerCount: number;
+  totalAmount: number;
+  notes?: string;
+  vehicle?: Vehicle;
+  driver?: any;
+  marshal?: any;
+  route?: Route;
+}
+
+interface PrebookedPassenger {
+  id: string;
+  taxiRankTripId: string;
+  userId: string;
+  passengerName: string;
+  passengerPhone: string;
+  departureStation: string;
+  arrivalStation: string;
+  amount: number;
+  seatNumber?: number;
+  boardedAt: string;
+  notes?: string;
+}
+
 @Component({
   selector: 'app-trip-details',
   standalone: true,
   imports: [
     CommonModule,
     ReactiveFormsModule,
+    FormsModule,
+    RouterLink,
     MatCardModule,
     MatFormFieldModule,
     MatInputModule,
@@ -99,21 +136,40 @@ export class TripDetailsComponent implements OnInit {
   revenueByRoute: any[] = [];
   dailyRevenue: any[] = [];
 
+  // Schedule selection properties
+  availableSchedules: TripSchedule[] = [];
+  filteredSchedules: TripSchedule[] = [];
+  selectedSchedule: TripSchedule | null = null;
+  loadingSchedules = false;
+  prebookedPassengers: PrebookedPassenger[] = [];
+  loadingPrebooked = false;
+  tripCaptureMode: 'new' | 'scheduled' = 'new';
+  userInfo: any = null;
+  
+  // Schedule filter properties
+  scheduleFilterDate: Date | null = new Date(); // Default to today
+  scheduleFilterRoute: string = '';
+  scheduleFilterVehicle: string = '';
+  scheduleFilterStatus: string = '';
+
   constructor(
     private fb: FormBuilder,
     private http: HttpClient,
     private snackBar: MatSnackBar,
     private router: Router,
-    private dialog: MatDialog
+    private dialog: MatDialog,
+    private authService: AuthService
   ) {}
 
   ngOnInit(): void {
+    this.userInfo = this.authService.getCurrentUserInfo();
     this.initializeForm();
     this.initializeDateFilterForm();
     this.loadVehicles();
     this.loadRoutes();
     this.loadDrivers();
     this.loadHistoricalTrips();
+    this.loadAvailableSchedules();
   }
 
   initializeDateFilterForm(): void {
@@ -125,7 +181,13 @@ export class TripDetailsComponent implements OnInit {
       startDate: [thirtyDaysAgo],
       endDate: [today],
       vehicleId: [''],
-      routeId: ['']
+      routeId: [''],
+      driverId: [''],
+      status: [''],
+      minPassengers: [''],
+      maxPassengers: [''],
+      minFare: [''],
+      maxFare: ['']
     });
 
     // Watch for filter changes
@@ -174,18 +236,26 @@ export class TripDetailsComponent implements OnInit {
   }
 
   get totalFare(): number {
+    if (!this.tripForm || !this.passengers) {
+      return 0;
+    }
+
     // If manual amount is provided, use it; otherwise calculate from passengers
     const manualAmount = this.tripForm.get('totalAmountCollected')?.value;
     if (manualAmount !== null && manualAmount !== undefined && manualAmount !== '') {
       return parseFloat(manualAmount) || 0;
     }
-    
+
     return this.passengers.controls.reduce((total, passenger) => {
       return total + (parseFloat(passenger.get('fareAmount')?.value) || 0);
     }, 0);
   }
 
   get passengerCount(): number {
+    if (!this.tripForm || !this.passengers) {
+      return 0;
+    }
+
     // If manual count is provided, use it; otherwise count from form array
     const manualCount = this.tripForm.get('totalPassengerCount')?.value;
     if (manualCount !== null && manualCount !== undefined && manualCount !== '') {
@@ -195,6 +265,10 @@ export class TripDetailsComponent implements OnInit {
   }
 
   addPassenger(): void {
+    if (!this.passengers) {
+      return;
+    }
+
     this.passengers.push(this.createPassengerFormGroup());
     
     // Scroll to the newly added passenger after a short delay to allow rendering
@@ -217,6 +291,10 @@ export class TripDetailsComponent implements OnInit {
   }
 
   setDefaultFare(): void {
+    if (!this.tripForm || !this.passengers) {
+      return;
+    }
+
     const routeId = this.tripForm.get('routeId')?.value;
     if (routeId) {
       const route = this.routes.find(r => r.id === routeId);
@@ -330,6 +408,199 @@ export class TripDetailsComponent implements OnInit {
           this.snackBar.open('Failed to load drivers', 'Close', { duration: 3000 });
         }
       });
+  }
+
+  loadAvailableSchedules(): void {
+    this.loadingSchedules = true;
+    let url = `${environment.apiUrl}/TaxiRankTrips`;
+    if (this.userInfo?.tenantId) {
+      url += `?tenantId=${this.userInfo.tenantId}`;
+    }
+    console.log('Loading schedules from:', url);
+    this.http.get<TripSchedule[]>(url)
+      .subscribe({
+        next: (schedules) => {
+          console.log('All schedules received:', schedules);
+          console.log('Schedule statuses:', schedules.map(s => ({ id: s.id, status: s.status, departureTime: s.departureTime })));
+          
+          // Show all schedules that are not completed or cancelled (case-insensitive)
+          this.availableSchedules = schedules.filter(schedule => {
+            const status = (schedule.status || '').toLowerCase();
+            // Include scheduled, pending, or any status that's not completed/cancelled
+            return status !== 'completed' && status !== 'cancelled';
+          }).sort((a, b) => new Date(b.departureTime).getTime() - new Date(a.departureTime).getTime());
+          
+          this.filteredSchedules = [...this.availableSchedules];
+          // Apply date filter (defaults to today)
+          this.filterSchedules();
+          console.log('Filtered available schedules:', this.availableSchedules);
+          this.loadingSchedules = false;
+        },
+        error: (error) => {
+          console.error('Error loading schedules:', error);
+          this.snackBar.open('Failed to load available schedules', 'Close', { duration: 3000 });
+          this.loadingSchedules = false;
+        }
+      });
+  }
+
+  filterSchedules(): void {
+    this.filteredSchedules = this.availableSchedules.filter(schedule => {
+      // Filter by date
+      if (this.scheduleFilterDate) {
+        const scheduleDate = new Date(schedule.departureTime);
+        const filterDate = new Date(this.scheduleFilterDate);
+        if (scheduleDate.toDateString() !== filterDate.toDateString()) {
+          return false;
+        }
+      }
+      
+      // Filter by route (departure or destination)
+      if (this.scheduleFilterRoute) {
+        const searchTerm = this.scheduleFilterRoute.toLowerCase();
+        const matchesRoute = 
+          (schedule.departureStation || '').toLowerCase().includes(searchTerm) ||
+          (schedule.destinationStation || '').toLowerCase().includes(searchTerm);
+        if (!matchesRoute) {
+          return false;
+        }
+      }
+      
+      // Filter by vehicle
+      if (this.scheduleFilterVehicle) {
+        const searchTerm = this.scheduleFilterVehicle.toLowerCase();
+        const vehicleReg = schedule.vehicle?.registration || '';
+        if (!vehicleReg.toLowerCase().includes(searchTerm)) {
+          return false;
+        }
+      }
+      
+      // Filter by status
+      if (this.scheduleFilterStatus) {
+        if ((schedule.status || '').toLowerCase() !== this.scheduleFilterStatus.toLowerCase()) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }
+
+  clearScheduleFilters(): void {
+    this.scheduleFilterDate = null;
+    this.scheduleFilterRoute = '';
+    this.scheduleFilterVehicle = '';
+    this.scheduleFilterStatus = '';
+    this.filteredSchedules = [...this.availableSchedules];
+  }
+
+  selectSchedule(schedule: TripSchedule): void {
+    this.selectedSchedule = schedule;
+    this.tripCaptureMode = 'scheduled';
+    
+    // Pre-fill the form with schedule data
+    const departureDate = new Date(schedule.departureTime);
+    const departureTimeStr = departureDate.toTimeString().slice(0, 5); // HH:MM format
+    
+    this.tripForm.patchValue({
+      vehicleId: schedule.vehicleId,
+      driverId: schedule.driverId || '',
+      tripDate: departureDate,
+      departureTime: departureTimeStr
+    });
+
+    // Update route destinations
+    this.updateRouteDestinations();
+    
+    // Load prebooked passengers if there are any
+    console.log(`Selected schedule has ${schedule.passengerCount} booked passengers`);
+    if (schedule.passengerCount > 0) {
+      this.loadPrebookedPassengers();
+    } else {
+      // Clear passengers array and add one empty row
+      while (this.passengers.length > 0) {
+        this.passengers.removeAt(0);
+      }
+      this.addPassenger();
+      this.prebookedPassengers = [];
+    }
+    
+    this.snackBar.open(`Selected schedule: ${schedule.departureStation} → ${schedule.destinationStation}`, 'OK', { duration: 3000 });
+  }
+
+  loadPrebookedPassengers(): void {
+    if (!this.selectedSchedule) return;
+
+    this.loadingPrebooked = true;
+    console.log(`Loading passengers for trip: ${this.selectedSchedule.id}`);
+    
+    this.http.get<PrebookedPassenger[]>(`${environment.apiUrl}/TaxiRankTrips/${this.selectedSchedule.id}/passengers`)
+      .subscribe({
+        next: (passengers) => {
+          console.log('Loaded passengers from API:', passengers);
+          this.prebookedPassengers = passengers;
+          
+          // Auto-populate the passengers form array with prebooked passengers
+          if (passengers.length > 0) {
+            // Clear existing passengers
+            while (this.passengers.length > 0) {
+              this.passengers.removeAt(0);
+            }
+            
+            // Add prebooked passengers to the form
+            passengers.forEach(passenger => {
+              const passengerForm = this.fb.group({
+                name: [passenger.passengerName || '', passenger.passengerName ? [] : [Validators.required]],
+                contactNumber: [passenger.passengerPhone || ''],
+                nextOfKin: [''],
+                nextOfKinContact: [''],
+                address: [''],
+                destination: [passenger.arrivalStation || this.selectedSchedule?.destinationStation || ''],
+                fareAmount: [passenger.amount || 0, [Validators.required, Validators.min(0)]]
+              });
+              this.passengers.push(passengerForm);
+            });
+            
+            this.snackBar.open(`Loaded ${passengers.length} pre-booked passenger(s)`, 'OK', { duration: 3000 });
+          } else {
+            // No passengers found, add one empty row
+            this.addPassenger();
+          }
+          
+          this.loadingPrebooked = false;
+        },
+        error: (error) => {
+          console.error('Error loading prebooked passengers:', error);
+          this.prebookedPassengers = [];
+          // Add one empty passenger row on error
+          while (this.passengers.length > 0) {
+            this.passengers.removeAt(0);
+          }
+          this.addPassenger();
+          this.loadingPrebooked = false;
+        }
+      });
+  }
+
+  clearScheduleSelection(): void {
+    this.selectedSchedule = null;
+    this.tripCaptureMode = 'new';
+    this.prebookedPassengers = [];
+    
+    // Reset form
+    this.tripForm.reset();
+    this.tripForm.patchValue({ tripDate: new Date() });
+    
+    // Reset passengers to single empty form
+    while (this.passengers.length > 0) {
+      this.passengers.removeAt(0);
+    }
+    this.passengers.push(this.createPassengerFormGroup());
+  }
+
+  getScheduleDisplayName(schedule: TripSchedule): string {
+    const date = new Date(schedule.departureTime);
+    return `${schedule.departureStation} → ${schedule.destinationStation} (${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`;
   }
 
   onSubmit(): void {
@@ -532,6 +803,44 @@ export class TripDetailsComponent implements OnInit {
       filtered = filtered.filter(trip => trip.routeId === filters.routeId);
     }
 
+    // Apply driver filter
+    if (filters.driverId) {
+      filtered = filtered.filter(trip => trip.driverId === filters.driverId);
+    }
+
+    // Apply status filter
+    if (filters.status) {
+      filtered = filtered.filter(trip => trip.status === filters.status);
+    }
+
+    // Apply passenger count range filter
+    if (filters.minPassengers && filters.minPassengers !== '') {
+      const minPassengers = parseInt(filters.minPassengers);
+      filtered = filtered.filter(trip => {
+        const passengerCount = trip.passengerCount || trip.passengers?.length || 0;
+        return passengerCount >= minPassengers;
+      });
+    }
+
+    if (filters.maxPassengers && filters.maxPassengers !== '') {
+      const maxPassengers = parseInt(filters.maxPassengers);
+      filtered = filtered.filter(trip => {
+        const passengerCount = trip.passengerCount || trip.passengers?.length || 0;
+        return passengerCount <= maxPassengers;
+      });
+    }
+
+    // Apply fare range filter
+    if (filters.minFare && filters.minFare !== '') {
+      const minFare = parseFloat(filters.minFare);
+      filtered = filtered.filter(trip => trip.totalFare >= minFare);
+    }
+
+    if (filters.maxFare && filters.maxFare !== '') {
+      const maxFare = parseFloat(filters.maxFare);
+      filtered = filtered.filter(trip => trip.totalFare <= maxFare);
+    }
+
     this.filteredHistoricalTrips = filtered;
     this.generateRevenueCharts();
   }
@@ -567,7 +876,13 @@ export class TripDetailsComponent implements OnInit {
       startDate: thirtyDaysAgo,
       endDate: today,
       vehicleId: '',
-      routeId: ''
+      routeId: '',
+      driverId: '',
+      status: '',
+      minPassengers: '',
+      maxPassengers: '',
+      minFare: '',
+      maxFare: ''
     });
   }
 

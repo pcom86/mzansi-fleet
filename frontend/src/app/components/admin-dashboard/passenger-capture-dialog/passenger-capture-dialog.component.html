@@ -1,0 +1,89 @@
+<div class="passenger-dialog">
+  <h2 mat-dialog-title>Passenger Management</h2>
+  <mat-dialog-content>
+    <div class="trip-info">
+      <h3>{{ trip.departureStation }} → {{ trip.destinationStation }}</h3>
+      <p><strong>Departure:</strong> {{ trip.departureTime | date:'medium' }}</p>
+      <p><strong>Vehicle:</strong> {{ trip.vehicle?.registration }}</p>
+      <p><strong>Driver:</strong> {{ trip.driver?.name }}</p>
+      <p><strong>Marshal:</strong> {{ trip.marshal?.fullName }}</p>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <div class="passengers-section">
+      <h4>Current Passengers ({{ passengers.length }})</h4>
+
+      <div *ngIf="loading" class="loading">
+        <p>Loading passengers...</p>
+      </div>
+
+      <mat-list *ngIf="!loading && passengers.length > 0">
+        <mat-list-item *ngFor="let passenger of passengers" class="passenger-item">
+          <div class="passenger-details">
+            <div class="passenger-name">{{ passenger.passengerName }}</div>
+            <div class="passenger-info">
+              <span class="phone">{{ passenger.passengerPhone }}</span> |
+              <span class="seat">Seat: {{ passenger.seatNumber }}</span> |
+              <span class="amount">R{{ passenger.amount }}</span>
+            </div>
+            <div class="passenger-notes" *ngIf="passenger.notes">{{ passenger.notes }}</div>
+            <div class="boarding-time">Boarded: {{ passenger.boardedAt | date:'short' }}</div>
+          </div>
+          <button mat-icon-button color="warn" (click)="removePassenger(passenger.id)" matTooltip="Remove Passenger">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </mat-list-item>
+      </mat-list>
+
+      <div *ngIf="!loading && passengers.length === 0" class="no-passengers">
+        <mat-icon>people_outline</mat-icon>
+        <p>No passengers captured yet</p>
+      </div>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <div class="add-passenger-section">
+      <h4>Add New Passenger</h4>
+      <form [formGroup]="passengerForm" (ngSubmit)="addPassenger()" class="passenger-form">
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="name-field">
+            <mat-label>Passenger Name</mat-label>
+            <input matInput formControlName="passengerName" required>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="phone-field">
+            <mat-label>Phone Number</mat-label>
+            <input matInput formControlName="passengerPhone" required>
+          </mat-form-field>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="seat-field">
+            <mat-label>Seat Number</mat-label>
+            <input matInput formControlName="seatNumber" required>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="amount-field">
+            <mat-label>Fare Amount (R)</mat-label>
+            <input matInput type="number" formControlName="amount" required>
+          </mat-form-field>
+        </div>
+
+        <mat-form-field appearance="outline" class="notes-field">
+          <mat-label>Notes (Optional)</mat-label>
+          <textarea matInput formControlName="notes" rows="2"></textarea>
+        </mat-form-field>
+
+        <button mat-raised-button color="primary" type="submit" [disabled]="passengerForm.invalid || loading">
+          Add Passenger
+        </button>
+      </form>
+    </div>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button (click)="close()">Close</button>
+  </mat-dialog-actions>
+</div>

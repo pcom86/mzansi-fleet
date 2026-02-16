@@ -18,6 +18,11 @@ namespace MzansiFleet.Domain.Entities
         public string? VehicleMake { get; set; }
         public string? VehicleModel { get; set; }
         
+        // Driver Information
+        public Guid? DriverId { get; set; }
+        public string? DriverName { get; set; }
+        public string? DriverPhone { get; set; }
+        
         // Assistance Request Details
         public string AssistanceType { get; set; } = string.Empty; // Towing, Tire Change, Fuel Delivery, Jump Start, Lockout, etc.
         public string Location { get; set; } = string.Empty;

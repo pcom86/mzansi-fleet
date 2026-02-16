@@ -4,22 +4,35 @@
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8eaf0 100%);
 }
 
 .registration-card {
   max-width: 900px;
   width: 100%;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
   border-radius: 12px;
 }
 
 mat-card-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
   color: white;
   padding: 2rem;
   border-radius: 12px 12px 0 0;
   margin: -16px -16px 24px -16px;
+}
+
+.header-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logo {
+  margin-bottom: 0.5rem;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 mat-card-title {
@@ -80,8 +93,8 @@ mat-card-subtitle {
 }
 
 .role-card.selected {
-  border-color: #667eea;
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+  border-color: #27ae60;
+  box-shadow: 0 6px 20px rgba(39, 174, 96, 0.2);
 }
 
 mat-radio-button {
@@ -108,7 +121,7 @@ mat-radio-button {
 }
 
 .admin-icon {
-  color: #667eea;
+  color: #3498db;
 }
 
 .marshal-icon {
@@ -202,8 +215,8 @@ mat-form-field {
   gap: 1rem;
   padding: 1rem;
   margin-bottom: 1.5rem;
-  background: #e3f2fd;
-  border-left: 4px solid #2196F3;
+  background: #f0f4f8;
+  border-left: 4px solid #3498db;
 }
 
 .info-card.secondary {
@@ -212,7 +225,7 @@ mat-form-field {
 }
 
 .info-card .info-icon {
-  color: #2196F3;
+  color: #3498db;
   font-size: 1.5rem;
   width: 1.5rem;
   height: 1.5rem;
@@ -224,7 +237,7 @@ mat-form-field {
 
 .info-card p {
   margin: 0;
-  color: #1565C0;
+  color: #2c3e50;
   font-size: 0.9rem;
 }
 
@@ -306,7 +319,7 @@ mat-form-field {
 }
 
 .permission-item mat-icon {
-  color: #667eea;
+  color: #27ae60;
   font-size: 1.25rem;
   width: 1.25rem;
   height: 1.25rem;
@@ -336,7 +349,7 @@ mat-checkbox {
 }
 
 .submit-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(135deg, #27ae60 0%, #229954 100%) !important;
   color: white !important;
   font-weight: 500;
   padding: 0 2rem;
@@ -344,7 +357,7 @@ mat-checkbox {
 
 .submit-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 6px 20px rgba(39, 174, 96, 0.3);
 }
 
 /* Footer */
@@ -361,14 +374,14 @@ mat-card-actions {
 }
 
 .link {
-  color: #667eea;
+  color: #3498db;
   text-decoration: none;
   font-weight: 500;
   transition: color 0.2s;
 }
 
 .link:hover {
-  color: #764ba2;
+  color: #2980b9;
   text-decoration: underline;
 }
 

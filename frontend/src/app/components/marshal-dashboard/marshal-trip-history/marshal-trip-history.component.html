@@ -19,6 +19,72 @@
       </mat-card-header>
 
       <mat-card-content>
+        <!-- Filters Section -->
+        <div *ngIf="!loading && trips.length > 0" class="filters-section">
+          <div class="filter-row">
+            <mat-form-field appearance="outline" class="filter-field">
+              <mat-label>From Date</mat-label>
+              <input matInput [matDatepicker]="fromPicker" [(ngModel)]="filterDateFrom" (dateChange)="onFilterChange()">
+              <mat-datepicker-toggle matSuffix [for]="fromPicker"></mat-datepicker-toggle>
+              <mat-datepicker #fromPicker></mat-datepicker>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="filter-field">
+              <mat-label>To Date</mat-label>
+              <input matInput [matDatepicker]="toPicker" [(ngModel)]="filterDateTo" (dateChange)="onFilterChange()">
+              <mat-datepicker-toggle matSuffix [for]="toPicker"></mat-datepicker-toggle>
+              <mat-datepicker #toPicker></mat-datepicker>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="filter-field">
+              <mat-label>Vehicle</mat-label>
+              <mat-select [(ngModel)]="filterVehicle" (selectionChange)="onFilterChange()">
+                <mat-option value="">All Vehicles</mat-option>
+                <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
+                  {{ vehicle.registration }}
+                </mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="filter-field">
+              <mat-label>Route</mat-label>
+              <mat-select [(ngModel)]="filterRoute" (selectionChange)="onFilterChange()">
+                <mat-option value="">All Routes</mat-option>
+                <mat-option *ngFor="let route of routes" [value]="route.id">
+                  {{ route.name }}
+                </mat-option>
+              </mat-select>
+            </mat-form-field>
+          </div>
+
+          <div class="filter-row">
+            <mat-form-field appearance="outline" class="filter-field">
+              <mat-label>Driver</mat-label>
+              <mat-select [(ngModel)]="filterDriver" (selectionChange)="onFilterChange()">
+                <mat-option value="">All Drivers</mat-option>
+                <mat-option *ngFor="let driver of drivers" [value]="driver.id">
+                  {{ driver.name }}
+                </mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="filter-field">
+              <mat-label>Status</mat-label>
+              <mat-select [(ngModel)]="filterStatus" (selectionChange)="onFilterChange()">
+                <mat-option value="">All Statuses</mat-option>
+                <mat-option value="Completed">Completed</mat-option>
+                <mat-option value="In Progress">In Progress</mat-option>
+                <mat-option value="Cancelled">Cancelled</mat-option>
+              </mat-select>
+            </mat-form-field>
+
+            <button mat-raised-button color="warn" (click)="clearFilters()" class="clear-filters-btn">
+              <mat-icon>clear_all</mat-icon>
+              Clear Filters
+            </button>
+          </div>
+        </div>
+
         <div *ngIf="loading" class="loading-container">
           <mat-spinner></mat-spinner>
           <p>Loading trips...</p>
@@ -29,8 +95,13 @@
           <p>No trips recorded yet</p>
         </div>
 
-        <div *ngIf="!loading && trips.length > 0" class="table-container">
-          <table mat-table [dataSource]="trips" class="trips-table">
+        <div *ngIf="!loading && trips.length > 0 && filteredTrips.length === 0" class="no-data">
+          <mat-icon>filter_list</mat-icon>
+          <p>No trips match the current filters</p>
+        </div>
+
+        <div *ngIf="!loading && filteredTrips.length > 0" class="table-container">
+          <table mat-table [dataSource]="filteredTrips" class="trips-table">
             <!-- Date Column -->
             <ng-container matColumnDef="tripDate">
               <th mat-header-cell *matHeaderCellDef>Date</th>

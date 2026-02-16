@@ -3,6 +3,48 @@
   margin: 0 auto;
 }
 
+.today-schedule-card {
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+  ::ng-deep .mat-mdc-card-header-text {
+    color: white;
+  }
+
+  .no-schedules {
+    text-align: center;
+    padding: 40px 20px;
+    color: white;
+
+    .no-data-icon {
+      font-size: 48px;
+      width: 48px;
+      height: 48px;
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      margin: 0 0 8px 0;
+      font-weight: 500;
+    }
+
+    p {
+      margin: 0;
+      opacity: 0.8;
+    }
+  }
+
+  .loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: white;
+
+    p {
+      margin: 0;
+    }
+  }
+}
+
 .form-card, .table-card {
   margin-bottom: 24px;
 }
@@ -28,21 +70,30 @@
   margin-top: 24px;
 }
 
-.schedules-table {
-  width: 100%;
-  
-  .status-scheduled {
-    color: #2196f3;
-    font-weight: 500;
+.grouped-schedules {
+  .date-group {
+    margin-bottom: 32px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
   }
-  
-  .status-completed {
-    color: #4caf50;
-    font-weight: 500;
+
+  .date-header {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1976d2;
+    margin: 0 0 16px 0;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border-radius: 8px;
+    border-left: 4px solid #1976d2;
   }
-  
-  .status-cancelled {
-    color: #f44336;
-    font-weight: 500;
+
+  .schedules-table {
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
   }
 }

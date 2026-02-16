@@ -2,8 +2,11 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
 import { VehicleService } from '../../services';
+import { IdentityService } from '../../services/identity.service';
 import { Vehicle, CreateVehicleCommand, UpdateVehicleCommand } from '../../models';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-vehicles',
@@ -220,8 +223,8 @@ import { Vehicle, CreateVehicleCommand, UpdateVehicleCommand } from '../../model
                   <span class="info-text">{{ vehicle.mileage ? (vehicle.mileage | number) + ' km' : 'N/A' }}</span>
                 </div>
                 <div class="info-row">
-                  <span class="info-icon">👥</span>
-                  <span class="info-text">{{ vehicle.capacity }} seats</span>
+                  <span class="info-icon">�</span>
+                  <span class="info-text">{{ driverAssignments[vehicle.id] || 'Loading...' }}</span>
                 </div>
                 <div class="info-row" *ngIf="vehicle.type">
                   <span class="info-icon">🚙</span>
@@ -881,14 +884,58 @@ export class VehiclesComponent implements OnInit {
   showForm = false;
   loading = false;
   error = '';
+  driverAssignments: { [vehicleId: string]: string } = {}; // vehicleId -> driverName
 
   constructor(
     private vehicleService: VehicleService,
+    private identityService: IdentityService,
+    private http: HttpClient,
     private router: Router
   ) {}
 
   ngOnInit() {
     this.loadVehicles();
+  }
+
+  loadVehicles() {
+    // Get tenant ID from logged-in user for owner filtering
+    const userInfoStr = localStorage.getItem('user');
+    let tenantId = '';
+
+    if (userInfoStr) {
+      try {
+        const userInfo = JSON.parse(userInfoStr);
+        tenantId = userInfo.tenantId || '';
+      } catch (error) {
+        console.error('Error parsing user info:', error);
+      }
+    }
+
+    // If user is an owner, filter vehicles by tenantId
+    if (tenantId) {
+      this.vehicleService.getByTenantId(tenantId).subscribe({
+        next: (vehicles) => {
+          this.vehicles = vehicles;
+          this.loadDriverAssignments(); // Load driver assignments after vehicles are loaded
+        },
+        error: (err) => {
+          console.error('Error loading vehicles:', err);
+          this.error = 'Failed to load vehicles: ' + err.message;
+        }
+      });
+    } else {
+      // For admin users, load all vehicles
+      this.vehicleService.getAll().subscribe({
+        next: (vehicles) => {
+          this.vehicles = vehicles;
+          this.loadDriverAssignments(); // Load driver assignments after vehicles are loaded
+        },
+        error: (err) => {
+          console.error('Error loading vehicles:', err);
+          this.error = 'Failed to load vehicles: ' + err.message;
+        }
+      });
+    }
   }
 
   onFileSelected(event: any): void {
@@ -943,17 +990,66 @@ export class VehiclesComponent implements OnInit {
     return photos;
   }
 
-  loadVehicles() {
-    this.loading = true;
-    this.error = '';
-    this.vehicleService.getAll().subscribe({
-      next: (data) => {
-        this.vehicles = data;
-        this.loading = false;
+  loadDriverAssignments() {
+    if (this.vehicles.length === 0) return;
+
+    // Get vehicle IDs
+    const vehicleIds = this.vehicles.map(v => v.id).join(',');
+    
+    // Get recent trips for these vehicles to determine current driver assignments
+    this.http.get<any[]>(`${environment.apiUrl}/TripDetails?vehicleIds=${vehicleIds}`).subscribe({
+      next: (trips) => {
+        // Group trips by vehicle and get the most recent one with a driver
+        const vehicleTrips = new Map<string, any[]>();
+        
+        trips.forEach(trip => {
+          if (!vehicleTrips.has(trip.vehicleId)) {
+            vehicleTrips.set(trip.vehicleId, []);
+          }
+          vehicleTrips.get(trip.vehicleId)!.push(trip);
+        });
+
+        // For each vehicle, find the most recent trip with a driver
+        vehicleTrips.forEach((trips, vehicleId) => {
+          const recentTrip = trips
+            .filter(t => t.driverId)
+            .sort((a, b) => new Date(b.tripDate).getTime() - new Date(a.tripDate).getTime())[0];
+          
+          if (recentTrip) {
+            // Get driver name from the trip (assuming it's included) or fetch it
+            this.getDriverName(recentTrip.driverId, vehicleId);
+          } else {
+            this.driverAssignments[vehicleId] = 'Unassigned';
+          }
+        });
+
+        // Mark unassigned vehicles
+        this.vehicles.forEach(vehicle => {
+          if (!this.driverAssignments[vehicle.id]) {
+            this.driverAssignments[vehicle.id] = 'Unassigned';
+          }
+        });
       },
-      error: (err) => {
-        this.error = 'Failed to load vehicles: ' + err.message;
-        this.loading = false;
+      error: (error) => {
+        console.error('Error loading driver assignments:', error);
+        // Mark all vehicles as unassigned if we can't load assignments
+        this.vehicles.forEach(vehicle => {
+          this.driverAssignments[vehicle.id] = 'Unassigned';
+        });
+      }
+    });
+  }
+
+  getDriverName(driverId: string, vehicleId: string) {
+    // Try to get driver name from Identity API using the driver profile service
+    this.identityService.getDriverProfileById(driverId).subscribe({
+      next: (profile) => {
+        const driverName = profile.name || profile.email || 'Unknown Driver';
+        this.driverAssignments[vehicleId] = driverName;
+      },
+      error: (error) => {
+        console.error('Error getting driver profile:', error);
+        this.driverAssignments[vehicleId] = 'Unknown Driver';
       }
     });
   }

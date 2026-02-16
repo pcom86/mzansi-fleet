@@ -82,6 +82,10 @@
       </div>
 
       <div class="right-section">
+        <button class="notifications-btn" (click)="navigateToMessages()" title="Messages">
+          <mat-icon [matBadge]="unreadMessages > 0 ? unreadMessages.toString() : null" [matBadgeHidden]="unreadMessages === 0" matBadgeColor="warn" matBadgeSize="small">mail</mat-icon>
+        </button>
+
         <button class="profile-btn" [matMenuTriggerFor]="profileMenu">
           <mat-icon>account_circle</mat-icon>
           <span class="profile-name" *ngIf="userData">{{ userData.fullName || 'Driver' }}</span>

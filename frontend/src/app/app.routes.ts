@@ -24,6 +24,9 @@ import { ServiceProviderDashboardComponent } from './components/service-provider
 import { ServiceProviderOverviewComponent } from './components/service-providers/service-provider-overview.component';
 import { ServiceProviderProfileEditComponent } from './components/service-providers/service-provider-profile-edit.component';
 import { RoadsideAssistanceMarketplaceComponent } from './components/service-providers/roadside-assistance-marketplace.component';
+import { ServiceRequestsComponent } from './components/service-providers/service-requests.component';
+import { MechanicalRequestDetailsComponent } from './components/service-providers/mechanical-request-details.component';
+import { StuffRequestDetailsComponent } from './components/service-providers/stuff-request-details.component';
 import { MarshalRegistrationComponent } from './components/marshal/marshal-registration.component';
 import { TaxiRankUserRegistrationComponent } from './components/taxi-rank-user-registration/taxi-rank-user-registration.component';
 import { AdminDashboardComponent } from './components/admin-dashboard/admin-dashboard.component';
@@ -46,6 +49,9 @@ import { TrackingDeviceOffersComponent } from './components/tracking-device/trac
 import { TrackingMarketplaceComponent } from './components/tracking-device/tracking-marketplace.component';
 import { RequestRoadsideAssistanceComponent } from './components/roadside-assistance/request-roadside-assistance.component';
 import { RoadsideAssistanceDashboardComponent } from './components/roadside-assistance/roadside-assistance-dashboard.component';
+import { MessagesInboxComponent } from './components/messages-inbox/messages-inbox.component';
+import { ProfileComponent } from './components/profile/profile.component';
+import { PassengerBookingComponent } from './components/passenger-booking/passenger-booking.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/login', pathMatch: 'full' },
@@ -62,13 +68,20 @@ export const routes: Routes = [
         path: 'overview', 
         loadComponent: () => import('./components/user-dashboard/user-overview/user-overview.component').then(m => m.UserOverviewComponent)
       },
+      { 
+        path: 'schedule', 
+        loadComponent: () => import('./components/user-dashboard/user-schedule/user-schedule.component').then(m => m.UserScheduleComponent)
+      },
+      { path: 'trips', component: TripsComponent },
       { path: 'tenders', component: TenderListComponent },
       { path: 'tenders/post', component: PostTenderComponent },
       { path: 'tenders/:id', component: TenderDetailsComponent },
       { path: 'tenders/:id/apply', component: TenderApplicationComponent },
       { path: 'rental', component: MyRentalRequestsComponent },
       { path: 'rental/request', component: RequestVehicleRentalComponent },
-      { path: 'rental/requests/:id/offers', component: ViewRentalOffersComponent }
+      { path: 'rental/requests/:id/offers', component: ViewRentalOffersComponent },
+      { path: 'messages', component: MessagesInboxComponent },
+      { path: 'passenger-booking', component: PassengerBookingComponent }
     ]
   },
   { path: 'driver-registration', component: DriverRegistrationComponent },
@@ -93,7 +106,8 @@ export const routes: Routes = [
       { path: 'rental/marketplace', component: RentalMarketplaceComponent },
       { path: 'tracking-device', component: RequestTrackingDeviceComponent },
       { path: 'tracking-offers/:requestId', component: TrackingDeviceOffersComponent },
-      { path: 'roadside-assistance', component: RequestRoadsideAssistanceComponent }
+      { path: 'roadside-assistance', component: RequestRoadsideAssistanceComponent },
+      { path: 'messages', component: MessagesInboxComponent }
     ]
   },
   { path: 'maintenance', component: MaintenanceDashboardComponent },
@@ -107,9 +121,22 @@ export const routes: Routes = [
         path: 'overview', 
         loadComponent: () => import('./components/driver-dashboard/driver-overview/driver-overview.component').then(m => m.DriverOverviewComponent)
       },
+      { 
+        path: 'trips', 
+        loadComponent: () => import('./components/driver-dashboard/driver-overview/driver-overview.component').then(m => m.DriverOverviewComponent)
+      },
+      { 
+        path: 'earnings', 
+        loadComponent: () => import('./components/driver-dashboard/driver-overview/driver-overview.component').then(m => m.DriverOverviewComponent)
+      },
+      { 
+        path: 'expenses', 
+        loadComponent: () => import('./components/driver-dashboard/driver-overview/driver-overview.component').then(m => m.DriverOverviewComponent)
+      },
       { path: 'vehicle', component: VehicleDetailsComponent },
       { path: 'roadside-assistance', component: RequestRoadsideAssistanceComponent },
-      { path: 'maintenance', component: DriverMaintenanceRequestComponent }
+      { path: 'maintenance', component: DriverMaintenanceRequestComponent },
+      { path: 'messages', component: MessagesInboxComponent }
     ]
   },
   { 
@@ -132,6 +159,22 @@ export const routes: Routes = [
       { 
         path: 'roadside-assistance', 
         component: RoadsideAssistanceMarketplaceComponent
+      },
+      { 
+        path: 'service-requests', 
+        component: ServiceRequestsComponent
+      },
+      { 
+        path: 'mechanical-request/:id', 
+        component: MechanicalRequestDetailsComponent
+      },
+      { 
+        path: 'stuff-request/:id', 
+        component: StuffRequestDetailsComponent
+      },
+      { 
+        path: 'messages', 
+        component: MessagesInboxComponent
       }
     ]
   },
@@ -155,6 +198,22 @@ export const routes: Routes = [
       { 
         path: 'trip-history', 
         loadComponent: () => import('./components/marshal-dashboard/marshal-trip-history/marshal-trip-history.component').then(m => m.MarshalTripHistoryComponent)
+      },
+      { 
+        path: 'operations', 
+        loadComponent: () => import('./components/marshal-dashboard/marshal-operations/marshal-operations.component').then(m => m.MarshalOperationsComponent)
+      },
+      { 
+        path: 'queue', 
+        loadComponent: () => import('./components/admin-dashboard/passenger-capture/passenger-capture.component').then(m => m.PassengerCaptureComponent)
+      },
+      { 
+        path: 'scheduled-trips', 
+        loadComponent: () => import('./components/admin-dashboard/trip-schedule/trip-schedule.component').then(m => m.TripScheduleComponent)
+      },
+      { 
+        path: 'messages', 
+        component: MessagesInboxComponent
       }
     ]
   },
@@ -202,7 +261,19 @@ export const routes: Routes = [
       { path: '', redirectTo: 'overview', pathMatch: 'full' },
       { 
         path: 'overview', 
+        loadComponent: () => import('./components/admin-dashboard/admin-system-overview/admin-system-overview.component').then(m => m.AdminSystemOverviewComponent)
+      },
+      { 
+        path: 'rank-overview', 
         loadComponent: () => import('./components/admin-dashboard/rank-overview/rank-overview.component').then(m => m.RankOverviewComponent)
+      },
+      { 
+        path: 'users', 
+        loadComponent: () => import('./components/users/users.component').then(m => m.UsersComponent)
+      },
+      { 
+        path: 'tenants', 
+        loadComponent: () => import('./components/tenants/tenants.component').then(m => m.TenantsComponent)
       },
       { 
         path: 'routes', 
@@ -221,17 +292,38 @@ export const routes: Routes = [
         loadComponent: () => import('./components/admin-dashboard/marshal-management/marshal-management.component').then(m => m.MarshalManagementComponent)
       },
       { 
+        path: 'today-schedule', 
+        loadComponent: () => import('./components/admin-dashboard/today-schedule/today-schedule.component').then(m => m.TodayScheduleComponent)
+      },
+      { 
         path: 'schedule', 
         loadComponent: () => import('./components/admin-dashboard/trip-schedule/trip-schedule.component').then(m => m.TripScheduleComponent)
       },
       { 
+        path: 'capture', 
+        loadComponent: () => import('./components/admin-dashboard/passenger-capture/passenger-capture.component').then(m => m.PassengerCaptureComponent)
+      },
+      { 
         path: 'trip-details', 
         loadComponent: () => import('./components/admin-dashboard/trip-details/trip-details.component').then(m => m.TripDetailsComponent)
+      },
+      {
+        path: 'settings',
+        loadComponent: () => import('./components/admin-dashboard/admin-system-overview/admin-system-overview.component').then(m => m.AdminSystemOverviewComponent)
+      },
+      {
+        path: 'reports',
+        loadComponent: () => import('./components/admin-dashboard/admin-system-overview/admin-system-overview.component').then(m => m.AdminSystemOverviewComponent)
+      },
+      {
+        path: 'messages',
+        component: MessagesInboxComponent
       }
     ]
   },
   { 
     path: 'identity', 
     loadChildren: () => import('./components/identity/identity.routes').then(m => m.identityRoutes)
-  }
+  },
+  { path: 'profile', component: ProfileComponent }
 ];

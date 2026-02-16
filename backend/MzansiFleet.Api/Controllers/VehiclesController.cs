@@ -41,12 +41,24 @@ namespace MzansiFleet.Api.Controllers
         }
 
         [HttpGet]
-        public ActionResult GetAll()
+        public ActionResult GetAll([FromQuery] Guid? rankId = null)
         {
             try
             {
+                IQueryable<Vehicle> query = _context.Vehicles;
+
+                if (rankId.HasValue)
+                {
+                    // Filter vehicles linked to the specified rank via VehicleTaxiRank
+                    query = query
+                        .Join(_context.VehicleTaxiRanks.Where(vtr => vtr.TaxiRankId == rankId.Value && vtr.IsActive),
+                              v => v.Id,
+                              vtr => vtr.VehicleId,
+                              (v, vtr) => v);
+                }
+
                 // Query vehicles and explicitly handle Photos field
-                var vehicles = _context.Vehicles
+                var vehicles = query
                     .Select(v => new 
                     {
                         v.Id,

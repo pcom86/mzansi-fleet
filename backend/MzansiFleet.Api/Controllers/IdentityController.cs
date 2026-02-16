@@ -4,8 +4,10 @@ using MzansiFleet.Domain.DTOs;
 using MzansiFleet.Application.Commands;
 using MzansiFleet.Application.Queries;
 using MzansiFleet.Application.Handlers;
+using MzansiFleet.Repository;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -44,6 +46,7 @@ namespace MzansiFleet.Api.Controllers
         private readonly LogoutCommandHandler _logoutHandler;
         private readonly ChangePasswordCommandHandler _changePasswordHandler;
         private readonly RegisterServiceProviderCommandHandler _registerServiceProviderHandler;
+        private readonly MzansiFleetDbContext _context;
         
         public IdentityController(
             CreateTenantCommandHandler createTenantHandler,
@@ -74,7 +77,8 @@ namespace MzansiFleet.Api.Controllers
             LoginCommandHandler loginHandler,
             LogoutCommandHandler logoutHandler,
             ChangePasswordCommandHandler changePasswordHandler,
-            RegisterServiceProviderCommandHandler registerServiceProviderHandler)
+            RegisterServiceProviderCommandHandler registerServiceProviderHandler,
+            MzansiFleetDbContext context)
         {
             _createTenantHandler = createTenantHandler;
             _updateTenantHandler = updateTenantHandler;
@@ -105,6 +109,7 @@ namespace MzansiFleet.Api.Controllers
             _changePasswordHandler = changePasswordHandler;
             _logoutHandler = logoutHandler;
             _registerServiceProviderHandler = registerServiceProviderHandler;
+            _context = context;
         }
         [HttpGet("tenants")]
         public ActionResult<IEnumerable<Tenant>> GetTenants()
@@ -155,6 +160,30 @@ namespace MzansiFleet.Api.Controllers
         {
             return Ok(_getUsersHandler.Handle(new GetUsersQuery()));
         }
+
+        [HttpGet("search")]
+        public ActionResult<IEnumerable<object>> SearchUsers([FromQuery] string query)
+        {
+            if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+            {
+                return Ok(new List<object>());
+            }
+
+            var users = _getUsersHandler.Handle(new GetUsersQuery());
+            var searchTerm = query.ToLower();
+
+            var filtered = users.Where(u => 
+                (u.Email != null && u.Email.ToLower().Contains(searchTerm))
+            ).Take(20);
+
+            return Ok(filtered.Select(u => new {
+                id = u.Id,
+                email = u.Email,
+                fullName = GetUserFullName(u.Id),
+                role = u.Role
+            }));
+        }
+
         [HttpGet("users/{id}")]
         public ActionResult<User> GetUserById(Guid id)
         {
@@ -485,6 +514,45 @@ namespace MzansiFleet.Api.Controllers
             }
         }
 
+        [HttpPost("users/{id}/reset-password")]
+        public async Task<IActionResult> AdminResetPassword(Guid id, [FromBody] AdminResetPasswordRequestDto request)
+        {
+            try
+            {
+                var user = await _getUserByIdHandler.Handle(new GetUserByIdQuery { Id = id }, CancellationToken.None);
+                if (user == null)
+                {
+                    return NotFound(new { message = "User not found" });
+                }
+
+                // Admin reset - no current password verification needed
+                using (var sha256 = System.Security.Cryptography.SHA256.Create())
+                {
+                    var hashedBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(request.NewPassword));
+                    user.PasswordHash = Convert.ToBase64String(hashedBytes);
+                }
+                
+                var updateCommand = new UpdateUserCommand
+                {
+                    Id = id,
+                    TenantId = user.TenantId,
+                    Email = user.Email,
+                    Phone = user.Phone,
+                    Role = user.Role,
+                    IsActive = user.IsActive,
+                    PasswordHash = user.PasswordHash
+                };
+                
+                await _updateUserHandler.Handle(updateCommand, CancellationToken.None);
+                
+                return Ok(new { message = "Password reset successfully" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpPost("login")]
         public ActionResult<LoginResponseDto> Login([FromBody] LoginRequestDto request)
         {
@@ -524,6 +592,39 @@ namespace MzansiFleet.Api.Controllers
             {
                 return StatusCode(500, new { message = "An error occurred during logout", detail = ex.Message });
             }
+        }
+
+        // Helper method to get user's full name from various profile types
+        private string GetUserFullName(Guid userId)
+        {
+            // Try OwnerProfile
+            var ownerProfile = _context.OwnerProfiles.FirstOrDefault(o => o.UserId == userId);
+            if (ownerProfile != null)
+                return ownerProfile.ContactName ?? ownerProfile.CompanyName ?? "Unknown";
+
+            // Try DriverProfile
+            var driverProfile = _context.DriverProfiles.FirstOrDefault(d => d.UserId == userId);
+            if (driverProfile != null)
+                return driverProfile.Name ?? "Unknown";
+
+            // Try ServiceProviderProfile
+            var serviceProviderProfile = _context.ServiceProviderProfiles.FirstOrDefault(s => s.UserId == userId);
+            if (serviceProviderProfile != null)
+                return serviceProviderProfile.BusinessName ?? serviceProviderProfile.ContactPerson ?? "Unknown";
+
+            // Try TaxiRankAdminProfile
+            var adminProfile = _context.TaxiRankAdmins.FirstOrDefault(a => a.UserId == userId);
+            if (adminProfile != null)
+                return adminProfile.FullName ?? "Unknown";
+
+            // Try TaxiMarshalProfile
+            var marshalProfile = _context.TaxiMarshalProfiles.FirstOrDefault(m => m.UserId == userId);
+            if (marshalProfile != null)
+                return marshalProfile.FullName ?? "Unknown";
+
+            // Fallback to User email
+            var user = _context.Users.FirstOrDefault(u => u.Id == userId);
+            return user?.Email ?? "Unknown";
         }
     }
 
@@ -602,6 +703,11 @@ namespace MzansiFleet.Api.Controllers
     public class ChangePasswordRequestDto
     {
         public string CurrentPassword { get; set; }
+        public string NewPassword { get; set; }
+    }
+
+    public class AdminResetPasswordRequestDto
+    {
         public string NewPassword { get; set; }
     }
 }

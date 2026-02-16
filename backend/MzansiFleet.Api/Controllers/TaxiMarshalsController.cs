@@ -121,6 +121,10 @@ namespace MzansiFleet.Api.Controllers
                 if (taxiRank == null)
                     return BadRequest(new { message = "Invalid taxi rank" });
 
+                // Ensure taxi rank belongs to the same tenant
+                if (taxiRank.TenantId != dto.TenantId)
+                    return BadRequest(new { message = "Taxi rank does not belong to the specified tenant" });
+
                 // Check if email already exists
                 var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
                 if (existingUser != null)

@@ -24,7 +24,8 @@ interface Route {
   stops: string[];
   distance: number;
   estimatedDuration: number;
-  fareAmount: number;
+  fareAmount: number; // Keep for backward compatibility
+  destinationFares: { [destination: string]: number }; // New: fare per destination
   status: string;
 }
 
@@ -86,6 +87,7 @@ export class RouteManagementComponent implements OnInit {
       distance: [0, [Validators.required, Validators.min(0)]],
       estimatedDuration: [0, [Validators.required, Validators.min(0)]],
       fareAmount: [0, [Validators.required, Validators.min(0)]],
+      destinationFares: this.fb.group({}), // Dynamic fares per destination
       status: ['Active']
     });
 
@@ -95,6 +97,11 @@ export class RouteManagementComponent implements OnInit {
         const code = this.generateRouteCode(name);
         this.routeForm.patchValue({ code }, { emitEvent: false });
       }
+    });
+
+    // Update destination fares when destination or stops change
+    this.routeForm.get('destination')?.valueChanges.subscribe(() => {
+      this.updateDestinationFares();
     });
   }
 
@@ -108,6 +115,39 @@ export class RouteManagementComponent implements OnInit {
 
   removeStop(index: number): void {
     this.stops.removeAt(index);
+    this.updateDestinationFares();
+  }
+
+  updateDestinationFares(): void {
+    const destination = this.routeForm.get('destination')?.value;
+    const stops = this.stops.value as string[];
+
+    if (destination) {
+      const destinations = [destination, ...stops.filter(stop => stop.trim())];
+      const currentFares = this.routeForm.get('destinationFares')?.value || {};
+
+      // Create fare controls for each destination
+      const fareGroup: { [key: string]: any } = {};
+      destinations.forEach(dest => {
+        fareGroup[dest] = [currentFares[dest] || 0, [Validators.required, Validators.min(0)]];
+      });
+
+      this.routeForm.setControl('destinationFares', this.fb.group(fareGroup));
+    }
+  }
+
+  get destinationFares(): { [key: string]: any } {
+    return (this.routeForm.get('destinationFares') as any)?.controls || {};
+  }
+
+  get destinationFaresFormGroup(): FormGroup {
+    return this.routeForm.get('destinationFares') as FormGroup;
+  }
+
+  getAllDestinations(): string[] {
+    const destination = this.routeForm.get('destination')?.value;
+    const stops = this.stops.value as string[];
+    return destination ? [destination, ...stops.filter(stop => stop.trim())] : [];
   }
 
   generateRouteCode(name: string): string {
@@ -182,7 +222,8 @@ export class RouteManagementComponent implements OnInit {
       stops: this.stops.value,
       distance: Number(formValue.distance),
       estimatedDuration: Math.round(Number(formValue.estimatedDuration)),
-      fareAmount: Number(formValue.fareAmount),
+      fareAmount: Number(formValue.fareAmount), // Keep for backward compatibility
+      destinationFares: formValue.destinationFares,
       status: formValue.status
     };
 

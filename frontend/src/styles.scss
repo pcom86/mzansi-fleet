@@ -527,3 +527,107 @@ tr:hover {
   }
 }
 
+/* iPhone 14 Pro Max and similar devices (430px width) */
+@media (max-width: 430px) {
+  /* Ensure no horizontal scrolling */
+  body {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Optimize touch targets for iOS */
+  button,
+  .btn,
+  mat-button,
+  mat-icon-button,
+  mat-fab,
+  mat-mini-fab {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Improve text readability on small screens */
+  body {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  /* Optimize form inputs */
+  input,
+  textarea,
+  select,
+  mat-form-field {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+
+  /* Container adjustments */
+  .container {
+    padding: 12px;
+    max-width: 100%;
+  }
+
+  /* Card optimizations */
+  .card,
+  mat-card {
+    margin: 8px 0;
+    border-radius: 8px;
+  }
+
+  /* Table responsiveness */
+  table,
+  mat-table {
+    font-size: 14px;
+  }
+
+  /* Dialog optimizations */
+  mat-dialog-container {
+    max-width: calc(100vw - 32px);
+    margin: 16px;
+  }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+  /* iOS Safari viewport height fix */
+  .full-height {
+    height: 100vh;
+    height: -webkit-fill-available;
+  }
+
+  /* Prevent text selection on interactive elements */
+  button,
+  .btn,
+  mat-button {
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Improve scrolling performance */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Fix for iOS input focus issues */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    font-size: 16px !important;
+  }
+}
+
+/* High DPI displays (iPhone 14 Pro Max has 3x pixel ratio) */
+@media (-webkit-min-device-pixel-ratio: 3),
+       (min-resolution: 3dppx) {
+  /* Ensure crisp icons and borders */
+  .material-icons,
+  mat-icon {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Optimize borders for high DPI */
+  * {
+    border-width: 1px;
+  }
+}
+

@@ -14,6 +14,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatStepperModule } from '@angular/material/stepper';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { ConfirmDialogComponent } from '../shared/confirm-dialog.component';
+import { SendMessageButtonComponent } from '../send-message-button/send-message-button.component';
 
 interface Tender {
   id: string;
@@ -30,6 +31,8 @@ interface Tender {
   pickupLocation: string;
   dropoffLocation: string;
   serviceArea: string;
+  tenderPublisherId: string;
+  publisherName: string;
 }
 
 @Component({
@@ -47,7 +50,8 @@ interface Tender {
     MatProgressSpinnerModule,
     MatDividerModule,
     MatStepperModule,
-    MatDialogModule
+    MatDialogModule,
+    SendMessageButtonComponent
   ],
   template: `
     <div class="application-container">
@@ -92,6 +96,19 @@ interface Tender {
               </div>
             </div>
           </mat-card-content>
+          <mat-card-actions>
+            <app-send-message-button
+              *ngIf=\"tender\"
+              [receiverId]=\"tender.tenderPublisherId\"
+              [receiverName]=\"tender.publisherName\"
+              [subject]=\"'Question about tender: ' + tender.title\"
+              [relatedEntityType]=\"'Tender'\"
+              [relatedEntityId]=\"tender.id\"
+              buttonText=\"Message Publisher\"
+
+              color=\"primary\">
+            </app-send-message-button>
+          </mat-card-actions>
         </mat-card>
       </div>
 

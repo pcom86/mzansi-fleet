@@ -12,7 +12,9 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { RoadsideAssistanceService } from '../../services/roadside-assistance.service';
 import { VehicleService } from '../../services/vehicle.service';
+import { DriverService } from '../../services/driver.service';
 import { Vehicle } from '../../models/vehicle.model';
+import { DriverProfile } from '../../models/driver-profile.model';
 import { 
   RoadsideAssistanceRequest,
   ASSISTANCE_TYPES,
@@ -61,7 +63,7 @@ import {
 
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Select Vehicle (Optional)</mat-label>
-                <mat-select [(ngModel)]="vehicleId" name="vehicle">
+                <mat-select [(ngModel)]="vehicleId" name="vehicle" (selectionChange)="onVehicleChange()">
                   <mat-option [value]="null">No Vehicle</mat-option>
                   <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
                     {{ vehicle.registration }} - {{ vehicle.make }} {{ vehicle.model }}
@@ -69,6 +71,12 @@ import {
                 </mat-select>
                 <mat-icon matPrefix>directions_car</mat-icon>
               </mat-form-field>
+
+              <div *ngIf="selectedDriver" class="driver-info">
+                <mat-icon>person</mat-icon>
+                <span><strong>Assigned Driver:</strong> {{ selectedDriver.name }}</span>
+                <span *ngIf="selectedDriver.phone"> | <mat-icon>phone</mat-icon> {{ selectedDriver.phone }}</span>
+              </div>
 
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Current Location</mat-label>
@@ -156,6 +164,11 @@ import {
                     <mat-icon>directions_car</mat-icon>
                     {{ request.vehicleRegistration }} - {{ request.vehicleMake }} {{ request.vehicleModel }}
                   </p>
+                  <p *ngIf="request.driverName" class="driver">
+                    <mat-icon>person</mat-icon>
+                    {{ request.driverName }}
+                    <span *ngIf="request.driverPhone"> | <mat-icon>phone</mat-icon> {{ request.driverPhone }}</span>
+                  </p>
                   <div *ngIf="request.status === 'Assigned' || request.status === 'InProgress'" class="provider-info">
                     <p><strong>Service Provider:</strong> {{ request.serviceProviderName }}</p>
                     <p *ngIf="request.serviceProviderRating">
@@ -220,6 +233,24 @@ import {
       margin-bottom: 1rem;
     }
 
+    .driver-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      background: #e3f2fd;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .driver-info mat-icon {
+      color: #1976d2;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+
     .form-actions {
       display: flex;
       gap: 1rem;
@@ -282,6 +313,11 @@ import {
       gap: 0.5rem;
       margin: 0.5rem 0;
       font-size: 0.9rem;
+    }
+
+    .request-details .vehicle, .request-details .driver {
+      color: #1976d2;
+      font-weight: 500;
     }
 
     .request-details mat-icon {
@@ -368,6 +404,8 @@ export class RequestRoadsideAssistanceComponent implements OnInit {
   requests: RoadsideAssistanceRequest[] = [];
   
   vehicleId: string | null = null;
+  driverId: string | null = null;
+  selectedDriver: DriverProfile | null = null;
   assistanceType: string = '';
   location: string = '';
   latitude?: string;
@@ -385,6 +423,7 @@ export class RequestRoadsideAssistanceComponent implements OnInit {
   constructor(
     private assistanceService: RoadsideAssistanceService,
     private vehicleService: VehicleService,
+    private driverService: DriverService,
     private snackBar: MatSnackBar,
     private router: Router
   ) {}
@@ -398,9 +437,11 @@ export class RequestRoadsideAssistanceComponent implements OnInit {
     this.vehicleService.getAll().subscribe({
       next: (vehicles: Vehicle[]) => {
         this.vehicles = vehicles;
+        console.log('Vehicles loaded:', vehicles);
       },
       error: (error: any) => {
         console.error('Error loading vehicles:', error);
+        this.snackBar.open('Failed to load vehicles. Please try again.', 'Close', { duration: 5000 });
       }
     });
   }
@@ -415,8 +456,32 @@ export class RequestRoadsideAssistanceComponent implements OnInit {
       error: (error) => {
         console.error('Error loading requests:', error);
         this.loading = false;
+        // Don't show error for my requests since user might not be logged in
       }
     });
+  }
+
+  onVehicleChange(): void {
+    if (this.vehicleId) {
+      this.loading = true;
+      this.driverService.getByVehicleId(this.vehicleId).subscribe({
+        next: (driver) => {
+          this.selectedDriver = driver;
+          this.driverId = driver.id;
+          this.loading = false;
+        },
+        error: (error) => {
+          console.error('Error loading driver for vehicle:', error);
+          this.selectedDriver = null;
+          this.driverId = null;
+          this.snackBar.open('No driver assigned to this vehicle', 'Close', { duration: 3000 });
+          this.loading = false;
+        }
+      });
+    } else {
+      this.selectedDriver = null;
+      this.driverId = null;
+    }
   }
 
   getCurrentLocation() {
@@ -471,6 +536,8 @@ export class RequestRoadsideAssistanceComponent implements OnInit {
 
   resetForm() {
     this.vehicleId = null;
+    this.driverId = null;
+    this.selectedDriver = null;
     this.assistanceType = '';
     this.location = '';
     this.latitude = undefined;

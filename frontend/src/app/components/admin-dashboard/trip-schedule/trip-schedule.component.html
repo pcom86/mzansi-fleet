@@ -1,19 +1,85 @@
 <div class="trip-schedule-container">
+  <!-- Today's Schedule Section -->
+  <mat-card class="today-schedule-card">
+    <mat-card-header>
+      <mat-card-title>Today's Schedule</mat-card-title>
+      <mat-card-subtitle>{{ today | date:'EEEE, MMMM d, y' }}</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <div *ngIf="loading" class="loading">
+        <p>Loading today's schedule...</p>
+      </div>
+
+      <div *ngIf="!loading && todaysSchedules.length === 0" class="no-schedules">
+        <mat-icon class="no-data-icon">event_busy</mat-icon>
+        <h3>No trips scheduled for today</h3>
+        <p>All scheduled trips for today will appear here.</p>
+      </div>
+
+      <table *ngIf="!loading && todaysSchedules.length > 0" mat-table [dataSource]="todaysSchedules" class="schedules-table">
+        <ng-container matColumnDef="time">
+          <th mat-header-cell *matHeaderCellDef>Departure Time</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.departureTime }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="vehicle">
+          <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.vehicle?.registration || 'N/A' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="route">
+          <th mat-header-cell *matHeaderCellDef>Route</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.departureStation }} → {{ schedule.destinationStation }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="driver">
+          <th mat-header-cell *matHeaderCellDef>Driver</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.driver?.name || 'N/A' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="marshal">
+          <th mat-header-cell *matHeaderCellDef>Marshal</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.marshal?.fullName || 'N/A' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Status</th>
+          <td mat-cell *matCellDef="let schedule">
+            <span [ngClass]="{
+              'status-departed': schedule.status === 'Departed',
+              'status-intransit': schedule.status === 'InTransit',
+              'status-arrived': schedule.status === 'Arrived',
+              'status-completed': schedule.status === 'Completed'
+            }">
+              {{ schedule.status }}
+            </span>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="todaysDisplayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: todaysDisplayedColumns;"></tr>
+      </table>
+    </mat-card-content>
+  </mat-card>
+
   <mat-card class="form-card">
     <mat-card-header>
-      <mat-card-title>{{ editMode ? 'Edit Trip Schedule' : 'Create Trip Schedule' }}</mat-card-title>
+      <mat-card-title>Create Trip Schedule</mat-card-title>
       <mat-card-subtitle>Plan and manage daily taxi trip rosters</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
       <form [formGroup]="scheduleForm" (ngSubmit)="onSubmit()">
         <div class="form-row">
           <mat-form-field appearance="outline" class="half-width">
-            <mat-label>Select Vehicle</mat-label>
-            <mat-select formControlName="vehicleId">
-              <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
-                {{ getVehicleDisplayName(vehicle) }}
+            <mat-label>Select Taxi Rank</mat-label>
+            <mat-select formControlName="taxiRankId">
+              <mat-option *ngFor="let taxiRank of taxiRanks" [value]="taxiRank.id">
+                {{ taxiRank.name }} - {{ taxiRank.location }}
               </mat-option>
             </mat-select>
+            <mat-error *ngIf="scheduleForm.get('taxiRankId')?.hasError('required') && scheduleForm.get('taxiRankId')?.touched">
+              Taxi Rank is required
+            </mat-error>
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="half-width">
@@ -23,54 +89,92 @@
                 {{ route.name }} ({{ route.origin }} → {{ route.destination }})
               </mat-option>
             </mat-select>
+            <mat-error *ngIf="scheduleForm.get('routeId')?.hasError('required') && scheduleForm.get('routeId')?.touched">
+              Route is required
+            </mat-error>
           </mat-form-field>
         </div>
 
         <div class="form-row">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Vehicle</mat-label>
+            <mat-select formControlName="vehicleId">
+              <mat-option *ngFor="let vehicle of vehicles" [value]="vehicle.id">
+                {{ vehicle.registration }} - {{ vehicle.make }} {{ vehicle.model }}
+              </mat-option>
+            </mat-select>
+            <mat-error *ngIf="scheduleForm.get('vehicleId')?.hasError('required') && scheduleForm.get('vehicleId')?.touched">
+              Vehicle is required
+            </mat-error>
+          </mat-form-field>
+
           <mat-form-field appearance="outline" class="half-width">
             <mat-label>Select Driver</mat-label>
             <mat-select formControlName="driverId">
               <mat-option *ngFor="let driver of drivers" [value]="driver.id">
-                {{ getDriverDisplayName(driver) }}
+                {{ driver.name }}
               </mat-option>
             </mat-select>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" class="half-width">
-            <mat-label>Select Marshal</mat-label>
-            <mat-select formControlName="marshalId">
-              <mat-option *ngFor="let marshal of marshals" [value]="marshal.id">
-                {{ getMarshalDisplayName(marshal) }}
-              </mat-option>
-            </mat-select>
+            <mat-error *ngIf="scheduleForm.get('driverId')?.hasError('required') && scheduleForm.get('driverId')?.touched">
+              Driver is required
+            </mat-error>
           </mat-form-field>
         </div>
 
         <div class="form-row">
-          <mat-form-field appearance="outline" class="third-width">
+          <mat-form-field appearance="outline" class="half-width">
+            <mat-label>Select Marshal</mat-label>
+            <mat-select formControlName="marshalId" [disabled]="isMarshalUser">
+              <mat-option *ngFor="let marshal of marshals" [value]="marshal.id">
+                {{ getMarshalDisplayName(marshal) }}
+              </mat-option>
+            </mat-select>
+            <mat-hint *ngIf="isMarshalUser">Auto-assigned to current user</mat-hint>
+            <mat-hint *ngIf="!isMarshalUser && isAdminUser">Select a marshal for this trip</mat-hint>
+            <mat-hint *ngIf="!isMarshalUser && !isAdminUser">Default marshal will be assigned</mat-hint>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="half-width">
             <mat-label>Scheduled Date</mat-label>
             <input matInput [matDatepicker]="picker" formControlName="scheduledDate">
             <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
             <mat-datepicker #picker></mat-datepicker>
+            <mat-error *ngIf="scheduleForm.get('scheduledDate')?.hasError('required') && scheduleForm.get('scheduledDate')?.touched">
+              Scheduled Date is required
+            </mat-error>
           </mat-form-field>
+        </div>
 
-          <mat-form-field appearance="outline" class="third-width">
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="half-width">
             <mat-label>Departure Time</mat-label>
-            <input matInput type="time" formControlName="departureTime">
+            <input matInput
+                   formControlName="departureTime"
+                   [ngxTimepicker]="departureTimePicker"
+                   readonly>
+            <ngx-material-timepicker #departureTimePicker></ngx-material-timepicker>
+            <mat-icon matSuffix (click)="departureTimePicker.open()">schedule</mat-icon>
+            <mat-hint>Select departure time</mat-hint>
+            <mat-error *ngIf="scheduleForm.get('departureTime')?.hasError('required') && scheduleForm.get('departureTime')?.touched">
+              Departure Time is required
+            </mat-error>
           </mat-form-field>
 
-          <mat-form-field appearance="outline" class="third-width">
+          <mat-form-field appearance="outline" class="half-width">
             <mat-label>Est. Arrival Time</mat-label>
-            <input matInput type="time" formControlName="estimatedArrivalTime">
+            <input matInput
+                   formControlName="estimatedArrivalTime"
+                   [ngxTimepicker]="arrivalTimePicker"
+                   readonly>
+            <ngx-material-timepicker #arrivalTimePicker></ngx-material-timepicker>
+            <mat-icon matSuffix (click)="arrivalTimePicker.open()">schedule</mat-icon>
+            <mat-hint>Estimated arrival time</mat-hint>
           </mat-form-field>
         </div>
 
         <div class="form-actions">
-          <button mat-raised-button type="button" (click)="resetForm()" *ngIf="editMode">
-            Cancel
-          </button>
           <button mat-raised-button color="primary" type="submit" [disabled]="loading">
-            {{ editMode ? 'Update Schedule' : 'Create Schedule' }}
+            Create Trip Schedule
           </button>
         </div>
       </form>
@@ -79,70 +183,85 @@
 
   <mat-card class="table-card">
     <mat-card-header>
-      <mat-card-title>Trip Roster</mat-card-title>
+      <mat-card-title>All Trip Schedules</mat-card-title>
+      <mat-card-subtitle>Complete roster of all scheduled trips, grouped by date</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
-      <table mat-table [dataSource]="schedules" class="schedules-table">
-        <ng-container matColumnDef="date">
-          <th mat-header-cell *matHeaderCellDef>Date</th>
-          <td mat-cell *matCellDef="let schedule">
-            {{ schedule.scheduledDate | date:'mediumDate' }}
-          </td>
-        </ng-container>
+      <div *ngIf="loading" class="loading">
+        <p>Loading all schedules...</p>
+      </div>
 
-        <ng-container matColumnDef="time">
-          <th mat-header-cell *matHeaderCellDef>Departure</th>
-          <td mat-cell *matCellDef="let schedule">{{ schedule.departureTime }}</td>
-        </ng-container>
+      <div *ngIf="!loading && scheduleDates.length === 0" class="no-schedules">
+        <mat-icon class="no-data-icon">event_busy</mat-icon>
+        <h3>No trip schedules found</h3>
+        <p>Create your first trip schedule using the form above.</p>
+      </div>
 
-        <ng-container matColumnDef="vehicle">
-          <th mat-header-cell *matHeaderCellDef>Vehicle</th>
-          <td mat-cell *matCellDef="let schedule">{{ schedule.vehicleRegistration }}</td>
-        </ng-container>
+      <div *ngIf="!loading && scheduleDates.length > 0" class="grouped-schedules">
+        <div *ngFor="let date of scheduleDates" class="date-group">
+          <h3 class="date-header">{{ date }}</h3>
+          <table mat-table [dataSource]="groupedSchedules[date]" class="schedules-table">
+            <ng-container matColumnDef="time">
+              <th mat-header-cell *matHeaderCellDef>Departure</th>
+              <td mat-cell *matCellDef="let schedule">{{ schedule.departureTime | date:'shortTime' }}</td>
+            </ng-container>
 
-        <ng-container matColumnDef="route">
-          <th mat-header-cell *matHeaderCellDef>Route</th>
-          <td mat-cell *matCellDef="let schedule">{{ schedule.routeName }}</td>
-        </ng-container>
+            <ng-container matColumnDef="vehicle">
+              <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+              <td mat-cell *matCellDef="let schedule">{{ schedule.vehicle?.registration || 'N/A' }}</td>
+            </ng-container>
 
-        <ng-container matColumnDef="driver">
-          <th mat-header-cell *matHeaderCellDef>Driver</th>
-          <td mat-cell *matCellDef="let schedule">{{ schedule.driverName }}</td>
-        </ng-container>
+            <ng-container matColumnDef="route">
+              <th mat-header-cell *matHeaderCellDef>Route</th>
+              <td mat-cell *matCellDef="let schedule">{{ schedule.departureStation }} → {{ schedule.destinationStation }}</td>
+            </ng-container>
 
-        <ng-container matColumnDef="marshal">
-          <th mat-header-cell *matHeaderCellDef>Marshal</th>
-          <td mat-cell *matCellDef="let schedule">{{ schedule.marshalName }}</td>
-        </ng-container>
+            <ng-container matColumnDef="driver">
+              <th mat-header-cell *matHeaderCellDef>Driver</th>
+              <td mat-cell *matCellDef="let schedule">{{ schedule.driver?.name || 'N/A' }}</td>
+            </ng-container>
 
-        <ng-container matColumnDef="status">
-          <th mat-header-cell *matHeaderCellDef>Status</th>
-          <td mat-cell *matCellDef="let schedule">
-            <span [ngClass]="{
-              'status-scheduled': schedule.status === 'Scheduled',
-              'status-completed': schedule.status === 'Completed',
-              'status-cancelled': schedule.status === 'Cancelled'
-            }">
-              {{ schedule.status }}
-            </span>
-          </td>
-        </ng-container>
+            <ng-container matColumnDef="marshal">
+              <th mat-header-cell *matHeaderCellDef>Marshal</th>
+              <td mat-cell *matCellDef="let schedule">{{ schedule.marshal?.fullName || 'N/A' }}</td>
+            </ng-container>
 
-        <ng-container matColumnDef="actions">
-          <th mat-header-cell *matHeaderCellDef>Actions</th>
-          <td mat-cell *matCellDef="let schedule">
-            <button mat-icon-button color="primary" (click)="editSchedule(schedule)">
-              <mat-icon>edit</mat-icon>
-            </button>
-            <button mat-icon-button color="warn" (click)="deleteSchedule(schedule.id)">
-              <mat-icon>delete</mat-icon>
-            </button>
-          </td>
-        </ng-container>
+            <ng-container matColumnDef="passengers">
+              <th mat-header-cell *matHeaderCellDef>Passengers</th>
+              <td mat-cell *matCellDef="let schedule">{{ schedule.passengerCount }}</td>
+            </ng-container>
 
-        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
-      </table>
+            <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef>Status</th>
+              <td mat-cell *matCellDef="let schedule">
+                <span [ngClass]="{
+                  'status-departed': schedule.status === 'Departed',
+                  'status-intransit': schedule.status === 'InTransit',
+                  'status-arrived': schedule.status === 'Arrived',
+                  'status-completed': schedule.status === 'Completed'
+                }">
+                  {{ schedule.status }}
+                </span>
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="actions">
+              <th mat-header-cell *matHeaderCellDef>Actions</th>
+              <td mat-cell *matCellDef="let schedule">
+                <button mat-icon-button color="primary" (click)="openPassengerDialog(schedule)" matTooltip="Capture Passengers">
+                  <mat-icon>people</mat-icon>
+                </button>
+                <button mat-icon-button color="warn" (click)="deleteSchedule(schedule.id)" matTooltip="Delete Trip">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+            <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+          </table>
+        </div>
+      </div>
     </mat-card-content>
   </mat-card>
 </div>

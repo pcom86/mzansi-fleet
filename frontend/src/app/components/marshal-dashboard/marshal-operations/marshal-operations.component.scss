@@ -1,0 +1,156 @@
+.marshal-operations {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f5f5f5;
+}
+
+.page-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+
+  .spacer {
+    flex: 1 1 auto;
+  }
+
+  button {
+    margin-left: 8px;
+  }
+}
+
+.content-container {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+mat-card {
+  margin-bottom: 24px;
+
+  mat-card-header {
+    margin-bottom: 16px;
+  }
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+
+  mat-spinner {
+    margin-bottom: 16px;
+  }
+}
+
+.no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #666;
+
+  mat-icon {
+    font-size: 48px;
+    height: 48px;
+    width: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+}
+
+.operations-list {
+  .operation-item {
+    border-bottom: 1px solid #e0e0e0;
+    padding: 16px 0;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    .operation-content {
+      flex: 1;
+
+      .operation-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 8px;
+
+        h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 500;
+        }
+
+        .operation-badges {
+          display: flex;
+          gap: 8px;
+        }
+      }
+
+      .operation-description {
+        margin: 8px 0;
+        color: #666;
+        line-height: 1.4;
+      }
+
+      .operation-meta {
+        display: flex;
+        gap: 16px;
+        font-size: 14px;
+        color: #888;
+        margin-top: 8px;
+
+        span {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+
+          mat-icon {
+            font-size: 16px;
+            height: 16px;
+            width: 16px;
+          }
+        }
+      }
+    }
+
+    .operation-actions {
+      margin-left: 16px;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .content-container {
+    padding: 16px;
+  }
+
+  .operation-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 8px;
+
+    .operation-badges {
+      align-self: flex-end;
+    }
+  }
+
+  .operation-meta {
+    flex-direction: column;
+    gap: 4px !important;
+  }
+
+  .operation-actions {
+    margin-left: 0;
+    margin-top: 16px;
+  }
+}

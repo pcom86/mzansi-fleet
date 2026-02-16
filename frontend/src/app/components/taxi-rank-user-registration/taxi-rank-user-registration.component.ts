@@ -16,6 +16,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatDividerModule } from '@angular/material/divider';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
+import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component';
 
 interface TaxiRank {
   id: string;
@@ -52,7 +53,8 @@ interface Tenant {
     MatSnackBarModule,
     MatSelectModule,
     MatChipsModule,
-    MatDividerModule
+    MatDividerModule,
+    MzansiFleetLogoComponent
   ],
   templateUrl: './taxi-rank-user-registration.component.html',
   styleUrls: ['./taxi-rank-user-registration.component.scss']

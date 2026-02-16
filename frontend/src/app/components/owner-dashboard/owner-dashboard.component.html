@@ -1,11 +1,18 @@
 <div class="dashboard-wrapper">
+  <!-- Sidebar Overlay for Mobile -->
+  <div class="sidebar-overlay" 
+       [class.active]="!sidebarCollapsed" 
+       (click)="toggleSidebar()"
+       *ngIf="isMobileView()">
+  </div>
+
   <!-- Sidebar Navigation -->
   <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
     <div class="sidebar-header">
       <div class="logo-section">
         <app-mzansi-fleet-logo class="mzansi-logo"></app-mzansi-fleet-logo>
         <div class="header-text" *ngIf="!sidebarCollapsed">
-          <h2>{{ ownerName || 'Fleet Owner' }}</h2>
+          <h2>{{ companyName || 'Mzansi Fleet' }}</h2>
           <p class="admin-badge">Owner Portal</p>
         </div>
       </div>
@@ -15,19 +22,28 @@
     </div>
     
     <nav class="sidebar-nav">
-      <div class="nav-section">
-        <p class="section-label" *ngIf="!sidebarCollapsed">Dashboard</p>
-        <a class="nav-item" 
-           *ngFor="let item of menuItems" 
-           [routerLink]="item.route"
-           routerLinkActive="active"
-           [routerLinkActiveOptions]="{exact: item.route === '/owner-dashboard'}"
-           [title]="item.title"
-           (click)="onMenuItemClick()">
-          <mat-icon [matBadge]="item.badge || null" [matBadgeHidden]="!item.badge" matBadgeColor="warn" matBadgeSize="small">{{ item.icon }}</mat-icon>
-          <span *ngIf="!sidebarCollapsed">{{ item.title }}</span>
-          <mat-icon class="nav-arrow" *ngIf="!sidebarCollapsed">chevron_right</mat-icon>
-        </a>
+      <div class="nav-section" *ngFor="let group of menuGroups">
+        <div class="group-header" (click)="toggleMenuGroup(group)" [class.clickable]="!sidebarCollapsed">
+          <div class="group-title">
+            <mat-icon>{{ group.icon }}</mat-icon>
+            <span *ngIf="!sidebarCollapsed">{{ group.title }}</span>
+          </div>
+          <mat-icon class="expand-icon" *ngIf="!sidebarCollapsed">{{ group.expanded ? 'expand_more' : 'chevron_right' }}</mat-icon>
+        </div>
+        
+        <div class="group-items" [class.expanded]="group.expanded">
+          <a class="nav-item" 
+             *ngFor="let item of group.items" 
+             [routerLink]="item.route"
+             routerLinkActive="active"
+             [routerLinkActiveOptions]="{exact: item.route === '/owner-dashboard'}"
+             [title]="item.title"
+             (click)="onMenuItemClick()">
+            <mat-icon [matBadge]="item.badge || null" [matBadgeHidden]="!item.badge" matBadgeColor="warn" matBadgeSize="small">{{ item.icon }}</mat-icon>
+            <span *ngIf="!sidebarCollapsed">{{ item.title }}</span>
+            <mat-icon class="nav-arrow" *ngIf="!sidebarCollapsed">chevron_right</mat-icon>
+          </a>
+        </div>
       </div>
 
       <div class="nav-section">
@@ -57,7 +73,7 @@
         </button>
         <div class="breadcrumb">
           <mat-icon>business_center</mat-icon>
-          <span>{{ ownerName || 'Owner Dashboard' }}</span>
+          <span>{{ companyName || 'Mzansi Fleet' }}</span>
         </div>
       </div>
 
@@ -75,6 +91,10 @@
       </div>
 
       <div class="right-section">
+        <button class="notifications-btn" (click)="navigateToMessages()" title="Messages">
+          <mat-icon [matBadge]="unreadMessages > 0 ? unreadMessages.toString() : null" [matBadgeHidden]="unreadMessages === 0" matBadgeColor="warn" matBadgeSize="small">mail</mat-icon>
+        </button>
+
         <button class="notifications-btn" [matMenuTriggerFor]="notifMenu" title="Notifications">
           <mat-icon [matBadge]="unreadNotifications > 0 ? unreadNotifications.toString() : null" [matBadgeHidden]="unreadNotifications === 0" matBadgeColor="warn" matBadgeSize="small">notifications</mat-icon>
         </button>

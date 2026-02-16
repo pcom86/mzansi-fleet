@@ -1,0 +1,68 @@
+<div class="today-schedule-container">
+  <mat-card>
+    <mat-card-header>
+      <mat-card-title>Today's Schedule</mat-card-title>
+      <mat-card-subtitle>{{ today | date:'EEEE, MMMM d, y' }}</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <div *ngIf="loading" class="loading">
+        <p>Loading today's schedule...</p>
+      </div>
+
+      <div *ngIf="!loading && schedules.length === 0" class="no-schedules">
+        <mat-icon class="no-data-icon">event_busy</mat-icon>
+        <h3>No trips scheduled for today</h3>
+        <p>All scheduled trips for today will appear here.</p>
+      </div>
+
+      <table *ngIf="!loading && schedules.length > 0" mat-table [dataSource]="schedules" class="schedules-table">
+        <ng-container matColumnDef="time">
+          <th mat-header-cell *matHeaderCellDef>Departure Time</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.departureTime }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="vehicle">
+          <th mat-header-cell *matHeaderCellDef>Vehicle</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.vehicleRegistration }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="route">
+          <th mat-header-cell *matHeaderCellDef>Route</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.routeName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="driver">
+          <th mat-header-cell *matHeaderCellDef>Driver</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.driverName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="marshal">
+          <th mat-header-cell *matHeaderCellDef>Marshal</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.marshalName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="passengers">
+          <th mat-header-cell *matHeaderCellDef>Passengers</th>
+          <td mat-cell *matCellDef="let schedule">{{ schedule.passengerCount }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="fare">
+          <th mat-header-cell *matHeaderCellDef>Total Fare</th>
+          <td mat-cell *matCellDef="let schedule">R{{ schedule.totalFare }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Status</th>
+          <td mat-cell *matCellDef="let schedule">
+            <span [class]="'status-' + schedule.status.toLowerCase()">
+              {{ schedule.status }}
+            </span>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+      </table>
+    </mat-card-content>
+  </mat-card>
+</div>

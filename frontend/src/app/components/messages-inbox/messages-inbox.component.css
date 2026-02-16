@@ -1,0 +1,175 @@
+.messages-container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.messages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.messages-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 28px;
+}
+
+.messages-header h1 mat-icon {
+  font-size: 32px;
+  width: 32px;
+  height: 32px;
+}
+
+.messages-content {
+  padding: 20px 0;
+}
+
+.messages-table {
+  width: 100%;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Actions column styling */
+::ng-deep .mat-column-actions {
+  width: 120px;
+  min-width: 120px;
+  text-align: center;
+}
+
+.actions-cell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+}
+
+.actions-cell button {
+  margin: 0 !important;
+  padding: 8px !important;
+  min-width: 32px !important;
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.actions-cell button mat-icon {
+  font-size: 18px !important;
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.sender-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sender-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sender-email {
+  font-size: 12px;
+  color: #666;
+  font-weight: 400;
+}
+
+.sender-icon {
+  color: #666;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.subject-cell {
+  padding: 8px 0;
+}
+
+.subject-cell > div:first-child {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.message-preview {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.entity-chip {
+  font-size: 11px;
+  min-height: 24px;
+  padding: 0 8px;
+}
+
+.unread-row {
+  background-color: #f0f7ff;
+  font-weight: 500;
+}
+
+.unread-text {
+  font-weight: 600;
+  color: #1976d2;
+}
+
+.read-chip {
+  background-color: #e0e0e0;
+  color: #666;
+}
+
+.unread-chip {
+  background-color: #1976d2;
+  color: white;
+}
+
+.no-messages {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+}
+
+.no-messages mat-icon {
+  font-size: 64px;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+}
+
+.no-messages p {
+  font-size: 18px;
+}
+
+.tab-badge {
+  background-color: #f44336;
+  color: white;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+mat-tab-group {
+  margin-top: 20px;
+}
+
+::ng-deep .mat-tab-label {
+  min-width: 120px !important;
+}
+
+::ng-deep .mat-tab-label-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
