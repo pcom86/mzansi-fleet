@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Mzansi Fleet Mobile - Owner App",
+    "slug": "mzansi-fleet-mobile",
+    "version": "0.1.0",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2bcdc50c-c61e-4d29-b4c0-00643c195802"
+      }
+    },
+    "android": {
+      "package": "com.pcom86.mzansifleetmobile"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}

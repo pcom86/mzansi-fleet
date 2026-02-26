@@ -14,6 +14,7 @@ namespace MzansiFleet.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Route("api/Tenders")]
     [Authorize]
     public class TenderController : ControllerBase
     {

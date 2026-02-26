@@ -41,530 +41,309 @@ interface RecentActivity {
     MatDividerModule
   ],
   template: `
-    <div class="overview-container">
-      <!-- Loading State -->
-      <div class="loading-state" *ngIf="loading">
-        <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
-        <p>Loading your dashboard...</p>
+    <div class="dashboard-content">
+      <!-- Metrics Grid -->
+      <div class="metrics-grid">
+        <mat-card class="metric-card" *ngFor="let stat of userStats">
+          <div class="metric-icon" [ngStyle]="{'background': stat.bg}">
+            <mat-icon>{{ stat.icon }}</mat-icon>
+          </div>
+          <div class="metric-info">
+            <span class="metric-title">{{ stat.title }}</span>
+            <span class="metric-value">{{ stat.value }}</span>
+          </div>
+        </mat-card>
       </div>
 
-      <div *ngIf="!loading" class="content">
-        <!-- User Profile Card -->
-        <mat-card class="profile-card">
-          <div class="profile-header">
-            <div class="avatar-section">
-              <div class="avatar">
-                <mat-icon>person</mat-icon>
-              </div>
-              <div class="user-info">
-                <h1>{{ userData?.fullName || userData?.email || 'User' }}</h1>
-                <p class="user-email">{{ userData?.email }}</p>
-                <mat-chip class="role-chip">{{ userData?.role || 'Normal User' }}</mat-chip>
-              </div>
-            </div>
-            <div class="account-actions">
-              <button mat-raised-button color="primary" (click)="editProfile()">
-                <mat-icon>edit</mat-icon>
-                Edit Profile
-              </button>
-            </div>
+      <!-- Main Content Grid -->
+      <div class="content-grid">
+        <!-- Recent Activity Card -->
+        <mat-card class="chart-card activity-card">
+          <div class="card-header">
+            <h3>
+              <mat-icon>history</mat-icon>
+              Recent Activity
+            </h3>
+            <button mat-stroked-button color="primary" (click)="viewAllActivity()">
+              View All
+            </button>
           </div>
-          
           <mat-divider></mat-divider>
-          
-          <div class="profile-details">
-            <div class="detail-item">
-              <mat-icon>phone</mat-icon>
-              <div>
-                <span class="label">Phone Number</span>
-                <span class="value">{{ userData?.phoneNumber || 'Not provided' }}</span>
+          <div class="card-body">
+            <div *ngIf="recentActivities && recentActivities.length; else noActivity" class="activity-list">
+              <div class="activity-item" *ngFor="let activity of recentActivities">
+                <div class="activity-icon-wrap" [ngClass]="activity.type">
+                  <mat-icon>{{ activity.icon }}</mat-icon>
+                </div>
+                <div class="activity-details">
+                  <span class="activity-title">{{ activity.title }}</span>
+                  <span class="activity-desc">{{ activity.description }}</span>
+                  <span class="activity-date">{{ activity.date | date:'medium' }}</span>
+                </div>
+                <span class="activity-status" [ngClass]="activity.status.toLowerCase()">{{ activity.status }}</span>
               </div>
             </div>
-            <div class="detail-item">
-              <mat-icon>location_on</mat-icon>
-              <div>
-                <span class="label">Location</span>
-                <span class="value">{{ userData?.location || 'Not specified' }}</span>
+            <ng-template #noActivity>
+              <div class="empty-state">
+                <mat-icon>inbox</mat-icon>
+                <p>No recent activity</p>
+                <span>Your activity will appear here</span>
               </div>
-            </div>
-            <div class="detail-item">
-              <mat-icon>calendar_today</mat-icon>
-              <div>
-                <span class="label">Member Since</span>
-                <span class="value">{{ memberSince || 'Recently joined' }}</span>
-              </div>
-            </div>
-            <div class="detail-item">
-              <mat-icon>verified</mat-icon>
-              <div>
-                <span class="label">Account Status</span>
-                <mat-chip [class.verified]="userData?.isVerified" [class.pending]="!userData?.isVerified">
-                  {{ userData?.isVerified ? 'Verified' : 'Pending Verification' }}
-                </mat-chip>
-              </div>
-            </div>
+            </ng-template>
           </div>
         </mat-card>
 
-        <!-- Quick Stats Dashboard -->
-        <div class="stats-dashboard">
-          <h2 class="section-title">
-            <mat-icon>analytics</mat-icon>
-            Your Activity Summary
-          </h2>
-          <div class="stats-grid">
-            <mat-card class="stat-card tenders">
-              <div class="stat-icon">
+        <!-- Quick Actions Card -->
+        <mat-card class="chart-card quick-actions-card">
+          <div class="card-header">
+            <h3>
+              <mat-icon>flash_on</mat-icon>
+              Quick Actions
+            </h3>
+          </div>
+          <mat-divider></mat-divider>
+          <div class="card-body">
+            <div class="quick-actions-grid">
+              <button class="action-btn taxi" (click)="router.navigate(['/user-dashboard/passenger-booking'])">
+                <mat-icon>local_taxi</mat-icon>
+                <span>Book Taxi</span>
+              </button>
+              <button class="action-btn schedule" (click)="router.navigate(['/user-dashboard/schedule'])">
+                <mat-icon>schedule</mat-icon>
+                <span>Taxi Schedules</span>
+              </button>
+              <button class="action-btn tender" (click)="router.navigate(['/user-dashboard/tenders'])">
                 <mat-icon>description</mat-icon>
-              </div>
-              <div class="stat-content">
-                <h3>{{ activeTendersCount }}</h3>
-                <p>Active Tenders</p>
-                <span class="stat-detail">{{ totalTendersCount }} total posted</span>
-              </div>
-            </mat-card>
-            
-            <mat-card class="stat-card rentals">
-              <div class="stat-icon">
+                <span>Post Tender</span>
+              </button>
+              <button class="action-btn rental" (click)="router.navigate(['/user-dashboard/rental'])">
                 <mat-icon>car_rental</mat-icon>
-              </div>
-              <div class="stat-content">
-                <h3>{{ activeRentalRequestsCount }}</h3>
-                <p>Active Rentals</p>
-                <span class="stat-detail">{{ totalRentalsCount }} total requests</span>
-              </div>
-            </mat-card>
-            
-            <mat-card class="stat-card trips">
-              <div class="stat-icon">
+                <span>Rent Vehicle</span>
+              </button>
+              <button class="action-btn trips" (click)="router.navigate(['/user-dashboard/trips'])">
                 <mat-icon>map</mat-icon>
-              </div>
-              <div class="stat-content">
-                <h3>{{ completedTripsCount }}</h3>
-                <p>Completed Trips</p>
-                <span class="stat-detail">{{ totalBookingsCount }} total bookings</span>
-              </div>
-            </mat-card>
-            
-            <mat-card class="stat-card savings">
-              <div class="stat-icon">
-                <mat-icon>savings</mat-icon>
-              </div>
-              <div class="stat-content">
-                <h3>R{{ totalSpent.toFixed(0) }}</h3>
-                <p>Total Spent</p>
-                <span class="stat-detail">This month: R{{ monthlySpent.toFixed(0) }}</span>
-              </div>
-            </mat-card>
+                <span>My Trips</span>
+              </button>
+              <button class="action-btn support" (click)="contactSupport()">
+                <mat-icon>support_agent</mat-icon>
+                <span>Get Support</span>
+              </button>
+            </div>
           </div>
-        </div>
+        </mat-card>
+      </div>
 
-        <!-- Recent Activity -->
-        <div class="recent-activity-section">
-          <div class="section-header">
-            <h2 class="section-title">
-              <mat-icon>history</mat-icon>
-              Recent Activity
-            </h2>
-            <button mat-button color="primary" (click)="viewAllActivity()">
-              View All
-              <mat-icon>arrow_forward</mat-icon>
-            </button>
-          </div>
-
-          <div *ngIf="recentActivities.length === 0" class="no-activity">
-            <mat-icon>inbox</mat-icon>
-            <p>No recent activity</p>
-            <span>Start using our services to see your activity here</span>
-          </div>
-
-          <div class="activity-list" *ngIf="recentActivities.length > 0">
-            <mat-card *ngFor="let activity of recentActivities" class="activity-card">
-              <div class="activity-icon" [class]="activity.type">
-                <mat-icon>{{ activity.icon }}</mat-icon>
-              </div>
-              <div class="activity-content">
-                <h4>{{ activity.title }}</h4>
-                <p>{{ activity.description }}</p>
-                <div class="activity-meta">
-                  <span class="activity-date">{{ activity.date | date: 'short' }}</span>
-                  <mat-chip [class]="'status-' + activity.status.toLowerCase()">
-                    {{ activity.status }}
-                  </mat-chip>
-                </div>
-              </div>
-            </mat-card>
-          </div>
-        </div>
-
-        <!-- Available Services -->
-        <div class="services-section">
-          <h2 class="section-title">
+      <!-- Available Services -->
+      <mat-card class="services-section">
+        <div class="card-header">
+          <h3>
             <mat-icon>apps</mat-icon>
             Available Services
-          </h2>
+          </h3>
+        </div>
+        <mat-divider></mat-divider>
+        <div class="card-body">
           <div class="services-grid">
-            <mat-card 
-              *ngFor="let service of services" 
-              class="service-card"
-              [class.unavailable]="!service.available"
-              (click)="navigateTo(service)">
-              <div class="service-header" [style.background]="service.color">
-                <mat-icon class="service-icon">{{ service.icon }}</mat-icon>
+            <div class="service-item" *ngFor="let service of services" 
+                 [class.unavailable]="!service.available"
+                 (click)="navigateTo(service)">
+              <div class="service-icon" [ngStyle]="{'background': service.color}">
+                <mat-icon>{{ service.icon }}</mat-icon>
               </div>
-              <mat-card-content>
-                <h3>{{ service.title }}</h3>
-                <p>{{ service.description }}</p>
-              </mat-card-content>
-              <mat-card-actions>
-                <button 
-                  mat-raised-button 
-                  color="primary" 
-                  [disabled]="!service.available">
-                  {{ service.available ? 'Get Started' : 'Coming Soon' }}
-                  <mat-icon>{{ service.available ? 'arrow_forward' : 'schedule' }}</mat-icon>
-                </button>
-              </mat-card-actions>
-              <div class="coming-soon-badge" *ngIf="!service.available">
+              <div class="service-info">
+                <span class="service-title">{{ service.title }}</span>
+                <span class="service-desc">{{ service.description }}</span>
+              </div>
+              <div class="service-badge" *ngIf="!service.available">
                 <mat-icon>schedule</mat-icon>
                 Coming Soon
               </div>
-            </mat-card>
+              <mat-icon class="service-arrow" *ngIf="service.available">chevron_right</mat-icon>
+            </div>
           </div>
         </div>
-
-        <!-- Quick Actions -->
-        <div class="quick-actions-section">
-          <h2 class="section-title">
-            <mat-icon>flash_on</mat-icon>
-            Quick Actions
-          </h2>
-          <div class="quick-actions-grid">
-            <button mat-raised-button class="quick-action-btn tender" (click)="router.navigate(['/user-dashboard/tenders/post'])">
-              <mat-icon>add_circle</mat-icon>
-              <span>Post New Tender</span>
-            </button>
-            <button mat-raised-button class="quick-action-btn rental" (click)="router.navigate(['/user-dashboard/rental/request'])">
-              <mat-icon>directions_car</mat-icon>
-              <span>Request Rental</span>
-            </button>
-            <button mat-raised-button class="quick-action-btn trips" (click)="router.navigate(['/user-dashboard/trips'])">
-              <mat-icon>map</mat-icon>
-              <span>View My Trips</span>
-            </button>
-            <button mat-raised-button class="quick-action-btn support" (click)="contactSupport()">
-              <mat-icon>support_agent</mat-icon>
-              <span>Contact Support</span>
-            </button>
-          </div>
-        </div>
-      </div>
+      </mat-card>
     </div>
   `,
   styles: [`
-    .overview-container {
-      padding: 1.5rem;
-      max-width: 1400px;
-      margin: 0 auto;
+    /* Dashboard Header - Matches Owner Dashboard */
+    .dashboard-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 2rem;
+      color: white;
+      margin-bottom: 0;
     }
 
-    .loading-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 4rem;
-      gap: 1.5rem;
-    }
-
-    .loading-state p {
-      font-size: 1.1rem;
-      color: #6c757d;
-    }
-
-    .content {
-      display: flex;
-      flex-direction: column;
-      gap: 2rem;
-    }
-
-    /* Profile Card */
-    .profile-card {
-      border-radius: 16px;
-      overflow: hidden;
-    }
-
-    .profile-header {
+    .header-content {
+      max-width: 100%;
+      margin: 0;
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      padding: 2rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-    }
-
-    .avatar-section {
-      display: flex;
-      gap: 1.5rem;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
     }
 
-    .avatar {
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 3px solid rgba(255, 255, 255, 0.3);
-    }
-
-    .avatar mat-icon {
-      font-size: 48px;
-      width: 48px;
-      height: 48px;
-      color: white;
-    }
-
-    .user-info h1 {
+    .welcome-section h1 {
       margin: 0 0 0.5rem;
       font-size: 1.75rem;
       font-weight: 600;
     }
 
-    .user-email {
-      margin: 0 0 0.75rem;
+    .welcome-section p {
+      margin: 0;
       opacity: 0.9;
       font-size: 1rem;
     }
 
-    .role-chip {
-      background: rgba(255, 255, 255, 0.3) !important;
-      color: white !important;
-      font-weight: 600;
-    }
-
-    .account-actions button {
-      background: white;
-      color: #667eea;
-    }
-
-    .profile-details {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1.5rem;
-      padding: 2rem;
-    }
-
-    .detail-item {
-      display: flex;
-      gap: 1rem;
-      align-items: center;
-    }
-
-    .detail-item mat-icon {
-      color: #667eea;
-      font-size: 28px;
-      width: 28px;
-      height: 28px;
-    }
-
-    .detail-item .label {
-      display: block;
-      font-size: 0.875rem;
-      color: #6c757d;
-      margin-bottom: 0.25rem;
-    }
-
-    .detail-item .value {
-      display: block;
-      font-size: 1rem;
-      color: #000;
-      font-weight: 500;
-    }
-
-    .verified {
-      background: #4CAF50 !important;
-      color: white !important;
-    }
-
-    .pending {
-      background: #FF9800 !important;
-      color: white !important;
-    }
-
-    /* Section Titles */
-    .section-title {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: #000;
-      margin: 0 0 1.5rem;
-    }
-
-    .section-title mat-icon {
-      font-size: 32px;
-      width: 32px;
-      height: 32px;
-      color: #667eea;
-    }
-
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1.5rem;
-    }
-
-    .section-header button {
+    .date-display {
       display: flex;
       align-items: center;
       gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.9rem;
     }
 
-    /* Stats Dashboard */
-    .stats-dashboard {
-      margin-bottom: 1rem;
+    .date-display mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
     }
 
-    .stats-grid {
+    /* Dashboard Content */
+    .dashboard-content {
+      max-width: 100%;
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      min-height: calc(100vh - 200px);
+    }
+
+    /* Metrics Grid - Matches Owner Dashboard */
+    .metrics-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1.5rem;
+      gap: 20px;
     }
 
-    .stat-card {
+    .metric-card {
       display: flex;
       align-items: center;
-      gap: 1.5rem;
+      gap: 1rem;
       padding: 1.5rem;
       border-radius: 12px;
       transition: all 0.3s ease;
-      border-left: 4px solid transparent;
+      cursor: default;
     }
 
-    .stat-card:hover {
+    .metric-card:hover {
       transform: translateY(-4px);
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
     }
 
-    .stat-card.tenders {
-      border-left-color: #D4AF37;
-    }
-
-    .stat-card.rentals {
-      border-left-color: #4CAF50;
-    }
-
-    .stat-card.trips {
-      border-left-color: #9C27B0;
-    }
-
-    .stat-card.savings {
-      border-left-color: #FF9800;
-    }
-
-    .stat-icon {
-      width: 64px;
-      height: 64px;
+    .metric-icon {
+      width: 60px;
+      height: 60px;
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
 
-    .tenders .stat-icon {
-      background: linear-gradient(135deg, #D4AF37 0%, #C5A028 100%);
-    }
-
-    .rentals .stat-icon {
-      background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
-    }
-
-    .trips .stat-icon {
-      background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
-    }
-
-    .savings .stat-icon {
-      background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
-    }
-
-    .stat-icon mat-icon {
-      font-size: 32px;
-      width: 32px;
-      height: 32px;
+    .metric-icon mat-icon {
+      font-size: 28px;
+      width: 28px;
+      height: 28px;
       color: white;
     }
 
-    .stat-content h3 {
-      font-size: 2rem;
+    .metric-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .metric-title {
+      font-size: 0.9rem;
+      color: #6c757d;
+      font-weight: 500;
+    }
+
+    .metric-value {
+      font-size: 1.75rem;
       font-weight: 700;
-      color: #000;
-      margin: 0 0 0.25rem;
+      color: #212529;
     }
 
-    .stat-content p {
-      font-size: 0.95rem;
-      color: #6c757d;
-      margin: 0 0 0.5rem;
-      font-weight: 500;
+    /* Content Grid */
+    .content-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 2rem;
     }
 
-    .stat-detail {
-      font-size: 0.875rem;
-      color: #9e9e9e;
+    /* Chart Cards - Matches Owner Dashboard */
+    .chart-card {
+      border-radius: 12px;
+      overflow: hidden;
     }
 
-    /* Recent Activity */
-    .no-activity {
-      text-align: center;
-      padding: 3rem;
-      color: #9e9e9e;
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.5rem;
+      background: #f8f9fa;
     }
 
-    .no-activity mat-icon {
-      font-size: 64px;
-      width: 64px;
-      height: 64px;
-      color: #e0e0e0;
-      margin-bottom: 1rem;
+    .card-header h3 {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #212529;
     }
 
-    .no-activity p {
-      font-size: 1.25rem;
-      font-weight: 500;
-      margin: 0 0 0.5rem;
-      color: #6c757d;
+    .card-header h3 mat-icon {
+      color: #667eea;
     }
 
-    .no-activity span {
-      font-size: 0.95rem;
+    .card-body {
+      padding: 1.5rem;
     }
 
+    /* Activity List */
     .activity-list {
       display: flex;
       flex-direction: column;
       gap: 1rem;
     }
 
-    .activity-card {
+    .activity-item {
       display: flex;
+      align-items: flex-start;
       gap: 1rem;
-      padding: 1.5rem;
-      border-radius: 12px;
-      transition: all 0.3s ease;
+      padding: 1rem;
+      background: #f8f9fa;
+      border-radius: 8px;
+      transition: background 0.2s;
     }
 
-    .activity-card:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    .activity-item:hover {
+      background: #e9ecef;
     }
 
-    .activity-icon {
-      width: 48px;
-      height: 48px;
+    .activity-icon-wrap {
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -572,257 +351,311 @@ interface RecentActivity {
       flex-shrink: 0;
     }
 
-    .activity-icon.tender {
+    .activity-icon-wrap mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      color: white;
+    }
+
+    .activity-icon-wrap.tender {
       background: linear-gradient(135deg, #D4AF37 0%, #C5A028 100%);
     }
 
-    .activity-icon.rental {
+    .activity-icon-wrap.rental {
       background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
     }
 
-    .activity-icon.trip {
+    .activity-icon-wrap.trip {
       background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
     }
 
-    .activity-icon mat-icon {
-      color: white;
-      font-size: 24px;
-      width: 24px;
-      height: 24px;
-    }
-
-    .activity-content {
+    .activity-details {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 0;
     }
 
-    .activity-content h4 {
-      margin: 0 0 0.5rem;
-      font-size: 1.1rem;
+    .activity-title {
       font-weight: 600;
-      color: #000;
-    }
-
-    .activity-content p {
-      margin: 0 0 0.75rem;
-      color: #6c757d;
+      color: #212529;
       font-size: 0.95rem;
     }
 
-    .activity-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.5rem;
+    .activity-desc {
+      color: #6c757d;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .activity-date {
-      font-size: 0.875rem;
-      color: #9e9e9e;
+      color: #adb5bd;
+      font-size: 0.8rem;
     }
 
-    .status-pending {
-      background: #FF9800 !important;
-      color: white !important;
-    }
-
-    .status-active {
-      background: #2196F3 !important;
-      color: white !important;
-    }
-
-    .status-completed {
-      background: #4CAF50 !important;
-      color: white !important;
-    }
-
-    .status-cancelled {
-      background: #F44336 !important;
-      color: white !important;
-    }
-
-    /* Services Section */
-    .services-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.5rem;
-    }
-
-    .service-card {
-      cursor: pointer;
-      transition: all 0.3s ease;
+    .activity-status {
+      padding: 0.25rem 0.75rem;
       border-radius: 12px;
-      position: relative;
-      overflow: visible;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: capitalize;
     }
 
-    .service-card:not(.unavailable):hover {
-      transform: translateY(-6px);
-      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+    .activity-status.active, .activity-status.open {
+      background: #e3f2fd;
+      color: #1976d2;
     }
 
-    .service-card.unavailable {
-      opacity: 0.7;
-      cursor: not-allowed;
+    .activity-status.pending {
+      background: #fff3e0;
+      color: #f57c00;
     }
 
-    .service-header {
-      height: 100px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 12px 12px 0 0;
+    .activity-status.completed {
+      background: #e8f5e9;
+      color: #388e3c;
     }
 
-    .service-icon {
+    .activity-status.cancelled {
+      background: #ffebee;
+      color: #d32f2f;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #6c757d;
+    }
+
+    .empty-state mat-icon {
       font-size: 48px;
       width: 48px;
       height: 48px;
-      color: white;
+      color: #dee2e6;
+      margin-bottom: 1rem;
     }
 
-    .service-card mat-card-content {
-      padding: 1.5rem;
-      text-align: center;
-    }
-
-    .service-card mat-card-content h3 {
-      font-size: 1.25rem;
-      color: #000;
+    .empty-state p {
       margin: 0 0 0.5rem;
       font-weight: 600;
+      color: #495057;
     }
 
-    .service-card mat-card-content p {
-      color: #6c757d;
-      line-height: 1.5;
-      margin: 0;
-      font-size: 0.95rem;
-    }
-
-    .service-card mat-card-actions {
-      padding: 0 1.5rem 1.5rem;
-    }
-
-    .service-card button {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-    }
-
-    .coming-soon-badge {
-      position: absolute;
-      top: 1rem;
-      right: 1rem;
-      background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
-      color: white;
-      padding: 0.5rem 1rem;
-      border-radius: 20px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    }
-
-    .coming-soon-badge mat-icon {
-      font-size: 18px;
-      width: 18px;
-      height: 18px;
+    .empty-state span {
+      font-size: 0.9rem;
     }
 
     /* Quick Actions */
+    .quick-actions-card .card-body {
+      padding: 1.5rem;
+    }
+
     .quick-actions-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: 1fr 1fr;
       gap: 1rem;
     }
 
-    .quick-action-btn {
-      height: 80px;
+    .action-btn {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
-      font-size: 1rem;
-      font-weight: 600;
+      padding: 1.5rem 1rem;
+      border: none;
       border-radius: 12px;
+      cursor: pointer;
       transition: all 0.3s ease;
+      color: white;
+      font-weight: 600;
+      font-size: 0.9rem;
     }
 
-    .quick-action-btn:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    .action-btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
     }
 
-    .quick-action-btn mat-icon {
-      font-size: 32px;
-      width: 32px;
-      height: 32px;
+    .action-btn mat-icon {
+      font-size: 28px;
+      width: 28px;
+      height: 28px;
     }
 
-    .quick-action-btn.tender {
+    .action-btn.tender {
       background: linear-gradient(135deg, #D4AF37 0%, #C5A028 100%);
-      color: white;
     }
 
-    .quick-action-btn.rental {
+    .action-btn.rental {
       background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
-      color: white;
     }
 
-    .quick-action-btn.trips {
+    .action-btn.trips {
       background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
+    }
+
+    .action-btn.support {
+      background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+    }
+
+    .action-btn.taxi {
+      background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+    }
+
+    .action-btn.schedule {
+      background: linear-gradient(135deg, #00BCD4 0%, #0097A7 100%);
+    }
+
+    /* Services Section */
+    .services-section {
+      border-radius: 12px;
+    }
+
+    .services-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .service-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 1.5rem;
+      background: #f8f9fa;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .service-item:not(.unavailable):hover {
+      background: #e9ecef;
+      transform: translateX(4px);
+    }
+
+    .service-item.unavailable {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .service-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .service-icon mat-icon {
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
       color: white;
     }
 
-    .quick-action-btn.support {
-      background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+    .service-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 0;
+    }
+
+    .service-title {
+      font-weight: 600;
+      color: #212529;
+      font-size: 1rem;
+    }
+
+    .service-desc {
+      color: #6c757d;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .service-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
       color: white;
+      padding: 0.35rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .service-badge mat-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+    }
+
+    .service-arrow {
+      color: #adb5bd;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (max-width: 768px) {
-      .overview-container {
+      .dashboard-header {
+        padding: 1.5rem 1rem;
+      }
+
+      .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .dashboard-content {
         padding: 1rem;
       }
 
-      .profile-header {
-        flex-direction: column;
-        gap: 1.5rem;
-      }
-
-      .profile-details {
-        grid-template-columns: 1fr;
-      }
-
-      .stats-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .services-grid {
+      .metrics-grid {
         grid-template-columns: 1fr;
       }
 
       .quick-actions-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: 1fr;
       }
 
-      .section-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 1rem;
+      .welcome-section h1 {
+        font-size: 1.4rem;
       }
     }
   `]
 })
 export class UserOverviewComponent implements OnInit {
+  today: Date = new Date();
   loading = true;
   userData: any = null;
   memberSince: string = '';
+
+  get displayName(): string {
+    if (this.userData?.fullName) return this.userData.fullName;
+    if (this.userData?.name) return this.userData.name;
+    if (this.userData?.email) {
+      // Extract name from email (capitalize first letter)
+      const emailName = this.userData.email.split('@')[0];
+      return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+    }
+    return 'User';
+  }
   activeTendersCount: number = 0;
   totalTendersCount: number = 0;
   totalBookingsCount: number = 0;
@@ -1035,5 +868,47 @@ export class UserOverviewComponent implements OnInit {
   contactSupport(): void {
     // Open support dialog or navigate to support page
     window.open('mailto:support@mzansifleet.com', '_blank');
+  }
+
+  // Add userStats as a getter in the class
+  get userStats() {
+    return [
+      {
+        title: 'Active Tenders',
+        value: this.activeTendersCount,
+        icon: 'description',
+        bg: 'linear-gradient(135deg, #D4AF37 0%, #C5A028 100%)'
+      },
+      {
+        title: 'Total Tenders',
+        value: this.totalTendersCount,
+        icon: 'assignment',
+        bg: 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)'
+      },
+      {
+        title: 'Active Rentals',
+        value: this.activeRentalRequestsCount,
+        icon: 'car_rental',
+        bg: 'linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)'
+      },
+      {
+        title: 'Total Rentals',
+        value: this.totalRentalsCount,
+        icon: 'directions_car',
+        bg: 'linear-gradient(135deg, #2196F3 0%, #1976D2 100%)'
+      },
+      {
+        title: 'Completed Trips',
+        value: this.completedTripsCount,
+        icon: 'check_circle',
+        bg: 'linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%)'
+      },
+      {
+        title: 'Total Spent',
+        value: this.totalSpent,
+        icon: 'payments',
+        bg: 'linear-gradient(135deg, #FF9800 0%, #F57C00 100%)'
+      }
+    ];
   }
 }

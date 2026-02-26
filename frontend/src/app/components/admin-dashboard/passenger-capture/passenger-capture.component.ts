@@ -148,11 +148,17 @@ export class PassengerCaptureComponent implements OnInit {
     this.http.get<TripSchedule[]>(url)
       .subscribe({
         next: (schedules) => {
-          // Filter for future schedules that are scheduled (not completed/cancelled)
-          this.availableSchedules = schedules.filter(schedule =>
-            new Date(schedule.departureTime) >= new Date() &&
-            schedule.status === 'Scheduled'
-          );
+          // Filter for schedules scheduled for today (not completed/cancelled)
+          const today = new Date();
+          this.availableSchedules = schedules.filter(schedule => {
+            const depDate = new Date(schedule.departureTime);
+            return (
+              depDate.getFullYear() === today.getFullYear() &&
+              depDate.getMonth() === today.getMonth() &&
+              depDate.getDate() === today.getDate() &&
+              schedule.status === 'Scheduled'
+            );
+          });
           this.loadingSchedules = false;
         },
         error: (error) => {

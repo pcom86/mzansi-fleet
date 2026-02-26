@@ -411,22 +411,37 @@ export class TripScheduleComponent implements OnInit {
     // Combine scheduled date and departure time into a DateTime
     const scheduledDate = new Date(formData.scheduledDate);
 
-    // Validate and parse departure time
+    // Validate and parse departure time (handles both 12-hour AM/PM and 24-hour formats)
     if (!formData.departureTime || !formData.departureTime.includes(':')) {
       this.snackBar.open('Please select a valid departure time', 'Close', { duration: 3000 });
       this.loading = false;
       return;
     }
 
-    const timeParts = formData.departureTime.split(':');
+    // Parse time handling AM/PM format from ngx-material-timepicker
+    const timeString = formData.departureTime.trim();
+    const isPM = timeString.toUpperCase().includes('PM');
+    const isAM = timeString.toUpperCase().includes('AM');
+    
+    // Remove AM/PM suffix and get the time parts
+    const cleanTime = timeString.replace(/\s*(AM|PM)\s*/i, '').trim();
+    const timeParts = cleanTime.split(':');
+    
     if (timeParts.length !== 2) {
       this.snackBar.open('Invalid departure time format', 'Close', { duration: 3000 });
       this.loading = false;
       return;
     }
 
-    const hours = parseInt(timeParts[0], 10);
+    let hours = parseInt(timeParts[0], 10);
     const minutes = parseInt(timeParts[1], 10);
+
+    // Convert 12-hour format to 24-hour format
+    if (isPM && hours !== 12) {
+      hours += 12; // Convert PM hours (1-11 PM becomes 13-23)
+    } else if (isAM && hours === 12) {
+      hours = 0; // 12 AM is midnight (0:00)
+    }
 
     if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
       this.snackBar.open('Invalid departure time values', 'Close', { duration: 3000 });

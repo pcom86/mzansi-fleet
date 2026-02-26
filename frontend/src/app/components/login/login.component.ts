@@ -364,6 +364,10 @@ export class LoginComponent {
   hidePassword = true;
   loading = false;
 
+  private normalizeRole(role: unknown): string {
+    return String(role ?? '').trim().toLowerCase();
+  }
+
   constructor(
     private fb: FormBuilder,
     private authService: AuthService,
@@ -411,35 +415,37 @@ export class LoginComponent {
       });
 
       // Navigate based on role
-      let navigationPromise;
-      if (response.role === 'Owner') {
+      const storedRole = this.authService.getCurrentUserInfo()?.role;
+      const normalizedRole = this.normalizeRole(response.role || storedRole);
+      let targetUrl = '/dashboard';
+
+      if (normalizedRole === 'owner') {
         console.log('Redirecting to owner dashboard');
-        navigationPromise = this.router.navigate(['/owner-dashboard']);
-      } else if (response.role === 'Driver') {
+        targetUrl = '/owner-dashboard';
+      } else if (normalizedRole === 'driver') {
         console.log('Redirecting to driver dashboard');
-        navigationPromise = this.router.navigate(['/driver-dashboard']);
-      } else if (response.role === 'ServiceProvider') {
+        targetUrl = '/driver-dashboard';
+      } else if (normalizedRole === 'serviceprovider' || normalizedRole === 'service-provider') {
         console.log('Redirecting to service provider dashboard');
-        navigationPromise = this.router.navigate(['/service-provider-dashboard']);
-      } else if (response.role === 'Admin') {
+        targetUrl = '/service-provider-dashboard';
+      } else if (normalizedRole === 'admin') {
         console.log('Redirecting to system admin dashboard');
-        navigationPromise = this.router.navigate(['/admin/overview']);
-      } else if (response.role === 'TaxiRankAdmin') {
+        targetUrl = '/admin/overview';
+      } else if (normalizedRole === 'taxirankadmin') {
         console.log('Redirecting to taxi rank admin dashboard');
-        navigationPromise = this.router.navigate(['/admin/rank-overview']);
-      } else if (response.role === 'TaxiMarshal') {
+        targetUrl = '/admin/rank-overview';
+      } else if (normalizedRole === 'taximarshal') {
         console.log('Redirecting to marshal dashboard');
-        navigationPromise = this.router.navigate(['/marshal-dashboard']);
-      } else if (response.role === 'Customer') {
+        targetUrl = '/marshal-dashboard';
+      } else if (normalizedRole === 'customer' || normalizedRole === 'passenger') {
         console.log('Redirecting to user dashboard');
-        navigationPromise = this.router.navigate(['/user-dashboard']);
+        targetUrl = '/user-dashboard';
       } else {
-        console.log('Redirecting to default dashboard, role was:', response.role);
-        navigationPromise = this.router.navigate(['/dashboard']);
+        console.log('Redirecting to default dashboard, normalized role was:', normalizedRole);
       }
 
       // Wait for navigation to complete
-      const navResult = await navigationPromise;
+      const navResult = await this.router.navigateByUrl(targetUrl);
       console.log('Navigation result:', navResult);
 
     } catch (error: any) {

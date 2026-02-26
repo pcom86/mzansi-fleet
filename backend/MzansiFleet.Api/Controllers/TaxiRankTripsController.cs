@@ -169,6 +169,11 @@ namespace MzansiFleet.Api.Controllers
             }
 
             // Get trips that match the taxi rank and route (by stations)
+            // Allow booking for trips departing at least 15 minutes from now
+            // Use South Africa time (UTC+2)
+            var nowSouthAfrica = DateTime.UtcNow.AddHours(2);
+            var cutoffTime = nowSouthAfrica.AddMinutes(15);
+            
             var trips = await _context.TaxiRankTrips
                 .Include(t => t.Vehicle)
                 .Include(t => t.Driver)
@@ -177,9 +182,8 @@ namespace MzansiFleet.Api.Controllers
                            t.DestinationStation == destinationStation &&
                            t.Status != "Arrived" &&
                            t.Status != "Completed" &&
-                           t.DepartureTime > DateTime.UtcNow.AddHours(1) &&
-                           t.Vehicle != null &&
-                           t.Driver != null)
+                           t.DepartureTime > cutoffTime &&
+                           t.Vehicle != null)
                 .ToListAsync();
 
             var availableTrips = new List<AvailableTripDto>();
@@ -220,38 +224,47 @@ namespace MzansiFleet.Api.Controllers
         [HttpGet("today")]
         public async Task<ActionResult<IEnumerable<object>>> GetTodaysTrips([FromQuery] Guid? tenantId = null)
         {
-            var today = DateTime.UtcNow.Date;
-            var tomorrow = today.AddDays(1);
-
-            var query = _context.TaxiRankTrips
-                .Where(t => t.CreatedAt >= today && t.CreatedAt < tomorrow)
-                .Include(t => t.Vehicle)
-                .Include(t => t.Driver)
-                .Include(t => t.Marshal)
-                .AsQueryable();
-
-            if (tenantId.HasValue)
+            try
             {
-                query = query.Where(t => t.TenantId == tenantId.Value);
+                // Use local time for 'today' to match user expectation
+                var localNow = DateTime.Now;
+                var today = localNow.Date;
+                var tomorrow = today.AddDays(1);
+
+                var query = _context.TaxiRankTrips
+                    .Where(t => t.DepartureTime >= today && t.DepartureTime < tomorrow)
+                    .Include(t => t.Vehicle)
+                    .Include(t => t.Driver)
+                    .Include(t => t.Marshal)
+                    .AsQueryable();
+
+                if (tenantId.HasValue)
+                {
+                    query = query.Where(t => t.TenantId == tenantId.Value);
+                }
+
+                var trips = await query.ToListAsync();
+
+                var result = trips.Select(t => new
+                {
+                    id = t.Id.ToString(),
+                    departureTime = t.DepartureTime.ToString("o"), // ISO format
+                    vehicle = t.Vehicle != null ? new { registration = t.Vehicle.Registration } : null,
+                    driver = t.Driver != null ? new { name = t.Driver.Name } : null,
+                    marshal = t.Marshal != null ? new { fullName = t.Marshal.FullName } : null,
+                    departureStation = t.DepartureStation,
+                    destinationStation = t.DestinationStation,
+                    status = t.Status,
+                    passengerCount = t.PassengerCount,
+                    totalAmount = t.TotalAmount
+                });
+
+                return Ok(result);
             }
-
-            var trips = await query.ToListAsync();
-
-            var result = trips.Select(t => new
+            catch (Exception ex)
             {
-                id = t.Id.ToString(),
-                departureTime = t.DepartureTime.ToString("o"), // ISO format
-                vehicle = t.Vehicle != null ? new { registration = t.Vehicle.Registration } : null,
-                driver = t.Driver != null ? new { name = t.Driver.Name } : null,
-                marshal = t.Marshal != null ? new { fullName = t.Marshal.FullName } : null,
-                departureStation = t.DepartureStation,
-                destinationStation = t.DestinationStation,
-                status = t.Status,
-                passengerCount = t.PassengerCount,
-                totalAmount = t.TotalAmount
-            });
-
-            return Ok(result);
+                return StatusCode(500, $"Error: {ex.Message}\n{ex.StackTrace}");
+            }
         }
 
         // POST: api/TaxiRankTrips/migrate-userid

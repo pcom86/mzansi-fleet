@@ -34,19 +34,33 @@ import { MzansiFleetLogoComponent } from '../shared/mzansi-fleet-logo.component'
   styleUrls: ['./user-dashboard.component.scss']
 })
 export class UserDashboardComponent implements OnInit {
-  userData: any;
-  userEmail: string = '';
-  sidebarCollapsed = false;
-  unreadNotifications = 0;
-  unreadMessages = 0;
+  get isMobileView(): boolean {
+    return window.innerWidth <= 900;
+  }
 
+  get displayName(): string {
+    if (this.userData?.fullName) return this.userData.fullName;
+    if (this.userData?.name) return this.userData.name;
+    if (this.userData?.email) {
+      const emailName = this.userData.email.split('@')[0];
+      return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+    }
+    return 'User';
+  }
+
+  userData: any = null;
+  sidebarCollapsed = false;
+  unreadMessages = 0;
   menuItems = [
-    { title: 'Overview', icon: 'dashboard', route: 'overview' },
-    { title: 'Today\'s Schedule', icon: 'schedule', route: 'schedule' },
-    { title: 'My Tenders', icon: 'description', route: 'tenders' },
-    { title: 'Rent a Car', icon: 'car_rental', route: 'rental' },
-    { title: 'My Trips', icon: 'map', route: 'trips' },
-    { title: 'Messages', icon: 'inbox', route: 'messages' }
+    { title: 'Overview', icon: 'dashboard', route: '/user-dashboard/overview' },
+    { title: 'My Trips', icon: 'commute', route: '/user-dashboard/trips' },
+    { title: 'Payments', icon: 'credit_card', route: '/user-dashboard/payments' },
+    { title: 'Support', icon: 'support_agent', route: '/user-dashboard/support' },
+  ];
+
+  taxiRankItems = [
+    { title: 'Book Taxi', icon: 'local_taxi', route: '/user-dashboard/passenger-booking' },
+    { title: 'Taxi Schedules', icon: 'schedule', route: '/user-dashboard/schedule' },
   ];
 
   constructor(
@@ -56,20 +70,12 @@ export class UserDashboardComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    const token = localStorage.getItem('token');
-    const email = localStorage.getItem('userEmail');
     const user = localStorage.getItem('user');
-    
-    if (!token) {
-      this.router.navigate(['/login']);
-      return;
+    try {
+      this.userData = user ? JSON.parse(user) : null;
+    } catch {
+      this.userData = null;
     }
-
-    if (user) {
-      this.userData = JSON.parse(user);
-    }
-    this.userEmail = email || 'User';
-    this.loadUnreadMessages();
   }
 
   toggleSidebar(): void {
@@ -77,7 +83,7 @@ export class UserDashboardComponent implements OnInit {
   }
 
   onMenuItemClick(): void {
-    if (window.innerWidth < 768) {
+    if (window.innerWidth < 900) {
       this.sidebarCollapsed = true;
     }
   }
@@ -91,20 +97,10 @@ export class UserDashboardComponent implements OnInit {
   }
 
   logout(): void {
+    localStorage.removeItem('user');
     localStorage.removeItem('token');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userEmail');
     localStorage.removeItem('userId');
+    localStorage.removeItem('userRole');
     this.router.navigate(['/login']);
   }
-  loadUnreadMessages(): void {
-    if (this.userData?.id || this.userData?.userId) {
-      const userId = this.userData.id || this.userData.userId;
-      this.messagingService.getUnreadCount(userId).subscribe({
-        next: (count) => {
-          this.unreadMessages = count;
-        },
-        error: (error) => console.error('Error loading unread messages:', error)
-      });
-    }
-  }}
+}

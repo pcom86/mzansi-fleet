@@ -61,10 +61,9 @@
   <main class="main-content" [class.expanded]="sidebarCollapsed">
     <header class="top-bar">
       <div class="left-section">
-        <div class="breadcrumb">
-          <mat-icon>local_taxi</mat-icon>
-          <span>Marshal Dashboard</span>
-        </div>
+        <button class="menu-toggle" (click)="toggleSidebar()">
+          <mat-icon>menu</mat-icon>
+        </button>
       </div>
 
       <div class="center-section">

@@ -1,0 +1,8 @@
+# Expo
+.expo/
+
+# Node modules
+node_modules/
+
+# Secrets
+.env

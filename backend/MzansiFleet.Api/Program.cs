@@ -50,7 +50,18 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAngularApp",
         policy =>
         {
-            policy.WithOrigins("http://localhost:4200", "http://localhost:4201", "http://localhost:4202", "http://localhost:4203")
+            // Allow common Angular dev ports and Expo web dev ports used by the mobile frontend
+            policy.WithOrigins(
+                    "http://localhost:4200",
+                    "http://localhost:4201",
+                    "http://localhost:4202",
+                    "http://localhost:4203",
+                    "http://localhost:19002",
+                    "http://localhost:19006",
+                    "http://localhost:19000", 
+                    "http://localhost:8081",
+                    "http://localhost:8082"
+                )
                   .AllowAnyHeader()
                   .AllowAnyMethod()
                   .AllowCredentials();
