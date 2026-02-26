@@ -113,13 +113,13 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
     }
 
     const isWebp = String(uri).startsWith('data:image/webp') || String(uri).includes('image/webp');
-    if (isWebp && !ExpoImage) {
+    if (Platform.OS !== 'web' && isWebp && !ExpoImage) {
       console.warn('Profile photo is WEBP but expo-image is not installed; RN Image may not render it. Install expo-image.');
       setMainPhotoHint('Photo requires expo-image');
       return;
     }
 
-    if (String(uri).startsWith('data:image/') && String(uri).includes(';base64,') && !FileSystem) {
+    if (Platform.OS !== 'web' && String(uri).startsWith('data:image/') && String(uri).includes(';base64,') && !FileSystem) {
       console.warn('Profile photo is base64 data URI but expo-file-system is not installed; caching fallback is disabled.');
       setMainPhotoHint('Photo requires expo-file-system');
       return;
