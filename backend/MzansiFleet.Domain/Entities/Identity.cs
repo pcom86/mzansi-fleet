@@ -17,13 +17,13 @@ namespace MzansiFleet.Domain.Entities
     public class User
     {
         public Guid Id { get; set; }
-        public Guid TenantId { get; set; }
+        public Guid? TenantId { get; set; }
         public string Email { get; set; } = string.Empty;
         public string Phone { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty; // See MzansiFleet.Domain.Constants.Roles for valid roles: Owner, Driver, Staff, ServiceProvider, TaxiRankAdmin, TaxiMarshal, etc.
         public bool IsActive { get; set; }
-        public Tenant Tenant { get; set; } = null!;
+        public Tenant? Tenant { get; set; }
     }
 
     public class OwnerProfile

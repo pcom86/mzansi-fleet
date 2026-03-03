@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import ImagePickerBase64 from '../components/ImagePickerBase64';
 import { createOwnerProfile, createUser } from '../api/identity';
-import { Colors } from '../theme';
+import { Colors, useAppTheme } from '../theme';
 
 export default function OwnerRegistrationScreen({ navigation }) {
+  const { theme } = useAppTheme();
+  const c = theme.colors;
   const [name, setName] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [phone, setPhone] = useState('');
@@ -30,16 +32,16 @@ export default function OwnerRegistrationScreen({ navigation }) {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Owner Registration</Text>
-      <TextInput placeholder="Full name" value={name} onChangeText={setName} style={styles.input} />
-      <TextInput placeholder="ID number" value={idNumber} onChangeText={setIdNumber} style={styles.input} />
-      <TextInput placeholder="Phone" value={phone} onChangeText={setPhone} style={styles.input} />
-      <TextInput placeholder="Email" value={email} onChangeText={setEmail} style={styles.input} autoCapitalize="none" />
-      <TextInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry style={styles.input} />
+    <View style={[styles.container, { backgroundColor: c.background }]}>
+      <Text style={[styles.title, { color: c.text }]}>Owner Registration</Text>
+      <TextInput placeholder="Full name" placeholderTextColor={c.textMuted} value={name} onChangeText={setName} style={[styles.input, { borderColor: c.border, backgroundColor: c.surface, color: c.text }]} />
+      <TextInput placeholder="ID number" placeholderTextColor={c.textMuted} value={idNumber} onChangeText={setIdNumber} style={[styles.input, { borderColor: c.border, backgroundColor: c.surface, color: c.text }]} />
+      <TextInput placeholder="Phone" placeholderTextColor={c.textMuted} value={phone} onChangeText={setPhone} style={[styles.input, { borderColor: c.border, backgroundColor: c.surface, color: c.text }]} />
+      <TextInput placeholder="Email" placeholderTextColor={c.textMuted} value={email} onChangeText={setEmail} style={[styles.input, { borderColor: c.border, backgroundColor: c.surface, color: c.text }]} autoCapitalize="none" />
+      <TextInput placeholder="Password" placeholderTextColor={c.textMuted} value={password} onChangeText={setPassword} secureTextEntry style={[styles.input, { borderColor: c.border, backgroundColor: c.surface, color: c.text }]} />
       <ImagePickerBase64 onPicked={(data) => setPhotoBase64(data.base64)} />
       <View style={{ height: 12 }} />
-      <Button color={Colors.primary} title={loading ? 'Submitting…' : 'Submit'} onPress={submit} disabled={loading} />
+      <Button color={c.primary} title={loading ? 'Submitting…' : 'Submit'} onPress={submit} disabled={loading} />
     </View>
   );
 }

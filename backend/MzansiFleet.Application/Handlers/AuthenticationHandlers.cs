@@ -125,7 +125,7 @@ namespace MzansiFleet.Application.Handlers
                 UserId = user.Id,
                 Email = user.Email,
                 Role = user.Role,
-                TenantId = user.TenantId,
+                TenantId = user.TenantId ?? Guid.Empty,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(expirationMinutes),
                 FullName = fullName
             };

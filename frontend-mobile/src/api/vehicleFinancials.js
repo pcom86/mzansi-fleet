@@ -31,3 +31,11 @@ export async function deleteVehicleExpense(id) {
   const resp = await client.delete(`/VehicleExpenses/${id}`);
   return resp.data;
 }
+
+export async function getVehicleProfitability(vehicleId, startDate, endDate) {
+  if (!vehicleId) return null;
+  const resp = await client.get(`/VehicleProfitability/vehicle/${vehicleId}`, {
+    params: { startDate, endDate },
+  });
+  return resp.data;
+}

@@ -3,6 +3,7 @@
     "name": "Mzansi Fleet Mobile - Owner App",
     "slug": "mzansi-fleet-mobile",
     "version": "0.1.0",
+    "jsEngine": "jsc",
     "platforms": [
       "ios",
       "android",
@@ -17,8 +18,7 @@
       "package": "com.pcom86.mzansifleetmobile"
     },
     "plugins": [
-      "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "expo-secure-store"
     ]
   }
 }

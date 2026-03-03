@@ -24,12 +24,12 @@ export const themes = {
   dark: {
     mode: 'dark',
     colors: {
-      background: '#000000',
-      surface: '#0B0B0B',
-      surface2: '#141414',
+      background: '#1A1A1A',
+      surface: '#000000',
+      surface2: '#111111',
       text: '#F5F5F5',
       textMuted: '#A1A1AA',
-      border: '#2A2A2A',
+      border: '#555555',
       primary: '#D4AF37',
       primaryText: '#000000',
       secondary: '#F5F5F5',

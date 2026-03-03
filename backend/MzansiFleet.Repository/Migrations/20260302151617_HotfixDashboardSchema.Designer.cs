@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MzansiFleet.Repository;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MzansiFleet.Repository.Migrations
 {
     [DbContext(typeof(MzansiFleetDbContext))]
-    partial class MzansiFleetDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260302151617_HotfixDashboardSchema")]
+    partial class HotfixDashboardSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2635,7 +2638,7 @@ namespace MzansiFleet.Repository.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("TenantId")
+                    b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
@@ -3562,7 +3565,9 @@ namespace MzansiFleet.Repository.Migrations
                 {
                     b.HasOne("MzansiFleet.Domain.Entities.Tenant", "Tenant")
                         .WithMany("Users")
-                        .HasForeignKey("TenantId");
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Tenant");
                 });

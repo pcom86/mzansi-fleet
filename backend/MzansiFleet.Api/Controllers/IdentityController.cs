@@ -126,14 +126,21 @@ namespace MzansiFleet.Api.Controllers
         [HttpPost("tenants")]
         public async Task<IActionResult> CreateTenant([FromBody] CreateTenantDto dto)
         {
+            var code = string.IsNullOrWhiteSpace(dto.Code) ? GenerateTenantCode() : dto.Code;
             var command = new CreateTenantCommand {
                 Id = dto.Id,
-                Name = dto.Name,
-                ContactEmail = dto.ContactEmail,
-                ContactPhone = dto.ContactPhone
+                Name = dto.Name ?? string.Empty,
+                Code = code,
+                ContactEmail = dto.ContactEmail ?? string.Empty,
+                ContactPhone = dto.ContactPhone ?? string.Empty
             };
             var created = await _createTenantHandler.Handle(command, CancellationToken.None);
             return CreatedAtAction(nameof(GetTenantById), new { id = created.Id }, created);
+        }
+
+        private static string GenerateTenantCode()
+        {
+            return $"TEN-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
         }
         [HttpPut("tenants/{id}")]
         public IActionResult UpdateTenant(Guid id, [FromBody] Tenant tenant)
@@ -633,13 +640,14 @@ namespace MzansiFleet.Api.Controllers
     {
         public Guid? Id { get; set; }  // Optional - if not provided, will be generated
         public string Name { get; set; }
+        public string? Code { get; set; }
         public string ContactEmail { get; set; }
         public string ContactPhone { get; set; }
     }
 
     public class CreateUserDto
     {
-        public Guid TenantId { get; set; }
+        public Guid? TenantId { get; set; }
         public string Email { get; set; }
         public string Phone { get; set; }
         public string Password { get; set; }  // Changed from PasswordHash to Password

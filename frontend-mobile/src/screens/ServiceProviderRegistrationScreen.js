@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import { registerServiceProvider } from '../api/identity';
-import { Colors } from '../theme';
+import { Colors, useAppTheme } from '../theme';
 
 export default function ServiceProviderRegistrationScreen({ navigation }) {
+  const { theme } = useAppTheme();
+  const c = theme.colors;
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,12 +26,12 @@ export default function ServiceProviderRegistrationScreen({ navigation }) {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Service Provider Registration</Text>
-      <TextInput placeholder="Business name" value={businessName} onChangeText={setBusinessName} style={styles.input} />
-      <TextInput placeholder="Email" value={email} onChangeText={setEmail} style={styles.input} autoCapitalize="none" />
-      <TextInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry style={styles.input} />
-      <Button color={Colors.primary} title={loading ? 'Registering…' : 'Register'} onPress={submit} disabled={loading} />
+    <View style={[styles.container, { backgroundColor: c.background }]}>
+      <Text style={[styles.title, { color: c.text }]}>Service Provider Registration</Text>
+      <TextInput placeholder="Business name" placeholderTextColor={c.textMuted} value={businessName} onChangeText={setBusinessName} style={[styles.input, { borderColor: c.border, backgroundColor: c.surface, color: c.text }]} />
+      <TextInput placeholder="Email" placeholderTextColor={c.textMuted} value={email} onChangeText={setEmail} style={[styles.input, { borderColor: c.border, backgroundColor: c.surface, color: c.text }]} autoCapitalize="none" />
+      <TextInput placeholder="Password" placeholderTextColor={c.textMuted} value={password} onChangeText={setPassword} secureTextEntry style={[styles.input, { borderColor: c.border, backgroundColor: c.surface, color: c.text }]} />
+      <Button color={c.primary} title={loading ? 'Registering…' : 'Register'} onPress={submit} disabled={loading} />
     </View>
   );
 }

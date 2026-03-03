@@ -5,6 +5,11 @@ import { useAuth } from '../context/AuthContext';
 import { createVehicle, updateVehicle } from '../api/vehicles';
 import { useAppTheme } from '../theme';
 
+const IMAGE_MEDIA_TYPES =
+  ImagePicker?.MediaType?.Image
+    ? [ImagePicker.MediaType.Image]
+    : (ImagePicker?.MediaTypeOptions?.Images ?? ImagePicker?.MediaTypeOptions?.All);
+
 function toInt(val, fallback = 0) {
   const n = Number(val);
   return Number.isFinite(n) ? n : fallback;
@@ -56,7 +61,7 @@ export default function OwnerVehicleFormScreen({ route, navigation }) {
     if (!ok) return;
 
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      ...(IMAGE_MEDIA_TYPES ? { mediaTypes: IMAGE_MEDIA_TYPES } : {}),
       quality: 0.7,
       base64: true,
     });
@@ -73,7 +78,7 @@ export default function OwnerVehicleFormScreen({ route, navigation }) {
     if (!ok) return;
 
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      ...(IMAGE_MEDIA_TYPES ? { mediaTypes: IMAGE_MEDIA_TYPES } : {}),
       quality: 0.7,
       base64: true,
       allowsMultipleSelection: true,

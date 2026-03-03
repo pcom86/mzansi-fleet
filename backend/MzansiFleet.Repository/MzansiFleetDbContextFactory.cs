@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
 using System.IO;
@@ -28,7 +29,8 @@ namespace MzansiFleet.Repository
             var optionsBuilder = new DbContextOptionsBuilder<MzansiFleetDbContext>();
             optionsBuilder.UseNpgsql(
                 configuration.GetConnectionString("DefaultConnection") ?? string.Empty
-            );
+            ).ConfigureWarnings(warnings =>
+                warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
 
             return new MzansiFleetDbContext(optionsBuilder.Options);
         }

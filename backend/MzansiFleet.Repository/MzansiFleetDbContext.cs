@@ -1,5 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using MzansiFleet.Domain.Entities;
 
 namespace MzansiFleet.Repository
@@ -112,7 +115,12 @@ namespace MzansiFleet.Repository
                 .HasConversion(
                     v => System.Text.Json.JsonSerializer.Serialize(v, new System.Text.Json.JsonSerializerOptions()),
                     v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, new System.Text.Json.JsonSerializerOptions()) ?? new List<string>()
-                );
+                )
+                .Metadata.SetValueComparer(new ValueComparer<List<string>>(
+                    (c1, c2) => ReferenceEquals(c1, c2) || (c1 != null && c2 != null && c1.SequenceEqual(c2)),
+                    c => c == null ? 0 : c.Aggregate(0, (a, v) => HashCode.Combine(a, v != null ? v.GetHashCode() : 0)),
+                    c => c == null ? new List<string>() : c.ToList()
+                ));
             
             modelBuilder.Entity<VehicleDocument>().Property(v => v.Id).ValueGeneratedNever();
             modelBuilder.Entity<TripRequest>().Property(t => t.Id).ValueGeneratedNever();

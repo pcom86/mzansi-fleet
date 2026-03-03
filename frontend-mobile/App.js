@@ -9,6 +9,8 @@ import LoginScreen from './src/screens/LoginScreen';
 import ProfileSelectionScreen from './src/screens/ProfileSelectionScreen';
 import OnboardingWizardScreen from './src/screens/OnboardingWizardScreen';
 import DriverRegistrationScreen from './src/screens/DriverRegistrationScreen';
+import DriverDashboardScreen from './src/screens/DriverDashboardScreen';
+import DriverOnboardingStep2Screen from './src/screens/DriverOnboardingStep2Screen';
 import ServiceProviderRegistrationScreen from './src/screens/ServiceProviderRegistrationScreen';
 import OwnerRegistrationScreen from './src/screens/OwnerRegistrationScreen';
 import OwnerDashboardScreen from './src/screens/OwnerDashboardScreen';
@@ -53,6 +55,9 @@ function AppNavigator() {
           headerStyle: { backgroundColor: c.surface },
           headerTintColor: c.text,
           contentStyle: { backgroundColor: c.background },
+          headerBackImage: ({ tintColor }) => (
+            <Ionicons name="chevron-back" size={24} color={tintColor} />
+          ),
           headerRight: () => (
             <TouchableOpacity
               onPress={() => setMode(mode === 'dark' ? 'light' : 'dark')}
@@ -80,6 +85,8 @@ function AppNavigator() {
           <Stack.Screen name="ProfileSelection" component={ProfileSelectionScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingWizardScreen} />
           <Stack.Screen name="DriverRegistration" component={DriverRegistrationScreen} />
+          <Stack.Screen name="DriverDashboard" component={DriverDashboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DriverOnboardingStep2" component={DriverOnboardingStep2Screen} options={{ title: 'Driver Details' }} />
           <Stack.Screen name="ServiceProviderRegistration" component={ServiceProviderRegistrationScreen} />
           <Stack.Screen name="OwnerRegistration" component={OwnerRegistrationScreen} />
           <Stack.Screen name="OwnerDashboard" component={OwnerDashboardScreen} />

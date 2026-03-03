@@ -6,7 +6,7 @@ namespace MzansiFleet.Application.Commands
 {
     public class CreateUserCommand : IRequest<User>
     {
-        public Guid TenantId { get; set; }
+        public Guid? TenantId { get; set; }
         public string Email { get; set; }
         public string Phone { get; set; }
         public string PasswordHash { get; set; }

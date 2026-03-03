@@ -14,6 +14,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.AspNetCore.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,21 +51,15 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAngularApp",
         policy =>
         {
-            // Allow common Angular dev ports and Expo web dev ports used by the mobile frontend
-            policy.WithOrigins(
-                    "http://localhost:4200",
-                    "http://localhost:4201",
-                    "http://localhost:4202",
-                    "http://localhost:4203",
-                    "http://localhost:19002",
-                    "http://localhost:19006",
-                    "http://localhost:19000", 
-                    "http://localhost:8081",
-                    "http://localhost:8082"
-                )
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials();
+            // Allow localhost and loopback origins (Expo/Angular dev servers vary by port)
+            // Keep credentials enabled, so we cannot use AllowAnyOrigin.
+            policy.SetIsOriginAllowed(origin =>
+                Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+                && (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)))
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
         });
 });
 
@@ -166,11 +161,6 @@ builder.Services.AddScoped<GetVehiclesNeedingServiceQueryHandler>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseDeveloperExceptionPage();
-}
-
 // Configure logging
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("Application starting up...");
@@ -216,8 +206,46 @@ catch (Exception ex)
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// CORS must be before Authorization and MapControllers
+app.UseRouting();
+
+// CORS must be between routing and auth/endpoints
 app.UseCors("AllowAngularApp");
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+
+// Ensure unhandled exceptions return a 500 response (and don't crash the host)
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Unhandled exception");
+        if (!context.Response.HasStarted)
+        {
+            context.Response.Clear();
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            if (app.Environment.IsDevelopment())
+            {
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = ex.Message,
+                    innerException = ex.InnerException?.Message,
+                    innerInnerException = ex.InnerException?.InnerException?.Message
+                });
+            }
+            else
+            {
+                await context.Response.WriteAsJsonAsync(new { error = "Internal Server Error" });
+            }
+        }
+    }
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

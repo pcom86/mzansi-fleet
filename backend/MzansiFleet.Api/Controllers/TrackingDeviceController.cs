@@ -56,7 +56,7 @@ namespace MzansiFleet.Api.Controllers
             {
                 Id = Guid.NewGuid(),
                 OwnerId = ownerProfile.Id,
-                TenantId = user.TenantId,
+                TenantId = user.TenantId ?? Guid.Empty,
                 VehicleId = dto.VehicleId,
                 VehicleRegistration = vehicle.Registration ?? "",
                 VehicleMake = vehicle.Make ?? "",

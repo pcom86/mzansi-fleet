@@ -43,7 +43,7 @@ namespace MzansiFleet.Api.Controllers
                     var user = _context.Users.Find(userId);
                     if (user != null)
                     {
-                        return user.TenantId;
+                        return user.TenantId ?? Guid.Empty;
                     }
                 }
                 throw new InvalidOperationException("Tenant ID not found in claims or user record");
