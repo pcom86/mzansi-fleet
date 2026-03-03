@@ -481,78 +481,93 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}>
 
-      {/* Online toggle */}
-      <TouchableOpacity style={[s.banner, { backgroundColor: profile?.isAvailable ? '#22c55e' : '#64748b' }]} onPress={onToggle}>
-        <Ionicons name={profile?.isAvailable ? 'radio-button-on' : 'radio-button-off'} size={20} color="#fff" />
-        <Text style={s.bannerTxt}>
-          {profile?.isAvailable ? 'You are Online — Tap to go Offline' : 'You are Offline — Tap to go Online'}
-        </Text>
-        <Ionicons name="chevron-forward" size={16} color="#fff" />
+      {/* Online/Offline hero toggle */}
+      <TouchableOpacity
+        style={[s.heroBanner, { backgroundColor: profile?.isAvailable ? '#22c55e' : '#64748b' }]}
+        onPress={onToggle}
+        activeOpacity={0.85}>
+        <View style={s.heroBannerIconWrap}>
+          <Ionicons name={profile?.isAvailable ? 'radio-button-on' : 'radio-button-off'} size={24} color="#fff" />
+        </View>
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <Text style={s.heroBannerTitle}>{profile?.isAvailable ? 'You are Online' : 'You are Offline'}</Text>
+          <Text style={s.heroBannerSub}>Tap to go {profile?.isAvailable ? 'Offline' : 'Online'}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color="#ffffffcc" />
       </TouchableOpacity>
 
       {/* Vehicle Details */}
       <VehicleDetailsCard vehicle={vehicle} c={c} s={s} />
 
-      {/* Monthly stats */}
-      <View style={s.card}>
-        <View style={s.cardHead}>
-          <Ionicons name="bar-chart" size={18} color={c.primary} />
-          <Text style={s.cardTitle}>{month}</Text>
+      {/* Hero profit card */}
+      <View style={s.heroCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.heroLabel}>This Month's Profit</Text>
+          <Text style={s.heroValue}>{fmt(profit)}</Text>
+          <Text style={s.heroSub}>{month}</Text>
         </View>
-        <View style={s.statsRow}>
-          <View style={s.stat}>
-            <Text style={s.statLbl}>Earnings</Text>
-            <Text style={[s.statVal, { color: '#22c55e' }]}>{fmt(earn)}</Text>
-            <Text style={s.statSub}>{earnings.length} entries</Text>
-          </View>
-          <View style={s.statDiv} />
-          <View style={s.stat}>
-            <Text style={s.statLbl}>Expenses</Text>
-            <Text style={[s.statVal, { color: '#ef4444' }]}>{fmt(exp)}</Text>
-            <Text style={s.statSub}>{expenses.length} entries</Text>
-          </View>
-          <View style={s.statDiv} />
-          <View style={s.stat}>
-            <Text style={s.statLbl}>Profit</Text>
-            <Text style={[s.statVal, { color: profit >= 0 ? '#22c55e' : '#ef4444' }]}>{fmt(profit)}</Text>
-            <Text style={s.statSub}>this month</Text>
-          </View>
+        <View style={s.heroIconWrap}>
+          <Ionicons name={profit >= 0 ? 'trending-up' : 'trending-down'} size={30} color="#fff" />
         </View>
       </View>
 
-      {/* Quick actions */}
-      <View style={s.card}>
-        <View style={s.cardHead}>
-          <Ionicons name="flash" size={18} color={c.primary} />
-          <Text style={s.cardTitle}>Quick Actions</Text>
-        </View>
-        <View style={s.qRow}>
-          <TouchableOpacity style={s.qBtn} onPress={vehicle ? onAddEarning : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log earnings. Contact your fleet manager.')}>
-            <Ionicons name="add-circle" size={30} color={vehicle ? '#22c55e' : c.textMuted} />
-            <Text style={[s.qTxt, !vehicle && { color: c.textMuted }]}>Add Earning</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.qBtn} onPress={vehicle ? onAddExpense : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log expenses. Contact your fleet manager.')}>
-            <Ionicons name="remove-circle" size={30} color={vehicle ? '#ef4444' : c.textMuted} />
-            <Text style={[s.qTxt, !vehicle && { color: c.textMuted }]}>Add Expense</Text>
-          </TouchableOpacity>
-          <View style={s.qBtn}>
-            <Ionicons name="construct" size={30} color={pending > 0 ? '#f59e0b' : c.textMuted} />
-            <Text style={[s.qTxt, { color: pending > 0 ? '#f59e0b' : c.textMuted }]}>
-              {pending} Pending
-            </Text>
+      {/* Metric grid */}
+      <View style={s.metricsGrid}>
+        {[
+          { icon: 'arrow-up-circle-outline', color: '#10b981', label: 'Earnings',      value: fmt(earn),              sub: `${earnings.length} entries` },
+          { icon: 'arrow-down-circle-outline', color: '#ef4444', label: 'Expenses',    value: fmt(exp),               sub: `${expenses.length} entries` },
+          { icon: 'construct-outline',        color: '#f59e0b', label: 'Pending Maint', value: String(pending),        sub: 'requests' },
+          { icon: 'car-sport-outline',        color: '#3b82f6', label: 'Vehicle',       value: vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Assigned' : 'None', sub: vehicle?.registration || 'Not assigned' },
+        ].map(m => (
+          <View key={m.label} style={s.metricCard}>
+            <View style={[s.metricIcon, { backgroundColor: m.color + '20' }]}>
+              <Ionicons name={m.icon} size={18} color={m.color} />
+            </View>
+            <Text style={s.metricValue} numberOfLines={1}>{m.value}</Text>
+            <Text style={s.metricLabel}>{m.label}</Text>
+            <Text style={s.metricSub}>{m.sub}</Text>
           </View>
-        </View>
+        ))}
+      </View>
+
+      {/* Quick actions */}
+      <Text style={s.sectionTitle}>Quick Actions</Text>
+      <View style={s.quickActions}>
+        <TouchableOpacity
+          style={[s.quickActionBtn, !vehicle && { opacity: 0.45 }]}
+          onPress={vehicle ? onAddEarning : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log earnings.')}>
+          <View style={[s.quickActionIcon, { backgroundColor: '#10b98120' }]}>
+            <Ionicons name="add-circle-outline" size={24} color="#10b981" />
+          </View>
+          <Text style={s.quickActionTxt}>Add Earning</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.quickActionBtn, !vehicle && { opacity: 0.45 }]}
+          onPress={vehicle ? onAddExpense : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log expenses.')}>
+          <View style={[s.quickActionIcon, { backgroundColor: '#ef444420' }]}>
+            <Ionicons name="remove-circle-outline" size={24} color="#ef4444" />
+          </View>
+          <Text style={s.quickActionTxt}>Add Expense</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
 }
 
 function MaintenanceTab({ maintenance, vehicle, profile, onNew, onEdit, onDelete, refreshing, onRefresh, c, s }) {
+  const pending = maintenance.filter(r => ['open', 'pending'].includes((r.state || '').toLowerCase())).length;
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}>
       <View style={s.secHead}>
-        <Text style={s.secTitle}>Maintenance Requests</Text>
+        <View>
+          <Text style={s.secTitle}>Maintenance Requests</Text>
+          {pending > 0 && (
+            <View style={[s.badge, { backgroundColor: '#f59e0b20', borderColor: '#f59e0b', alignSelf: 'flex-start', marginTop: 4 }]}>
+              <Text style={[s.badgeTxt, { color: '#f59e0b' }]}>{pending} pending</Text>
+            </View>
+          )}
+        </View>
         <TouchableOpacity style={[s.btnSm, !vehicle && { opacity: 0.4 }]}
           onPress={vehicle ? onNew : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to submit a request')}>
           <Ionicons name="add" size={15} color="#fff" />
@@ -571,24 +586,15 @@ function MaintenanceTab({ maintenance, vehicle, profile, onNew, onEdit, onDelete
         const state = (r.state || r.status || '').toLowerCase();
         const canEdit = state === 'pending';
         return (
-          <View key={r.id || i} style={s.reqCard}>
-            <View style={s.reqHead}>
-              <View style={[s.dot, { backgroundColor: col }]} />
-              <Text style={s.reqCat}>{r.category || 'General'}</Text>
-              <View style={[s.badge, { backgroundColor: col + '22', borderColor: col }]}>
+          <View key={r.id || i} style={[s.reqCard, { borderLeftColor: col, borderLeftWidth: 4 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+              <View style={[s.reqIconWrap, { backgroundColor: col + '20' }]}>
+                <Ionicons name="construct-outline" size={15} color={col} />
+              </View>
+              <Text style={[s.reqCat, { marginLeft: 10 }]}>{r.category || 'General'}</Text>
+              <View style={[s.badge, { backgroundColor: col + '20', borderColor: col, marginLeft: 'auto' }]}>
                 <Text style={[s.badgeTxt, { color: col }]}>{r.state || r.status || 'Open'}</Text>
               </View>
-              {canEdit && (
-                <TouchableOpacity style={s.editBtn} onPress={() => onEdit(r)}>
-                  <Ionicons name="pencil-outline" size={13} color={c.primary} />
-                  <Text style={s.editBtnTxt}>Edit</Text>
-                </TouchableOpacity>
-              )}
-              {canEdit && (
-                <TouchableOpacity style={s.deleteBtn} onPress={() => onDelete(r)}>
-                  <Ionicons name="trash-outline" size={13} color="#ef4444" />
-                </TouchableOpacity>
-              )}
             </View>
             {r.description ? <Text style={s.reqDesc} numberOfLines={2}>{r.description}</Text> : null}
             <View style={s.reqMeta}>
@@ -598,6 +604,18 @@ function MaintenanceTab({ maintenance, vehicle, profile, onNew, onEdit, onDelete
               <Ionicons name="time-outline" size={11} color={c.textMuted} />
               <Text style={s.metaTxt}>{r.preferredTime ? new Date(r.preferredTime).toLocaleDateString() : r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—'}</Text>
             </View>
+            {canEdit && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <TouchableOpacity style={s.reqEditBtn} onPress={() => onEdit(r)}>
+                  <Ionicons name="pencil-outline" size={13} color={c.primary} />
+                  <Text style={s.reqEditBtnTxt}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.reqDeleteBtn} onPress={() => onDelete(r)}>
+                  <Ionicons name="trash-outline" size={13} color="#ef4444" />
+                  <Text style={s.reqDeleteBtnTxt}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         );
       })}
@@ -615,26 +633,61 @@ function EarningsTab({ earnings, expenses, vehicleId, onAddEarning, onAddExpense
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}>
-      {/* Summary */}
-      <View style={s.card}>
-        <View style={s.statsRow}>
-          <View style={s.stat}><Text style={s.statLbl}>Earnings</Text><Text style={[s.statVal, { color: '#22c55e' }]}>{fmt(earn)}</Text></View>
-          <View style={s.statDiv} />
-          <View style={s.stat}><Text style={s.statLbl}>Expenses</Text><Text style={[s.statVal, { color: '#ef4444' }]}>{fmt(exp)}</Text></View>
-          <View style={s.statDiv} />
-          <View style={s.stat}><Text style={s.statLbl}>Profit</Text><Text style={[s.statVal, { color: profit >= 0 ? '#22c55e' : '#ef4444' }]}>{fmt(profit)}</Text></View>
+
+      {/* Hero summary */}
+      <View style={s.heroCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.heroLabel}>Monthly Profit</Text>
+          <Text style={s.heroValue}>{fmt(profit)}</Text>
+          <Text style={s.heroSub}>{earnings.length} earns · {expenses.length} expenses</Text>
+        </View>
+        <View style={s.heroIconWrap}>
+          <Ionicons name={profit >= 0 ? 'wallet' : 'wallet-outline'} size={30} color="#fff" />
         </View>
       </View>
 
-      {/* Action buttons */}
-      <View style={s.row2}>
-        <TouchableOpacity style={s.actBtn} onPress={vehicleId ? onAddEarning : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log earnings.')}>
-          <Ionicons name="add-circle-outline" size={18} color={vehicleId ? '#22c55e' : c.textMuted} />
-          <Text style={[s.actTxt, { color: vehicleId ? '#22c55e' : c.textMuted }]}>Add Earning</Text>
+      {/* E / X metric row */}
+      <View style={s.earnSummaryRow}>
+        <View style={s.earnSummaryItem}>
+          <View style={[s.metricIcon, { backgroundColor: '#10b98120' }]}>
+            <Ionicons name="arrow-up-circle-outline" size={18} color="#10b981" />
+          </View>
+          <Text style={[s.earnSummaryVal, { color: '#10b981' }]}>{fmt(earn)}</Text>
+          <Text style={s.earnSummaryLbl}>Earnings</Text>
+        </View>
+        <View style={[s.earnSummaryItem, { borderLeftWidth: 1, borderRightWidth: 1, borderColor: c.border }]}>
+          <View style={[s.metricIcon, { backgroundColor: '#ef444420' }]}>
+            <Ionicons name="arrow-down-circle-outline" size={18} color="#ef4444" />
+          </View>
+          <Text style={[s.earnSummaryVal, { color: '#ef4444' }]}>{fmt(exp)}</Text>
+          <Text style={s.earnSummaryLbl}>Expenses</Text>
+        </View>
+        <View style={s.earnSummaryItem}>
+          <View style={[s.metricIcon, { backgroundColor: profit >= 0 ? '#10b98120' : '#ef444420' }]}>
+            <Ionicons name={profit >= 0 ? 'trending-up' : 'trending-down'} size={18} color={profit >= 0 ? '#10b981' : '#ef4444'} />
+          </View>
+          <Text style={[s.earnSummaryVal, { color: profit >= 0 ? '#10b981' : '#ef4444' }]}>{fmt(profit)}</Text>
+          <Text style={s.earnSummaryLbl}>Profit</Text>
+        </View>
+      </View>
+
+      {/* Add buttons */}
+      <View style={s.quickActions}>
+        <TouchableOpacity
+          style={[s.quickActionBtn, !vehicleId && { opacity: 0.45 }]}
+          onPress={vehicleId ? onAddEarning : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log earnings.')}>
+          <View style={[s.quickActionIcon, { backgroundColor: '#10b98120' }]}>
+            <Ionicons name="add-circle-outline" size={22} color="#10b981" />
+          </View>
+          <Text style={s.quickActionTxt}>Add Earning</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={s.actBtn} onPress={vehicleId ? onAddExpense : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log expenses.')}>
-          <Ionicons name="remove-circle-outline" size={18} color={vehicleId ? '#ef4444' : c.textMuted} />
-          <Text style={[s.actTxt, { color: vehicleId ? '#ef4444' : c.textMuted }]}>Add Expense</Text>
+        <TouchableOpacity
+          style={[s.quickActionBtn, !vehicleId && { opacity: 0.45 }]}
+          onPress={vehicleId ? onAddExpense : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log expenses.')}>
+          <View style={[s.quickActionIcon, { backgroundColor: '#ef444420' }]}>
+            <Ionicons name="remove-circle-outline" size={22} color="#ef4444" />
+          </View>
+          <Text style={s.quickActionTxt}>Add Expense</Text>
         </TouchableOpacity>
       </View>
 
@@ -657,15 +710,15 @@ function EarningsTab({ earnings, expenses, vehicleId, onAddEarning, onAddExpense
         </View>
       ) : items.map((item, i) => (
         <View key={item.id || i} style={s.ledger}>
-          <View style={[s.ledgerIcon, { backgroundColor: list === 'earnings' ? '#22c55e22' : '#ef444422' }]}>
-            <Ionicons name={list === 'earnings' ? 'trending-up' : 'trending-down'} size={16} color={list === 'earnings' ? '#22c55e' : '#ef4444'} />
+          <View style={[s.ledgerIcon, { backgroundColor: list === 'earnings' ? '#10b98120' : '#ef444420' }]}>
+            <Ionicons name={list === 'earnings' ? 'trending-up' : 'trending-down'} size={16} color={list === 'earnings' ? '#10b981' : '#ef4444'} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.ledgerLbl}>{item.source || item.category || 'Entry'}</Text>
             {item.description ? <Text style={s.ledgerDesc} numberOfLines={1}>{item.description}</Text> : null}
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={[s.ledgerAmt, { color: list === 'earnings' ? '#22c55e' : '#ef4444' }]}>
+            <Text style={[s.ledgerAmt, { color: list === 'earnings' ? '#10b981' : '#ef4444' }]}>
               {list === 'earnings' ? '+' : '-'}{fmt(item.amount)}
             </Text>
             <Text style={s.ledgerDate}>{item.date ? new Date(item.date).toLocaleDateString() : ''}</Text>
@@ -694,9 +747,19 @@ function MessagesTab({ userId, c, s }) {
 
   if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator color={c.primary} /></View>;
 
+  const unread = msgs.filter(m => !m.isRead).length;
+
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={c.primary} />}>
+
+      {unread > 0 && (
+        <View style={s.unreadBanner}>
+          <Ionicons name="mail-unread-outline" size={18} color="#92400e" />
+          <Text style={s.unreadBannerTxt}>{unread} unread message{unread > 1 ? 's' : ''}</Text>
+        </View>
+      )}
+
       <Text style={s.secTitle}>Messages</Text>
       {msgs.length === 0 ? (
         <View style={s.empty}>
@@ -705,15 +768,18 @@ function MessagesTab({ userId, c, s }) {
           <Text style={s.emptyTxt}>You have no messages yet</Text>
         </View>
       ) : msgs.map((m, i) => (
-        <View key={m.id || i} style={s.msgRow}>
-          <View style={[s.avatar, { backgroundColor: c.primary }]}>
-            <Text style={s.avatarTxt}>{((m.senderName || m.subject || '?')[0]).toUpperCase()}</Text>
+        <View key={m.id || i} style={[s.msgRow, !m.isRead && { borderLeftColor: c.primary, borderLeftWidth: 3 }]}>
+          <View style={[s.avatar, { backgroundColor: !m.isRead ? c.primary : c.surface2 }]}>
+            <Text style={[s.avatarTxt, { color: !m.isRead ? '#fff' : c.text }]}>{((m.senderName || m.subject || '?')[0]).toUpperCase()}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.msgFrom}>{m.senderName || m.subject || 'Message'}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={[s.msgFrom, !m.isRead && { color: c.primary }]}>{m.senderName || m.subject || 'Message'}</Text>
+              {m.createdAt && <Text style={s.msgDate}>{new Date(m.createdAt).toLocaleDateString()}</Text>}
+            </View>
             <Text style={s.msgPrev} numberOfLines={1}>{m.body || m.content || m.lastMessage || ''}</Text>
           </View>
-          {!m.isRead && <View style={s.unread} />}
+          {!m.isRead && <View style={s.unreadDot} />}
         </View>
       ))}
     </ScrollView>
@@ -721,67 +787,81 @@ function MessagesTab({ userId, c, s }) {
 }
 
 function ProfileTab({ profile, user, vehicle, onToggle, onLogout, mode, setMode, c, s }) {
-  const initial = (profile?.name || user?.fullName || 'D')[0].toUpperCase();
+  const initials = (profile?.name || user?.fullName || 'D').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
-      {/* Avatar + name */}
+      {/* Avatar card */}
       <View style={s.profHeader}>
         <View style={s.profAvatar}>
-          <Text style={s.profAvatarTxt}>{initial}</Text>
+          <Text style={s.profAvatarTxt}>{initials}</Text>
         </View>
         <Text style={s.profName}>{profile?.name || user?.fullName || 'Driver'}</Text>
         <Text style={s.profEmail}>{profile?.email || user?.email || ''}</Text>
         <TouchableOpacity
-          style={[s.onBadge, profile?.isAvailable ? s.onBadgeGreen : s.onBadgeGrey, { marginTop: 10, alignSelf: 'center' }]}
+          style={[s.onBadge, profile?.isAvailable ? s.onBadgeGreen : s.onBadgeGrey, { marginTop: 12 }]}
           onPress={onToggle}>
           <View style={[s.onDot, { backgroundColor: profile?.isAvailable ? '#22c55e' : '#9ca3af' }]} />
-          <Text style={s.onTxt}>{profile?.isAvailable ? 'Online' : 'Offline'}</Text>
+          <Text style={s.onTxt}>{profile?.isAvailable ? 'Online' : 'Offline'} · Tap to toggle</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Info rows */}
+      {/* Driver info */}
+      <Text style={s.profGroupLabel}>DRIVER INFO</Text>
       <View style={s.profSection}>
         {profile?.phone ? (
           <View style={s.profRow}>
-            <Ionicons name="call-outline" size={18} color={c.primary} />
+            <View style={[s.profRowIcon, { backgroundColor: '#3b82f620' }]}>
+              <Ionicons name="call-outline" size={16} color="#3b82f6" />
+            </View>
             <Text style={s.profRowTxt}>{profile.phone}</Text>
           </View>
         ) : null}
         {profile?.category ? (
           <View style={s.profRow}>
-            <Ionicons name="card-outline" size={18} color={c.primary} />
+            <View style={[s.profRowIcon, { backgroundColor: '#8b5cf620' }]}>
+              <Ionicons name="card-outline" size={16} color="#8b5cf6" />
+            </View>
             <Text style={s.profRowTxt}>Licence: {profile.category}</Text>
           </View>
         ) : null}
         {profile?.hasPdp ? (
           <View style={s.profRow}>
-            <Ionicons name="checkmark-circle-outline" size={18} color="#22c55e" />
+            <View style={[s.profRowIcon, { backgroundColor: '#10b98120' }]}>
+              <Ionicons name="checkmark-circle-outline" size={16} color="#10b981" />
+            </View>
             <Text style={s.profRowTxt}>PDP Holder</Text>
           </View>
         ) : null}
-        {vehicle ? (
-          <View style={s.profRow}>
-            <Ionicons name="car-outline" size={18} color={c.primary} />
-            <Text style={s.profRowTxt}>{vehicle.make || vehicle.Make} {vehicle.model || vehicle.Model} · {vehicle.registration || vehicle.Registration}</Text>
-          </View>
-        ) : (
-          <View style={s.profRow}>
-            <Ionicons name="car-outline" size={18} color={c.textMuted} />
-            <Text style={[s.profRowTxt, { color: c.textMuted }]}>No vehicle assigned</Text>
-          </View>
-        )}
       </View>
 
-      {/* Theme toggle */}
-      <TouchableOpacity style={s.profActionRow} onPress={() => setMode(mode === 'dark' ? 'light' : 'dark')}>
-        <View style={s.profActionIcon}>
-          <Ionicons name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={20} color={c.primary} />
+      {/* Vehicle */}
+      <Text style={s.profGroupLabel}>VEHICLE</Text>
+      <View style={s.profSection}>
+        <View style={s.profRow}>
+          <View style={[s.profRowIcon, { backgroundColor: vehicle ? c.primary + '20' : '#9ca3af20' }]}>
+            <Ionicons name="car-sport-outline" size={16} color={vehicle ? c.primary : '#9ca3af'} />
+          </View>
+          {vehicle ? (
+            <View style={{ flex: 1 }}>
+              <Text style={s.profRowTxt}>{vehicle.make || vehicle.Make} {vehicle.model || vehicle.Model}</Text>
+              <Text style={[s.profRowTxt, { fontSize: 12, color: c.primary, fontWeight: '700', marginTop: 1 }]}>{vehicle.registration || vehicle.Registration}</Text>
+            </View>
+          ) : (
+            <Text style={[s.profRowTxt, { color: c.textMuted }]}>No vehicle assigned</Text>
+          )}
         </View>
-        <Text style={s.profActionTxt}>{mode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</Text>
+      </View>
+
+      {/* Preferences */}
+      <Text style={[s.profGroupLabel, { marginTop: 4 }]}>PREFERENCES</Text>
+      <TouchableOpacity style={s.profActionRow} onPress={() => setMode(mode === 'dark' ? 'light' : 'dark')}>
+        <View style={[s.profActionIcon, { backgroundColor: '#f59e0b20' }]}>
+          <Ionicons name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={20} color="#f59e0b" />
+        </View>
+        <Text style={s.profActionTxt}>{mode === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
         <Ionicons name="chevron-forward" size={16} color={c.textMuted} />
       </TouchableOpacity>
 
-      {/* Logout */}
       <TouchableOpacity style={s.logoutBtn} onPress={onLogout}>
         <Ionicons name="log-out-outline" size={20} color="#fff" />
         <Text style={s.logoutTxt}>Logout</Text>
@@ -884,6 +964,8 @@ export default function DriverDashboardScreen({ navigation }) {
     { key: 'profile', label: 'Profile', icon: 'person-outline', activeIcon: 'person' },
   ];
 
+  const driverInitials = ((profile?.name || user?.fullName || 'D')).split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
   if (loading) {
     return (
       <View style={[s.root, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -897,16 +979,16 @@ export default function DriverDashboardScreen({ navigation }) {
     <View style={s.root}>
       {/* Header */}
       <View style={s.header}>
-        <View style={{ flex: 1 }}>
+        <TouchableOpacity style={s.headerAvatar} onPress={() => setTab('profile')}>
+          <Text style={s.headerAvatarTxt}>{driverInitials}</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={s.greeting}>Hello, {profile?.name?.split(' ')[0] || user?.fullName?.split(' ')[0] || 'Driver'} 👋</Text>
           <Text style={s.subhead}>Driver Portal</Text>
         </View>
         <TouchableOpacity style={[s.onBadge, profile?.isAvailable ? s.onBadgeGreen : s.onBadgeGrey]} onPress={toggleAvailability}>
           <View style={[s.onDot, { backgroundColor: profile?.isAvailable ? '#22c55e' : '#9ca3af' }]} />
           <Text style={s.onTxt}>{profile?.isAvailable ? 'Online' : 'Offline'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={{ padding: 6 }} onPress={() => setTab('profile')}>
-          <Ionicons name="person-circle-outline" size={26} color={tab === 'profile' ? c.primary : c.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -962,10 +1044,10 @@ export default function DriverDashboardScreen({ navigation }) {
             <View>
               <Ionicons name={tab === t.key ? t.activeIcon : t.icon} size={22} color={tab === t.key ? c.primary : c.textMuted} />
               {t.badge > 0 && (
-                <View style={s.tabBadge}><Text style={s.tabBadgeTxt}>{t.badge}</Text></View>
+                <View style={s.tabBadge}><Text style={s.tabBadgeTxt}>{t.badge > 9 ? '9+' : t.badge}</Text></View>
               )}
             </View>
-            <Text style={[s.tabLbl, tab === t.key && { color: c.primary }]}>{t.label}</Text>
+            <Text style={[s.tabLbl, tab === t.key && { color: c.primary, fontWeight: '800' }]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -984,130 +1066,138 @@ function createStyles(c) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.background },
 
-    // Header
-    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, paddingTop: 48, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border },
+    // ── Header ──
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 52, paddingBottom: 14, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border },
+    headerAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' },
+    headerAvatarTxt: { color: '#fff', fontSize: 15, fontWeight: '900' },
     greeting: { fontSize: 16, fontWeight: '800', color: c.text },
     subhead: { fontSize: 11, color: c.textMuted, marginTop: 1 },
-    onBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16, marginRight: 8, borderWidth: 1 },
+    onBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
     onBadgeGreen: { backgroundColor: '#22c55e18', borderColor: '#22c55e' },
     onBadgeGrey: { backgroundColor: c.surface2, borderColor: c.border },
-    onDot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
+    onDot: { width: 7, height: 7, borderRadius: 4, marginRight: 6 },
     onTxt: { fontSize: 12, fontWeight: '700', color: c.text },
 
-    // Card
-    card: { backgroundColor: c.surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: c.border },
-    cardHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    cardTitle: { fontSize: 14, fontWeight: '800', color: c.text, marginLeft: 8 },
+    // ── Hero online/offline banner ──
+    heroBanner: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, padding: 16, marginBottom: 14 },
+    heroBannerIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
+    heroBannerTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
+    heroBannerSub: { fontSize: 12, color: '#ffffffcc', marginTop: 2 },
 
-    // Banner
-    banner: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, marginBottom: 12 },
-    bannerTxt: { flex: 1, color: '#fff', fontWeight: '700', fontSize: 13, marginLeft: 10 },
+    // ── Hero profit card ──
+    heroCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, borderRadius: 20, padding: 20, marginBottom: 14 },
+    heroLabel: { fontSize: 12, color: '#ffffff99', fontWeight: '600', marginBottom: 4 },
+    heroValue: { fontSize: 28, fontWeight: '900', color: '#fff' },
+    heroSub: { fontSize: 12, color: '#ffffffaa', marginTop: 4 },
+    heroIconWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
 
-    // Vehicle card
+    // ── Metrics grid ──
+    metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+    metricCard: { width: '47%', padding: 14, backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border },
+    metricIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+    metricValue: { fontSize: 15, fontWeight: '800', color: c.text },
+    metricLabel: { fontSize: 11, color: c.textMuted, marginTop: 2, fontWeight: '600' },
+    metricSub: { fontSize: 10, color: c.textMuted, marginTop: 1 },
+
+    // ── Quick actions ──
+    sectionTitle: { fontSize: 15, fontWeight: '800', color: c.text, marginBottom: 10 },
+    quickActions: { flexDirection: 'row', gap: 12, marginBottom: 4 },
+    quickActionBtn: { flex: 1, alignItems: 'center', backgroundColor: c.surface, borderRadius: 16, paddingVertical: 16, borderWidth: 1, borderColor: c.border },
+    quickActionIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+    quickActionTxt: { fontSize: 12, fontWeight: '700', color: c.text },
+
+    // ── Vehicle card ──
+    card: { backgroundColor: c.surface, borderRadius: 20, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: c.border },
     vehMain: { fontSize: 20, fontWeight: '900', color: c.text },
     vehSub: { fontSize: 13, color: c.textMuted, marginTop: 2, marginBottom: 10 },
-    vehStatusBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1 },
+    vehStatusBadge: { marginLeft: 'auto', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
     vehStatusTxt: { fontSize: 10, fontWeight: '800' },
-    vehEmpty: { alignItems: 'center', paddingVertical: 24 },
+    vehEmpty: { alignItems: 'center', paddingVertical: 28 },
     vehEmptyTxt: { fontSize: 14, fontWeight: '700', color: c.textMuted, marginTop: 10 },
     vehEmptySub: { fontSize: 12, color: c.textMuted, marginTop: 4 },
-    plateBadge: { alignSelf: 'flex-start', backgroundColor: c.background, borderWidth: 2, borderColor: c.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6, marginBottom: 14 },
+    plateBadge: { alignSelf: 'flex-start', backgroundColor: c.background, borderWidth: 2, borderColor: c.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, marginBottom: 14 },
     plateTxt: { fontSize: 17, fontWeight: '900', color: c.text, letterSpacing: 3 },
     vehGrid: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-    vehGridItem: { flex: 1, alignItems: 'center', backgroundColor: c.background, borderRadius: 12, paddingVertical: 10, borderWidth: 1, borderColor: c.border },
+    vehGridItem: { flex: 1, alignItems: 'center', backgroundColor: c.background, borderRadius: 14, paddingVertical: 12, borderWidth: 1, borderColor: c.border },
     vehGridVal: { fontSize: 13, fontWeight: '800', color: c.text, marginTop: 4 },
     vehGridLbl: { fontSize: 10, color: c.textMuted, marginTop: 2 },
     serviceAlerts: { gap: 6, marginBottom: 10 },
-    serviceAlert: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, gap: 8 },
+    serviceAlert: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, gap: 8 },
     serviceAlertTxt: { fontSize: 12, fontWeight: '600', flex: 1 },
-    expandBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 8, gap: 4, borderTopWidth: 1, borderTopColor: c.border, marginTop: 4 },
+    expandBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingTop: 10, gap: 4, borderTopWidth: 1, borderTopColor: c.border, marginTop: 6 },
     expandTxt: { fontSize: 12, fontWeight: '700', color: c.primary },
     detailRows: { marginTop: 12, gap: 10 },
     detailRow: { flexDirection: 'row', alignItems: 'center' },
     detailLbl: { flex: 1, fontSize: 12, color: c.textMuted, marginLeft: 6 },
     detailVal: { fontSize: 12, fontWeight: '700', color: c.text, textAlign: 'right', flexShrink: 1, maxWidth: '55%' },
 
-    // Stats
-    statsRow: { flexDirection: 'row', alignItems: 'center' },
-    stat: { flex: 1, alignItems: 'center', paddingVertical: 4 },
-    statLbl: { fontSize: 11, color: c.textMuted, fontWeight: '600', marginBottom: 4 },
-    statVal: { fontSize: 17, fontWeight: '900' },
-    statSub: { fontSize: 10, color: c.textMuted, marginTop: 2 },
-    statDiv: { width: 1, height: 44, backgroundColor: c.border },
+    // ── Earnings tab summary row ──
+    earnSummaryRow: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, marginBottom: 14, overflow: 'hidden' },
+    earnSummaryItem: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+    earnSummaryVal: { fontSize: 14, fontWeight: '900', marginTop: 6 },
+    earnSummaryLbl: { fontSize: 10, color: c.textMuted, marginTop: 2, fontWeight: '600' },
 
-    // Quick actions
-    qRow: { flexDirection: 'row', justifyContent: 'space-around' },
-    qBtn: { alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6 },
-    qBtnDim: { opacity: 0.4 },
-    qTxt: { fontSize: 11, fontWeight: '700', color: c.text, marginTop: 4 },
-
-    // Section header
-    secHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-    secTitle: { fontSize: 16, fontWeight: '800', color: c.text, marginBottom: 12 },
-
-    // Buttons
-    btnSm: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9 },
-    btnSmTxt: { color: '#fff', fontWeight: '700', fontSize: 13, marginLeft: 4 },
-    row2: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-    actBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, padding: 12, borderRadius: 12 },
-    actTxt: { fontWeight: '700', fontSize: 13, marginLeft: 6 },
-    btnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 13, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    btnPrimaryTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
-    btnGhost: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: c.border, marginRight: 8 },
-    btnGhostTxt: { color: c.text, fontWeight: '700', fontSize: 15 },
-
-    // Toggle
-    toggle: { flexDirection: 'row', backgroundColor: c.surface2, borderRadius: 10, padding: 3, marginBottom: 16 },
-    tBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+    // ── Toggle ──
+    toggle: { flexDirection: 'row', backgroundColor: c.surface2, borderRadius: 12, padding: 3, marginBottom: 14 },
+    tBtn: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 10 },
     tBtnOn: { backgroundColor: c.surface, elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4 },
     tTxt: { fontSize: 13, fontWeight: '600', color: c.textMuted },
     tTxtOn: { color: c.text, fontWeight: '800' },
 
-    // Ledger
-    ledger: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.border },
-    ledgerIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    // ── Ledger rows ──
+    ledger: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: c.border },
+    ledgerIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
     ledgerLbl: { fontSize: 13, fontWeight: '700', color: c.text },
     ledgerDesc: { fontSize: 11, color: c.textMuted, marginTop: 1 },
     ledgerAmt: { fontSize: 14, fontWeight: '900' },
-    ledgerDate: { fontSize: 10, color: c.textMuted, marginTop: 1 },
+    ledgerDate: { fontSize: 10, color: c.textMuted, marginTop: 2 },
 
-    // Maintenance request card
-    reqCard: { backgroundColor: c.surface, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: c.border },
-    reqHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-    dot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-    reqCat: { flex: 1, fontSize: 14, fontWeight: '800', color: c.text },
-    badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
-    badgeTxt: { fontSize: 10, fontWeight: '700' },
-    editBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: c.primary, marginLeft: 6 },
-    editBtnTxt: { fontSize: 11, fontWeight: '700', color: c.primary },
-    deleteBtn: { width: 26, height: 26, borderRadius: 8, borderWidth: 1, borderColor: '#ef4444', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+    // ── Section header ──
+    secHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+    secTitle: { fontSize: 16, fontWeight: '800', color: c.text, marginBottom: 8 },
+    btnSm: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, gap: 4 },
+    btnSmTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
+    // ── Maintenance cards ──
+    reqCard: { backgroundColor: c.surface, borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: c.border, overflow: 'hidden' },
+    reqIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    reqCat: { fontSize: 14, fontWeight: '800', color: c.text },
+    badge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+    badgeTxt: { fontSize: 10, fontWeight: '800' },
+    reqEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: c.primary },
+    reqEditBtnTxt: { fontSize: 12, fontWeight: '700', color: c.primary },
+    reqDeleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: '#ef4444' },
+    reqDeleteBtnTxt: { fontSize: 12, fontWeight: '700', color: '#ef4444' },
     reqDesc: { fontSize: 12, color: c.textMuted, marginBottom: 8 },
     reqMeta: { flexDirection: 'row', alignItems: 'center' },
     metaTxt: { fontSize: 11, color: c.textMuted, marginLeft: 3 },
     metaSep: { fontSize: 11, color: c.textMuted, marginHorizontal: 5 },
 
-    // Messages
-    msgRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: c.border },
-    avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-    avatarTxt: { color: '#fff', fontWeight: '800', fontSize: 16 },
+    // ── Messages ──
+    unreadBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fef3c7', borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#f59e0b' },
+    unreadBannerTxt: { fontSize: 13, fontWeight: '700', color: '#92400e' },
+    msgRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: c.border, overflow: 'hidden' },
+    avatar: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    avatarTxt: { fontWeight: '800', fontSize: 16 },
     msgFrom: { fontSize: 13, fontWeight: '800', color: c.text },
-    msgPrev: { fontSize: 11, color: c.textMuted, marginTop: 2 },
-    unread: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.primary, marginLeft: 8 },
+    msgDate: { fontSize: 10, color: c.textMuted },
+    msgPrev: { fontSize: 12, color: c.textMuted, marginTop: 2 },
+    unreadDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: c.primary, marginLeft: 8 },
 
-    // Empty state
-    empty: { alignItems: 'center', paddingVertical: 48 },
+    // ── Empty state ──
+    empty: { alignItems: 'center', paddingVertical: 52 },
     emptyTitle: { fontSize: 16, fontWeight: '800', color: c.text, marginTop: 12, marginBottom: 4 },
     emptyTxt: { fontSize: 13, color: c.textMuted, textAlign: 'center', lineHeight: 20 },
     muted: { fontSize: 13, color: c.textMuted },
 
-    // Tab bar
-    tabBar: { flexDirection: 'row', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border, paddingBottom: 20, paddingTop: 8 },
-    tabItem: { flex: 1, alignItems: 'center' },
-    tabLbl: { fontSize: 10, fontWeight: '600', color: c.textMuted, marginTop: 3 },
+    // ── Tab bar ──
+    tabBar: { flexDirection: 'row', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border, paddingBottom: 20, paddingTop: 10 },
+    tabItem: { flex: 1, alignItems: 'center', gap: 3 },
+    tabLbl: { fontSize: 10, fontWeight: '600', color: c.textMuted },
     tabBadge: { position: 'absolute', top: -4, right: -10, backgroundColor: '#ef4444', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
     tabBadgeTxt: { color: '#fff', fontSize: 9, fontWeight: '900' },
 
-    // Modal
+    // ── Modal ──
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
     sheetTitle: { fontSize: 18, fontWeight: '900', color: c.text, marginBottom: 4 },
@@ -1118,20 +1208,27 @@ function createStyles(c) {
     chipOn: { backgroundColor: c.primary, borderColor: c.primary },
     chipTxt: { fontSize: 12, fontWeight: '600', color: c.textMuted },
     chipTxtOn: { color: '#fff' },
+    row2: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+    btnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 13, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    btnPrimaryTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
+    btnGhost: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: c.border, marginRight: 8 },
+    btnGhostTxt: { color: c.text, fontWeight: '700', fontSize: 15 },
 
-    // Profile tab
-    profHeader: { alignItems: 'center', paddingVertical: 24 },
+    // ── Profile tab ──
+    profHeader: { alignItems: 'center', paddingVertical: 28, backgroundColor: c.surface, borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: c.border },
     profAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-    profAvatarTxt: { fontSize: 34, fontWeight: '900', color: c.primaryText },
+    profAvatarTxt: { fontSize: 30, fontWeight: '900', color: '#fff' },
     profName: { fontSize: 20, fontWeight: '900', color: c.text },
-    profEmail: { fontSize: 13, color: c.textMuted, marginTop: 2 },
-    profSection: { backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, paddingHorizontal: 16, marginBottom: 16 },
-    profRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border, gap: 12 },
+    profEmail: { fontSize: 13, color: c.textMuted, marginTop: 3 },
+    profGroupLabel: { fontSize: 11, fontWeight: '800', color: c.textMuted, letterSpacing: 1, marginBottom: 8, marginLeft: 2 },
+    profSection: { backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, paddingHorizontal: 14, marginBottom: 16 },
+    profRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: c.border, gap: 12 },
+    profRowIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
     profRowTxt: { fontSize: 14, fontWeight: '600', color: c.text, flex: 1 },
-    profActionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 10, gap: 12 },
-    profActionIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' },
+    profActionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.border, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 10, gap: 12 },
+    profActionIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     profActionTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: c.text },
-    logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', borderRadius: 16, paddingVertical: 16, marginTop: 8, gap: 8 },
+    logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', borderRadius: 16, paddingVertical: 16, marginTop: 16, gap: 8 },
     logoutTxt: { fontSize: 16, fontWeight: '900', color: '#fff' },
   });
 }
