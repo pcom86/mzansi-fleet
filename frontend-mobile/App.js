@@ -1,4 +1,5 @@
 import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TouchableOpacity } from 'react-native';
@@ -12,6 +13,14 @@ import DriverRegistrationScreen from './src/screens/DriverRegistrationScreen';
 import DriverDashboardScreen from './src/screens/DriverDashboardScreen';
 import DriverOnboardingStep2Screen from './src/screens/DriverOnboardingStep2Screen';
 import ServiceProviderRegistrationScreen from './src/screens/ServiceProviderRegistrationScreen';
+import ServiceProviderDashboardScreen from './src/screens/ServiceProviderDashboardScreen';
+import ServiceProviderEditScreen from './src/screens/ServiceProviderEditScreen';
+import ServiceProviderBookingsScreen from './src/screens/ServiceProviderBookingsScreen';
+import ServiceProviderScheduleBookingScreen from './src/screens/ServiceProviderScheduleBookingScreen';
+import ServiceProviderScheduleManagerScreen from './src/screens/ServiceProviderScheduleManagerScreen';
+import ServiceProviderJobHistoryScreen from './src/screens/ServiceProviderJobHistoryScreen';
+import OwnerBookServiceScreen from './src/screens/OwnerBookServiceScreen';
+import OwnerNewMaintenanceRequestScreen from './src/screens/OwnerNewMaintenanceRequestScreen';
 import OwnerRegistrationScreen from './src/screens/OwnerRegistrationScreen';
 import OwnerDashboardScreen from './src/screens/OwnerDashboardScreen';
 import VehiclePerformanceScreen from './src/screens/VehiclePerformanceScreen';
@@ -28,6 +37,14 @@ import OwnerComposeMessageScreen from './src/screens/OwnerComposeMessageScreen';
 import OwnerMaintenanceRequestDetailsScreen from './src/screens/OwnerMaintenanceRequestDetailsScreen';
 import OwnerTendersScreen from './src/screens/OwnerTendersScreen';
 import RentalMarketplaceScreen from './src/screens/RentalMarketplaceScreen';
+import TaxiRankRoleSelectionScreen from './src/screens/TaxiRankRoleSelectionScreen';
+import TaxiRankRoutesScreen from './src/screens/TaxiRankRoutesScreen';
+import TaxiRankEditScreen from './src/screens/TaxiRankEditScreen';
+import BookTripScreen from './src/screens/BookTripScreen';
+import CaptureTripScreen from './src/screens/CaptureTripScreen';
+import MyBookingsScreen from './src/screens/MyBookingsScreen';
+import { ConnectivityProvider } from './src/context/ConnectivityContext';
+import BackendStatusBanner from './src/components/BackendStatusBanner';
 
 const Stack = createNativeStackNavigator();
 
@@ -84,10 +101,19 @@ function AppNavigator() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="ProfileSelection" component={ProfileSelectionScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingWizardScreen} />
+          <Stack.Screen name="TaxiRankRoleSelection" component={TaxiRankRoleSelectionScreen} options={{ title: 'Taxi Rank Registration' }} />
           <Stack.Screen name="DriverRegistration" component={DriverRegistrationScreen} />
           <Stack.Screen name="DriverDashboard" component={DriverDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverOnboardingStep2" component={DriverOnboardingStep2Screen} options={{ title: 'Driver Details' }} />
           <Stack.Screen name="ServiceProviderRegistration" component={ServiceProviderRegistrationScreen} />
+          <Stack.Screen name="ServiceProviderDashboard" component={ServiceProviderDashboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ServiceProviderEdit" component={ServiceProviderEditScreen} options={{ title: 'Edit Profile' }} />
+          <Stack.Screen name="SPBookings" component={ServiceProviderBookingsScreen} options={{ title: 'My Bookings & Schedule' }} />
+          <Stack.Screen name="SPScheduleBooking" component={ServiceProviderScheduleBookingScreen} options={{ title: 'Schedule a Booking' }} />
+          <Stack.Screen name="SPScheduleManager" component={ServiceProviderScheduleManagerScreen} options={{ title: 'Daily Schedule' }} />
+          <Stack.Screen name="SPJobHistory" component={ServiceProviderJobHistoryScreen} options={{ title: 'Job History' }} />
+          <Stack.Screen name="OwnerBookService" component={OwnerBookServiceScreen} options={{ title: 'Book a Service' }} />
+          <Stack.Screen name="OwnerNewMaintenanceRequest" component={OwnerNewMaintenanceRequestScreen} options={{ title: 'New Maintenance Request' }} />
           <Stack.Screen name="OwnerRegistration" component={OwnerRegistrationScreen} />
           <Stack.Screen name="OwnerDashboard" component={OwnerDashboardScreen} />
           <Stack.Screen name="VehiclePerformance" component={VehiclePerformanceScreen} />
@@ -102,8 +128,13 @@ function AppNavigator() {
           <Stack.Screen name="OwnerMaintenanceRequestDetails" component={OwnerMaintenanceRequestDetailsScreen} />
           <Stack.Screen name="OwnerTenders" component={OwnerTendersScreen} />
           <Stack.Screen name="RentalMarketplace" component={RentalMarketplaceScreen} />
-          <Stack.Screen name="TaxiRankDashboard" component={TaxiRankDashboardScreen} />
+          <Stack.Screen name="TaxiRankDashboard" component={TaxiRankDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TaxiRankDetails" component={TaxiRankDetailsScreen} />
+          <Stack.Screen name="TaxiRankRoutes" component={TaxiRankRoutesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TaxiRankEdit" component={TaxiRankEditScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="BookTrip" component={BookTripScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CaptureTrip" component={CaptureTripScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="MyBookings" component={MyBookingsScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -111,10 +142,15 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppNavigator />
-      </AuthProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <ConnectivityProvider>
+          <AuthProvider>
+            <BackendStatusBanner />
+            <AppNavigator />
+          </AuthProvider>
+        </ConnectivityProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

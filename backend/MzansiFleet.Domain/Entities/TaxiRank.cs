@@ -136,6 +136,25 @@ namespace MzansiFleet.Domain.Entities
         // Navigation Properties
         public TaxiRank? TaxiRank { get; set; }
         public Tenant? Tenant { get; set; }
+        public ICollection<RouteStop> Stops { get; set; } = new List<RouteStop>();
+    }
+
+    /// <summary>
+    /// Represents an intermediate stop on a scheduled route with its fare
+    /// </summary>
+    public class RouteStop
+    {
+        public Guid Id { get; set; }
+        public Guid TripScheduleId { get; set; }
+        public string StopName { get; set; } = string.Empty;
+        public int StopOrder { get; set; }          // 1-based order along the route
+        public decimal FareFromOrigin { get; set; } // Fare to board at origin and alight here
+        public int? EstimatedMinutesFromDeparture { get; set; }
+        public string? Notes { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        // Navigation Properties
+        public TripSchedule? TripSchedule { get; set; }
     }
 
     /// <summary>
@@ -298,6 +317,40 @@ namespace MzansiFleet.Domain.Entities
         // Navigation Properties
         public User? User { get; set; }
         public Tenant? Tenant { get; set; }
+        public TaxiRank? TaxiRank { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a user booking a seat on a scheduled taxi rank trip
+    /// </summary>
+    public class ScheduledTripBooking
+    {
+        public Guid Id { get; set; }
+        public Guid UserId { get; set; }
+        public Guid TripScheduleId { get; set; }
+        public Guid TaxiRankId { get; set; }
+        
+        // Booking Details
+        public DateTime TravelDate { get; set; } // The specific date the user wants to travel
+        public int SeatsBooked { get; set; } = 1;
+        public decimal TotalFare { get; set; }
+        public string PassengerName { get; set; } = string.Empty;
+        public string PassengerPhone { get; set; } = string.Empty;
+        
+        // Status: Pending, Confirmed, Cancelled, Completed, NoShow
+        public string Status { get; set; } = "Pending";
+        public string? Notes { get; set; }
+        public string? CancellationReason { get; set; }
+        
+        // Metadata
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
+        public DateTime? ConfirmedAt { get; set; }
+        public DateTime? CancelledAt { get; set; }
+        
+        // Navigation Properties
+        public User? User { get; set; }
+        public TripSchedule? TripSchedule { get; set; }
         public TaxiRank? TaxiRank { get; set; }
     }
 }

@@ -456,24 +456,24 @@ namespace MzansiFleet.Api.Controllers
             {
                 var command = new RegisterServiceProviderCommand
                 {
-                    TenantId = dto.TenantId,
+                    TenantId = dto.TenantId == Guid.Empty ? null : dto.TenantId,
                     Email = dto.Email,
                     Password = dto.Password,
-                    Phone = dto.Phone,
+                    Phone = dto.Phone ?? string.Empty,
                     BusinessName = dto.BusinessName,
-                    RegistrationNumber = dto.RegistrationNumber,
-                    ContactPerson = dto.ContactPerson,
-                    Address = dto.Address,
-                    ServiceTypes = dto.ServiceTypes,
-                    VehicleCategories = dto.VehicleCategories,
-                    OperatingHours = dto.OperatingHours,
+                    RegistrationNumber = dto.RegistrationNumber ?? string.Empty,
+                    ContactPerson = dto.ContactPerson ?? string.Empty,
+                    Address = dto.Address ?? string.Empty,
+                    ServiceTypes = dto.ServiceTypes ?? string.Empty,
+                    VehicleCategories = dto.VehicleCategories ?? string.Empty,
+                    OperatingHours = dto.OperatingHours ?? string.Empty,
                     HourlyRate = dto.HourlyRate,
                     CallOutFee = dto.CallOutFee,
                     ServiceRadiusKm = dto.ServiceRadiusKm,
-                    BankAccount = dto.BankAccount,
-                    TaxNumber = dto.TaxNumber,
-                    CertificationsLicenses = dto.CertificationsLicenses,
-                    Notes = dto.Notes
+                    BankAccount = dto.BankAccount ?? string.Empty,
+                    TaxNumber = dto.TaxNumber ?? string.Empty,
+                    CertificationsLicenses = dto.CertificationsLicenses ?? string.Empty,
+                    Notes = dto.Notes ?? string.Empty
                 };
 
                 var profile = await _registerServiceProviderHandler.Handle(command, CancellationToken.None);
@@ -493,7 +493,7 @@ namespace MzansiFleet.Api.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = "An error occurred during registration", details = ex.Message });
+                return StatusCode(500, new { error = "An error occurred during registration", details = ex.Message, inner = ex.InnerException?.Message, inner2 = ex.InnerException?.InnerException?.Message });
             }
         }
 

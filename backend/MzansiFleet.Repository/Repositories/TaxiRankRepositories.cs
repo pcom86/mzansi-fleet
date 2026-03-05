@@ -682,4 +682,67 @@ namespace MzansiFleet.Repository.Repositories
             }
         }
     }
+
+    public class ScheduledTripBookingRepository : IScheduledTripBookingRepository
+    {
+        private readonly MzansiFleetDbContext _context;
+        public ScheduledTripBookingRepository(MzansiFleetDbContext context) { _context = context; }
+
+        public async Task<ScheduledTripBooking?> GetByIdAsync(Guid id)
+            => await _context.ScheduledTripBookings
+                .Include(b => b.TripSchedule)
+                .Include(b => b.TaxiRank)
+                .FirstOrDefaultAsync(b => b.Id == id);
+
+        public async Task<IEnumerable<ScheduledTripBooking>> GetByUserIdAsync(Guid userId)
+            => await _context.ScheduledTripBookings
+                .Include(b => b.TripSchedule)
+                .Include(b => b.TaxiRank)
+                .Where(b => b.UserId == userId)
+                .OrderByDescending(b => b.TravelDate)
+                .ToListAsync();
+
+        public async Task<IEnumerable<ScheduledTripBooking>> GetByTaxiRankIdAsync(Guid taxiRankId)
+            => await _context.ScheduledTripBookings
+                .Include(b => b.TripSchedule)
+                .Where(b => b.TaxiRankId == taxiRankId)
+                .OrderByDescending(b => b.TravelDate)
+                .ToListAsync();
+
+        public async Task<IEnumerable<ScheduledTripBooking>> GetByScheduleIdAsync(Guid scheduleId)
+            => await _context.ScheduledTripBookings
+                .Where(b => b.TripScheduleId == scheduleId)
+                .OrderByDescending(b => b.TravelDate)
+                .ToListAsync();
+
+        public async Task<IEnumerable<ScheduledTripBooking>> GetByScheduleAndDateAsync(Guid scheduleId, DateTime travelDate)
+            => await _context.ScheduledTripBookings
+                .Where(b => b.TripScheduleId == scheduleId && b.TravelDate.Date == travelDate.Date && b.Status != "Cancelled")
+                .ToListAsync();
+
+        public async Task<ScheduledTripBooking> AddAsync(ScheduledTripBooking booking)
+        {
+            _context.ScheduledTripBookings.Add(booking);
+            await _context.SaveChangesAsync();
+            return booking;
+        }
+
+        public async Task<ScheduledTripBooking> UpdateAsync(ScheduledTripBooking booking)
+        {
+            booking.UpdatedAt = DateTime.UtcNow;
+            _context.ScheduledTripBookings.Update(booking);
+            await _context.SaveChangesAsync();
+            return booking;
+        }
+
+        public async Task DeleteAsync(Guid id)
+        {
+            var booking = await _context.ScheduledTripBookings.FindAsync(id);
+            if (booking != null)
+            {
+                _context.ScheduledTripBookings.Remove(booking);
+                await _context.SaveChangesAsync();
+            }
+        }
+    }
 }

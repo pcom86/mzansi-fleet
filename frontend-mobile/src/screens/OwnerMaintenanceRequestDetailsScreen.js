@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TextInput, TouchableOpacity, Platform, Switch } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { approveMechanicalRequest, completeMechanicalRequest, declineMechanicalRequest, getMechanicalRequestById, scheduleMechanicalRequest } from '../api/maintenance';
+import { approveMechanicalRequest, completeMechanicalRequest, declineMechanicalRequest, deleteMechanicalRequest, getMechanicalRequestById, scheduleMechanicalRequest, updateMechanicalRequest } from '../api/maintenance';
 import { getServiceProvidersByServiceType } from '../api/serviceProviders';
 import { getAvailableServiceProviderProfiles } from '../api/serviceProviderProfiles';
+import { submitMechanicalRequestReview } from '../api/reviews';
 import { useAppTheme } from '../theme';
+import RatingReviewModal from './RatingReviewModal';
+import { useAuth } from '../context/AuthContext';
 
 const DateTimePicker = Platform.OS === 'web'
   ? null
@@ -28,15 +31,40 @@ export default function OwnerMaintenanceRequestDetailsScreen({ route, navigation
   const [loading, setLoading] = useState(true);
   const [req, setReq] = useState(requestParam);
   const [saving, setSaving] = useState(false);
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const { user } = useAuth();
   const [serviceProviderInput, setServiceProviderInput] = useState('');
+
+  async function submitReview({ rating, review }) {
+    await submitMechanicalRequestReview({
+      requestId: req.id,
+      rating,
+      review,
+      role: 'owner',
+      userId: user?.userId || user?.id,
+    });
+    Alert.alert('Thank you', 'Your review has been submitted');
+  }
   const [providersLoading, setProvidersLoading] = useState(false);
   const [providers, setProviders] = useState([]);
   const [selectedProviderId, setSelectedProviderId] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    category: '',
+    description: '',
+    location: '',
+    priority: '',
+    preferredTime: '',
+    scheduledDate: '',
+    callOutRequired: false
+  });
   const [availableOnly, setAvailableOnly] = useState(true);
 
   const [scheduledAt, setScheduledAt] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+  const [showEditTimePicker, setShowEditTimePicker] = useState(false);
 
   const [scheduledDateText, setScheduledDateText] = useState('');
   const [scheduledTimeText, setScheduledTimeText] = useState('');
@@ -207,6 +235,89 @@ export default function OwnerMaintenanceRequestDetailsScreen({ route, navigation
   const canSchedule = isApproved && !completedDate;
   const canComplete = !completedDate && (String(state).toLowerCase() === 'scheduled' || String(state).toLowerCase() === 'in progress');
   const canDecide = isPending && !completedDate;
+  const canDelete = isPending && !completedDate;
+  const canEdit = (isPending || isScheduled) && !completedDate;
+
+  async function onDelete() {
+    if (!requestId) return;
+    
+    Alert.alert(
+      'Delete Request',
+      'Are you sure you want to delete this maintenance request? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await deleteMechanicalRequest(requestId);
+              Alert.alert('Deleted', 'Maintenance request has been deleted');
+              navigation.goBack();
+            } catch (e) {
+              console.warn('Failed to delete request', e);
+              Alert.alert('Error', 'Failed to delete request');
+            } finally {
+              setSaving(false);
+            }
+          }
+        }
+      ]
+    );
+  }
+
+  function startEdit() {
+    setEditForm({
+      category: req.category || req.Category || '',
+      description: req.description || req.Description || '',
+      location: req.location || req.Location || '',
+      priority: req.priority || req.Priority || '',
+      preferredTime: req.preferredTime || req.PreferredTime || '',
+      scheduledDate: req.scheduledDate || req.ScheduledDate || '',
+      callOutRequired: req.callOutRequired || req.CallOutRequired || false
+    });
+    setIsEditing(true);
+  }
+
+  async function saveEdit() {
+    if (!requestId) return;
+    
+    try {
+      setSaving(true);
+      await updateMechanicalRequest(requestId, {
+        category: editForm.category,
+        description: editForm.description,
+        location: editForm.location,
+        priority: editForm.priority,
+        callOutRequired: editForm.callOutRequired,
+        preferredTime: editForm.preferredTime || null,
+        scheduledDate: editForm.scheduledDate || null,
+      });
+      await refresh();
+      setIsEditing(false);
+      Alert.alert('Updated', 'Maintenance request has been updated');
+    } catch (e) {
+      const msg = e?.response?.data?.message || e?.response?.data?.title || JSON.stringify(e?.response?.data) || e.message;
+      console.warn('Failed to update request', msg, 'Status:', e?.response?.status);
+      Alert.alert('Error', msg || 'Failed to update request');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function cancelEdit() {
+    setIsEditing(false);
+    setEditForm({
+      category: '',
+      description: '',
+      location: '',
+      priority: '',
+      preferredTime: '',
+      scheduledDate: '',
+      callOutRequired: false
+    });
+  }
 
   async function onApprove() {
     if (!requestId) return;
@@ -267,22 +378,24 @@ export default function OwnerMaintenanceRequestDetailsScreen({ route, navigation
     if (name) setServiceProviderInput(name);
   }
 
-  function onDateChange(_event, dateVal) {
+  function onDateChange(_, dateVal) {
     setShowDatePicker(false);
-    if (!dateVal) return;
-    const current = scheduledAt ? new Date(scheduledAt) : new Date();
-    const next = new Date(current);
-    next.setFullYear(dateVal.getFullYear(), dateVal.getMonth(), dateVal.getDate());
-    setScheduledAt(next);
+    if (dateVal) {
+      const current = scheduledAt ? new Date(scheduledAt) : new Date();
+      const next = new Date(current);
+      next.setFullYear(dateVal.getFullYear(), dateVal.getMonth(), dateVal.getDate());
+      setScheduledAt(next);
+    }
   }
 
-  function onTimeChange(_event, timeVal) {
+  function onTimeChange(_, timeVal) {
     setShowTimePicker(false);
-    if (!timeVal) return;
-    const current = scheduledAt ? new Date(scheduledAt) : new Date();
-    const next = new Date(current);
-    next.setHours(timeVal.getHours(), timeVal.getMinutes(), 0, 0);
-    setScheduledAt(next);
+    if (timeVal) {
+      const current = scheduledAt ? new Date(scheduledAt) : new Date();
+      const next = new Date(current);
+      next.setHours(timeVal.getHours(), timeVal.getMinutes(), 0, 0);
+      setScheduledAt(next);
+    }
   }
 
   function applyWebDateTimeFromText() {
@@ -322,7 +435,202 @@ export default function OwnerMaintenanceRequestDetailsScreen({ route, navigation
 
         <View style={{ height: 12 }} />
         <Text style={styles.sectionTitle}>Description</Text>
-        <Text style={styles.body}>{description || 'No description provided.'}</Text>
+        {isEditing ? (
+          <TextInput
+            value={editForm.description}
+            onChangeText={text => setEditForm(prev => ({ ...prev, description: text }))}
+            style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+            placeholder="Description"
+            multiline
+            editable={!saving}
+          />
+        ) : (
+          <Text style={styles.body}>{description || 'No description provided.'}</Text>
+        )}
+
+        {canDelete && !isEditing && (
+          <>
+            <View style={{ height: 12 }} />
+            <View style={[styles.row, { marginTop: 10 }]}>
+              <TouchableOpacity
+                style={[styles.btnOutline, saving && { opacity: 0.6 }]}
+                onPress={onDelete}
+                disabled={saving}
+              >
+                <Text style={styles.btnOutlineText}>Delete</Text>
+              </TouchableOpacity>
+              <View style={{ width: 10 }} />
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1, marginTop: 0 }, saving && { opacity: 0.6 }]}
+                onPress={startEdit}
+                disabled={saving}
+              >
+                <Text style={styles.btnPrimaryText}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+        {isScheduled && !isEditing && (
+          <>
+            <View style={{ height: 12 }} />
+            <View style={[styles.row, { marginTop: 10 }]}>
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1, marginTop: 0 }, saving && { opacity: 0.6 }]}
+                onPress={startEdit}
+                disabled={saving}
+              >
+                <Text style={styles.btnPrimaryText}>Edit / Reschedule</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {isEditing && (
+          <>
+            <View style={{ height: 12 }} />
+            <Text style={styles.sectionTitle}>Edit Request</Text>
+            
+            <Text style={styles.inputLabel}>Category</Text>
+            <TextInput
+              value={editForm.category}
+              onChangeText={text => setEditForm(prev => ({ ...prev, category: text }))}
+              style={styles.input}
+              placeholder="Category"
+              editable={!saving}
+            />
+
+            <Text style={styles.inputLabel}>Location</Text>
+            <TextInput
+              value={editForm.location}
+              onChangeText={text => setEditForm(prev => ({ ...prev, location: text }))}
+              style={styles.input}
+              placeholder="Location"
+              editable={!saving}
+            />
+
+            <Text style={styles.inputLabel}>Priority</Text>
+            <TextInput
+              value={editForm.priority}
+              onChangeText={text => setEditForm(prev => ({ ...prev, priority: text }))}
+              style={styles.input}
+              placeholder="Priority"
+              editable={!saving}
+            />
+
+            <Text style={styles.inputLabel}>Scheduled Date</Text>
+            {Platform.OS === 'web' ? (
+              <View style={styles.row}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={editForm.scheduledDate ? new Date(editForm.scheduledDate).toISOString().split('T')[0] : ''}
+                  onChangeText={text => {
+                    if (text) {
+                      const currentDate = editForm.scheduledDate ? new Date(editForm.scheduledDate) : new Date();
+                      const [year, month, day] = text.split('-').map(Number);
+                      if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                        currentDate.setFullYear(year, month - 1, day);
+                        setEditForm(prev => ({ ...prev, scheduledDate: currentDate.toISOString() }));
+                      }
+                    } else {
+                      setEditForm(prev => ({ ...prev, scheduledDate: '' }));
+                    }
+                  }}
+                  placeholder="YYYY-MM-DD"
+                  editable={!saving}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1, marginLeft: 8 }]}
+                  value={editForm.scheduledDate ? new Date(editForm.scheduledDate).toTimeString().split(' ')[0].substring(0, 5) : ''}
+                  onChangeText={text => {
+                    const date = editForm.scheduledDate ? new Date(editForm.scheduledDate) : new Date();
+                    const [hours, minutes] = text.split(':').map(Number);
+                    if (!isNaN(hours) && !isNaN(minutes)) {
+                      date.setHours(hours, minutes, 0, 0);
+                      setEditForm(prev => ({ ...prev, scheduledDate: date.toISOString() }));
+                    }
+                  }}
+                  placeholder="HH:MM"
+                  editable={!saving}
+                />
+              </View>
+            ) : (
+              <>
+                <View style={styles.row}>
+                  <TouchableOpacity
+                    style={[styles.input, { flex: 1, justifyContent: 'center' }]}
+                    onPress={() => setShowEditDatePicker(true)}
+                    disabled={saving}
+                  >
+                    <Text style={{ color: editForm.scheduledDate ? c.text : c.textMuted }}>
+                      {editForm.scheduledDate ? new Date(editForm.scheduledDate).toLocaleDateString() : 'Pick date'}
+                    </Text>
+                  </TouchableOpacity>
+                  <View style={{ width: 8 }} />
+                  <TouchableOpacity
+                    style={[styles.input, { flex: 1, justifyContent: 'center' }]}
+                    onPress={() => setShowEditTimePicker(true)}
+                    disabled={saving}
+                  >
+                    <Text style={{ color: editForm.scheduledDate ? c.text : c.textMuted }}>
+                      {editForm.scheduledDate ? new Date(editForm.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pick time'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {showEditDatePicker && DateTimePicker && (
+                  <DateTimePicker
+                    value={editForm.scheduledDate ? new Date(editForm.scheduledDate) : new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_, d) => {
+                      setShowEditDatePicker(false);
+                      if (d) {
+                        const current = editForm.scheduledDate ? new Date(editForm.scheduledDate) : new Date();
+                        current.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+                        setEditForm(prev => ({ ...prev, scheduledDate: current.toISOString() }));
+                      }
+                    }}
+                  />
+                )}
+
+                {showEditTimePicker && DateTimePicker && (
+                  <DateTimePicker
+                    value={editForm.scheduledDate ? new Date(editForm.scheduledDate) : new Date()}
+                    mode="time"
+                    is24Hour
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_, t) => {
+                      setShowEditTimePicker(false);
+                      if (t) {
+                        const current = editForm.scheduledDate ? new Date(editForm.scheduledDate) : new Date();
+                        current.setHours(t.getHours(), t.getMinutes(), 0, 0);
+                        setEditForm(prev => ({ ...prev, scheduledDate: current.toISOString() }));
+                      }
+                    }}
+                  />
+                )}
+              </>
+            )}
+
+            <View style={[styles.row, { marginTop: 10 }]}>
+              <TouchableOpacity
+                style={[styles.btnOutline, saving && { opacity: 0.6 }]}
+                onPress={cancelEdit}
+                disabled={saving}
+              >
+                <Text style={styles.btnOutlineText}>Cancel</Text>
+              </TouchableOpacity>
+              <View style={{ width: 10 }} />
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1, marginTop: 0 }, saving && { opacity: 0.6 }]}
+                onPress={saveEdit}
+                disabled={saving}
+              >
+                <Text style={styles.btnPrimaryText}>{saving ? 'Saving...' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
         {canDecide && (
           <>
@@ -565,7 +873,30 @@ export default function OwnerMaintenanceRequestDetailsScreen({ route, navigation
             <Text style={styles.body}>{completionNotes}</Text>
           </>
         )}
+
+        {req?.state === 'Completed' && (
+          <>
+            <View style={{ height: 12 }} />
+            <TouchableOpacity
+              style={[styles.btnPrimary, { backgroundColor: '#fbbf24', borderColor: '#fbbf24' }]}
+              onPress={() => setRatingModalVisible(true)}
+            >
+              <Text style={styles.btnPrimaryText}>Rate & Review</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
+
+      {/* Rating/Review Modal */}
+      {req?.state === 'Completed' && (
+        <RatingReviewModal
+          visible={ratingModalVisible}
+          onClose={() => setRatingModalVisible(false)}
+          onSubmit={submitReview}
+          request={req}
+          role="owner"
+        />
+      )}
     </ScrollView>
   );
 }

@@ -177,27 +177,27 @@ namespace MzansiFleet.Domain.DTOs
 
     public class RegisterServiceProviderDto
     {
-        // User Account Details
+        // User Account Details (required)
         public Guid TenantId { get; set; }
-        public string Email { get; set; }
-        public string Password { get; set; }
-        public string Phone { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string? Phone { get; set; }
         
         // Service Provider Profile Details
-        public string BusinessName { get; set; }
-        public string RegistrationNumber { get; set; }
-        public string ContactPerson { get; set; }
-        public string Address { get; set; }
-        public string ServiceTypes { get; set; }
-        public string VehicleCategories { get; set; }
-        public string OperatingHours { get; set; }
+        public string BusinessName { get; set; } = string.Empty;
+        public string? RegistrationNumber { get; set; }
+        public string? ContactPerson { get; set; }
+        public string? Address { get; set; }
+        public string? ServiceTypes { get; set; }
+        public string? VehicleCategories { get; set; }
+        public string? OperatingHours { get; set; }
         public decimal? HourlyRate { get; set; }
         public decimal? CallOutFee { get; set; }
         public double? ServiceRadiusKm { get; set; }
-        public string BankAccount { get; set; }
-        public string TaxNumber { get; set; }
-        public string CertificationsLicenses { get; set; }
-        public string Notes { get; set; }
+        public string? BankAccount { get; set; }
+        public string? TaxNumber { get; set; }
+        public string? CertificationsLicenses { get; set; }
+        public string? Notes { get; set; }
     }
 }
 

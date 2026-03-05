@@ -4,6 +4,7 @@ using System.Security.Claims;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.DTOs;
 using MzansiFleet.Domain.Interfaces.IRepositories;
+using MzansiFleet.Repository;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,10 +17,12 @@ namespace MzansiFleet.Api.Controllers
     public class ServiceProviderProfilesController : ControllerBase
     {
         private readonly IServiceProviderProfileRepository _repository;
+        private readonly MzansiFleetDbContext _context;
 
-        public ServiceProviderProfilesController(IServiceProviderProfileRepository repository)
+        public ServiceProviderProfilesController(IServiceProviderProfileRepository repository, MzansiFleetDbContext context)
         {
             _repository = repository;
+            _context = context;
         }
 
         [HttpGet]
@@ -165,7 +168,22 @@ namespace MzansiFleet.Api.Controllers
             if (profile == null)
                 return NotFound("Service provider profile not found for this user");
 
-            return Ok(MapToDto(profile));
+            var dto = MapToDto(profile);
+
+            // Dynamically calculate rating and reviews from completed mechanical requests
+            var allRatings = _context.MechanicalRequests
+                .Where(r => r.ServiceProvider == profile.BusinessName 
+                    && r.State == "Completed" 
+                    && r.ServiceProviderRating.HasValue)
+                .Select(r => r.ServiceProviderRating.Value)
+                .ToList();
+
+            dto.TotalReviews = allRatings.Count;
+            dto.Rating = allRatings.Count > 0 
+                ? Math.Round((double)allRatings.Sum() / allRatings.Count, 1) 
+                : 0;
+
+            return Ok(dto);
         }
 
         [HttpPut("my-profile")]

@@ -445,7 +445,6 @@ namespace MzansiFleet.Repository.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("MediaUrls")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<Guid>("OwnerId")

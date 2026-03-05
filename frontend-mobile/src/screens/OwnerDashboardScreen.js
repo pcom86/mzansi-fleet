@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Button, StyleSheet, Alert, ActivityIndicator, FlatList, TouchableOpacity, ScrollView, Dimensions, Platform } from 'react-native';
-import { CommonActions } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { PieChart, StackedBarChart } from 'react-native-chart-kit';
 
@@ -29,7 +30,7 @@ function buildPieData(earnings, expenses) {
 import { useAuth } from '../context/AuthContext';
 import { getRecentTenders, getAllTenders } from '../api/tenders';
 import { getAllVehicles } from '../api/vehicles';
-import { approveMechanicalRequest, completeMechanicalRequest, declineMechanicalRequest, getMechanicalRequests } from '../api/maintenance';
+import { approveMechanicalRequest, completeMechanicalRequest, declineMechanicalRequest, deleteMechanicalRequest, getMechanicalRequests } from '../api/maintenance';
 import { getUnreadCount } from '../api/messaging';
 import { getCurrentMonthRange, getOwnerAnalyticsDashboard } from '../api/analytics';
 import { useAppTheme } from '../theme';
@@ -50,6 +51,7 @@ export default function OwnerDashboardScreen({ navigation }) {
   const { theme, mode, setMode } = useAppTheme();
   const c = theme.colors;
   const styles = useMemo(() => createStyles(c), [c]);
+  const insets = useSafeAreaInsets();
 
   const chartConfig = useMemo(() => {
     const textRgb = mode === 'dark' ? '229,231,235' : '15,23,42';
@@ -88,12 +90,11 @@ export default function OwnerDashboardScreen({ navigation }) {
     navigation.setOptions({ title: 'Mzansi Fleet', headerShown: false });
   }, [navigation]);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     let mounted = true;
-    async function load() {
-      try {
-        setLoading(true);
-        const [recent, all, vehicles, mechRequests, unread, analyticsData] = await Promise.all([
+    try {
+      setLoading(true);
+      const [recent, all, vehicles, mechRequests, unread, analyticsData] = await Promise.all([
           getRecentTenders(7),
           getAllTenders(),
           getAllVehicles(),
@@ -148,14 +149,16 @@ export default function OwnerDashboardScreen({ navigation }) {
         setUnreadMessages(unread || 0);
       } catch (err) {
         console.warn('Error loading owner dashboard data', err);
-        Alert.alert('Error', 'Failed to load dashboard data');
       } finally {
         if (mounted) setLoading(false);
       }
-    }
-    load();
-    return () => { mounted = false; };
   }, [user]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useFocusEffect(useCallback(() => {
+    load();
+  }, [load]));
 
   function currency(value) {
     const num = Number(value) || 0;
@@ -258,6 +261,32 @@ export default function OwnerDashboardScreen({ navigation }) {
     }
   }
 
+  async function onDeleteRequest(id) {
+    Alert.alert(
+      'Delete Request',
+      'Are you sure you want to delete this maintenance request? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setRequestsBusy(true);
+              await deleteMechanicalRequest(id);
+              setMaintenanceRequests(prev => prev.filter(r => r.id !== id));
+              Alert.alert('Deleted', 'Maintenance request has been deleted');
+            } catch (e) {
+              Alert.alert('Error', 'Failed to delete request');
+            } finally {
+              setRequestsBusy(false);
+            }
+          }
+        }
+      ]
+    );
+  }
+
   async function onCompleteRequest(id) {
     const req = maintenanceRequests.find(r => r.id === id);
     navigation.navigate('OwnerMaintenanceRequestDetails', { request: req || { id } });
@@ -300,7 +329,13 @@ export default function OwnerDashboardScreen({ navigation }) {
               <Text style={[styles.stateBadgeTxt, { color: col }]}>{item.state || 'Open'}</Text>
             </View>
           </View>
-          {item.preferredTime ? (
+          {item.scheduledDate ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <Ionicons name="calendar-outline" size={12} color={c.primary} />
+              <Text style={[styles.requestMeta, { marginLeft: 4, color: c.primary }]}>Scheduled: {new Date(item.scheduledDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })} at {new Date(item.scheduledDate).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}</Text>
+            </View>
+          ) : null}
+          {item.preferredTime && !item.scheduledDate ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
               <Ionicons name="time-outline" size={12} color={c.textMuted} />
               <Text style={[styles.requestMeta, { marginLeft: 4 }]}>Preferred: {new Date(item.preferredTime).toLocaleDateString()}</Text>
@@ -317,17 +352,27 @@ export default function OwnerDashboardScreen({ navigation }) {
                   <Ionicons name="close" size={14} color="#fff" />
                   <Text style={styles.actionBtnTxt}>Decline</Text>
                 </TouchableOpacity>
+                <TouchableOpacity disabled={requestsBusy} style={styles.actionBtnGray} onPress={(e) => { e.stopPropagation?.(); onDeleteRequest(item.id); }}>
+                  <Ionicons name="trash" size={14} color="#fff" />
+                  <Text style={styles.actionBtnTxt}>Delete</Text>
+                </TouchableOpacity>
               </>
             ) : item.state === 'Approved' ? (
-              <TouchableOpacity disabled={requestsBusy} style={styles.actionBtnBlue} onPress={(e) => { e.stopPropagation?.(); navigation.navigate('OwnerMaintenanceRequestDetails', { request: item }); }}>
+              <TouchableOpacity disabled={requestsBusy} style={styles.actionBtnBlue} onPress={(e) => { e.stopPropagation?.(); navigation.navigate('OwnerBookService', { request: item }); }}>
                 <Ionicons name="calendar-outline" size={14} color="#fff" />
                 <Text style={styles.actionBtnTxt}>Schedule</Text>
               </TouchableOpacity>
             ) : item.state === 'Scheduled' ? (
-              <TouchableOpacity disabled={requestsBusy} style={styles.actionBtnGreen} onPress={(e) => { e.stopPropagation?.(); onCompleteRequest(item.id); }}>
-                <Ionicons name="checkmark-done" size={14} color="#fff" />
-                <Text style={styles.actionBtnTxt}>Complete</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity disabled={requestsBusy} style={styles.actionBtnGreen} onPress={(e) => { e.stopPropagation?.(); onCompleteRequest(item.id); }}>
+                  <Ionicons name="checkmark-done" size={14} color="#fff" />
+                  <Text style={styles.actionBtnTxt}>Complete</Text>
+                </TouchableOpacity>
+                <TouchableOpacity disabled={requestsBusy} style={styles.actionBtnBlue} onPress={(e) => { e.stopPropagation?.(); navigation.navigate('OwnerMaintenanceRequestDetails', { request: item }); }}>
+                  <Ionicons name="create-outline" size={14} color="#fff" />
+                  <Text style={styles.actionBtnTxt}>Edit</Text>
+                </TouchableOpacity>
+              </>
             ) : (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={styles.requestMeta}>View details</Text>
@@ -484,12 +529,19 @@ export default function OwnerDashboardScreen({ navigation }) {
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Maintenance Requests</Text>
-              {pendingMaint > 0 && (
-                <View style={[styles.stateBadge, { backgroundColor: '#f59e0b20', borderColor: '#f59e0b' }]}>
-                  <Text style={[styles.stateBadgeTxt, { color: '#f59e0b' }]}>{pendingMaint} pending</Text>
-                </View>
-              )}
+              <TouchableOpacity
+                style={[styles.newRequestBtn, { backgroundColor: c.primary }]}
+                onPress={() => navigation.navigate('OwnerNewMaintenanceRequest')}
+              >
+                <Ionicons name="add" size={15} color="#fff" />
+                <Text style={styles.newRequestBtnTxt}>New Request</Text>
+              </TouchableOpacity>
             </View>
+            {pendingMaint > 0 && (
+              <View style={[styles.stateBadge, { backgroundColor: '#f59e0b20', borderColor: '#f59e0b', alignSelf: 'flex-start', marginBottom: 8 }]}>
+                <Text style={[styles.stateBadgeTxt, { color: '#f59e0b' }]}>{pendingMaint} pending</Text>
+              </View>
+            )}
             {maintenanceRequests.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="construct-outline" size={48} color={c.textMuted} />
@@ -523,6 +575,12 @@ export default function OwnerDashboardScreen({ navigation }) {
                   <Ionicons name="speedometer-outline" size={22} color={c.primary} />
                 </View>
                 <Text style={styles.quickActionTxt}>Fleet Performance</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerBookService')}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#22c55e20' }]}>
+                  <Ionicons name="construct-outline" size={22} color="#22c55e" />
+                </View>
+                <Text style={styles.quickActionTxt}>Book Service</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerVehicles')}>
                 <View style={[styles.quickActionIcon, { backgroundColor: '#3b82f620' }]}>
@@ -683,7 +741,7 @@ export default function OwnerDashboardScreen({ navigation }) {
       </View>
 
       {/* ── Bottom tab bar ── */}
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         {TABS.map(t => (
           <TouchableOpacity key={t.key} style={styles.tabItem} onPress={() => setTab(t.key)}>
             <View>
@@ -714,8 +772,8 @@ function createStyles(c) {
     notifDot: { position: 'absolute', top: 7, right: 7, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
 
     // ── Bottom tab bar ──
-    tabBar: { flexDirection: 'row', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border, paddingBottom: 20, paddingTop: 10 },
-    tabItem: { flex: 1, alignItems: 'center', gap: 3 },
+    tabBar: { flexDirection: 'row', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 },
+    tabItem: { flex: 1, alignItems: 'center', gap: 3, minHeight: 44, justifyContent: 'center' },
     tabLbl: { fontSize: 10, fontWeight: '600', color: c.textMuted },
     tabBadge: { position: 'absolute', top: -4, right: -8, backgroundColor: '#ef4444', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
     tabBadgeTxt: { color: '#fff', fontSize: 9, fontWeight: '800' },
@@ -737,6 +795,8 @@ function createStyles(c) {
     sectionTitle: { fontSize: 16, fontWeight: '800', color: c.text },
     sectionSubTitle: { fontSize: 11, color: c.textMuted },
     sectionLink: { fontSize: 13, color: c.primary, fontWeight: '700' },
+    newRequestBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+    newRequestBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
     empty: { color: c.textMuted, marginBottom: 8, fontSize: 13 },
     emptyState: { alignItems: 'center', paddingVertical: 48 },
@@ -777,6 +837,7 @@ function createStyles(c) {
     actionBtnGreen: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: '#22c55e' },
     actionBtnRed: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: '#ef4444' },
     actionBtnBlue: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: '#3b82f6' },
+    actionBtnGray: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: '#6b7280' },
     actionBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 12 },
 
     // ── Pagination ──

@@ -90,6 +90,11 @@ namespace MzansiFleet.Api.Controllers
                         await _rankRepository.AddAssociationAsync(rank.Id, tenantId, dto.TenantIds.First() == tenantId);
                     }
                 }
+                else if (dto.TenantId.HasValue && dto.TenantId.Value != Guid.Empty)
+                {
+                    // Single tenantId provided — also create an association so GetByTenantIdAsync works
+                    await _rankRepository.AddAssociationAsync(rank.Id, dto.TenantId.Value, isPrimary: true);
+                }
                 
                 return CreatedAtAction(nameof(GetById), new { id = rank.Id }, rank);
             }

@@ -88,6 +88,18 @@ namespace MzansiFleet.Domain.Interfaces.IRepositories
         Task DeleteAsync(Guid id);
     }
 
+    public interface IScheduledTripBookingRepository
+    {
+        Task<ScheduledTripBooking?> GetByIdAsync(Guid id);
+        Task<IEnumerable<ScheduledTripBooking>> GetByUserIdAsync(Guid userId);
+        Task<IEnumerable<ScheduledTripBooking>> GetByTaxiRankIdAsync(Guid taxiRankId);
+        Task<IEnumerable<ScheduledTripBooking>> GetByScheduleIdAsync(Guid scheduleId);
+        Task<IEnumerable<ScheduledTripBooking>> GetByScheduleAndDateAsync(Guid scheduleId, DateTime travelDate);
+        Task<ScheduledTripBooking> AddAsync(ScheduledTripBooking booking);
+        Task<ScheduledTripBooking> UpdateAsync(ScheduledTripBooking booking);
+        Task DeleteAsync(Guid id);
+    }
+
     public interface ITaxiMarshalRepository
     {
         Task<TaxiMarshalProfile?> GetByIdAsync(Guid id);

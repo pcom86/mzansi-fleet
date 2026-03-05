@@ -11,7 +11,7 @@ namespace MzansiFleet.Domain.Entities
         public string Location { get; set; }
         public string Category { get; set; }
         public string Description { get; set; }
-        public string MediaUrls { get; set; }
+        public string? MediaUrls { get; set; }
         public DateTime? PreferredTime { get; set; }
         public bool CallOutRequired { get; set; }
         public string State { get; set; } // OPEN, QUOTED, BOOKED, Pending, Approved, Declined, Scheduled, etc.

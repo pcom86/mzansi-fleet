@@ -33,6 +33,17 @@ interface CreateServiceProviderProfile {
   notes: string;
 }
 
+interface ServiceProviderOnboardingDetails {
+  yearsInBusiness: string;
+  workshopCapacity: string;
+  responseTime: string;
+  afterHoursSupport: string;
+  serviceAreaNotes: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  website: string;
+}
+
 @Component({
   selector: 'app-create-service-provider-profile',
   standalone: true,
@@ -87,6 +98,62 @@ interface CreateServiceProviderProfile {
               <mat-form-field appearance="outline">
                 <mat-label>Phone</mat-label>
                 <mat-input [(ngModel)]="phone" name="loginPhone" type="tel" required></mat-input>
+              </mat-form-field>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card>
+          <mat-card-header>
+            <mat-icon mat-card-avatar>fact_check</mat-icon>
+            <mat-card-title>Additional Onboarding Details</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="form-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Years in Business</mat-label>
+                <input matInput [(ngModel)]="onboardingDetails.yearsInBusiness" name="yearsInBusiness" placeholder="e.g., 6 years">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Workshop Capacity</mat-label>
+                <input matInput [(ngModel)]="onboardingDetails.workshopCapacity" name="workshopCapacity" placeholder="e.g., 8 vehicles/day">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Average Response Time</mat-label>
+                <input matInput [(ngModel)]="onboardingDetails.responseTime" name="responseTime" placeholder="e.g., 45 minutes">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>After-hours Support</mat-label>
+                <mat-select [(ngModel)]="onboardingDetails.afterHoursSupport" name="afterHoursSupport">
+                  <mat-option value="">Not specified</mat-option>
+                  <mat-option value="Yes">Yes</mat-option>
+                  <mat-option value="No">No</mat-option>
+                  <mat-option value="Limited">Limited</mat-option>
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Emergency Contact Name</mat-label>
+                <input matInput [(ngModel)]="onboardingDetails.emergencyContactName" name="emergencyContactName">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Emergency Contact Phone</mat-label>
+                <input matInput [(ngModel)]="onboardingDetails.emergencyContactPhone" name="emergencyContactPhone" type="tel">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Website (Optional)</mat-label>
+                <input matInput [(ngModel)]="onboardingDetails.website" name="website" placeholder="https://">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Service Area Details</mat-label>
+                <textarea matInput [(ngModel)]="onboardingDetails.serviceAreaNotes" name="serviceAreaNotes" rows="3"
+                          placeholder="Specific towns, routes, or neighborhoods served"></textarea>
               </mat-form-field>
             </div>
           </mat-card-content>
@@ -330,6 +397,16 @@ export class CreateServiceProviderProfileComponent implements OnInit {
   email = '';
   password = '';
   phone = '';
+  onboardingDetails: ServiceProviderOnboardingDetails = {
+    yearsInBusiness: '',
+    workshopCapacity: '',
+    responseTime: '',
+    afterHoursSupport: '',
+    serviceAreaNotes: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    website: ''
+  };
   selectedServiceTypes: string[] = [];
   selectedVehicleCategories: string[] = [];
   loading = false;
@@ -357,6 +434,7 @@ export class CreateServiceProviderProfileComponent implements OnInit {
       this.profile.userId = createUserResponse.userId;
       this.profile.serviceTypes = this.selectedServiceTypes.join(', ');
       this.profile.vehicleCategories = this.selectedVehicleCategories.join(', ');
+      this.profile.notes = this.composeNotesWithOnboardingDetails(this.profile.notes);
 
       // Then create the service provider profile
       await this.http.post(`${environment.apiUrl}/ServiceProviderProfiles`, this.profile).toPromise();
@@ -385,5 +463,31 @@ export class CreateServiceProviderProfileComponent implements OnInit {
       this.snackBar.open(error.error?.message || 'Failed to create profile', 'Close', { duration: 5000 });
       this.loading = false;
     }
+  }
+
+  private composeNotesWithOnboardingDetails(existingNotes: string): string {
+    const details = [
+      { label: 'Years in business', value: this.onboardingDetails.yearsInBusiness },
+      { label: 'Workshop capacity', value: this.onboardingDetails.workshopCapacity },
+      { label: 'Average response time', value: this.onboardingDetails.responseTime },
+      { label: 'After-hours support', value: this.onboardingDetails.afterHoursSupport },
+      { label: 'Emergency contact name', value: this.onboardingDetails.emergencyContactName },
+      { label: 'Emergency contact phone', value: this.onboardingDetails.emergencyContactPhone },
+      { label: 'Website', value: this.onboardingDetails.website },
+      { label: 'Service area details', value: this.onboardingDetails.serviceAreaNotes },
+    ].filter(detail => !!detail.value?.trim());
+
+    if (details.length === 0) {
+      return existingNotes;
+    }
+
+    const detailBlock = [
+      'Additional onboarding details:',
+      ...details.map(detail => `- ${detail.label}: ${detail.value.trim()}`),
+    ].join('\n');
+
+    return existingNotes?.trim()
+      ? `${existingNotes.trim()}\n\n${detailBlock}`
+      : detailBlock;
   }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MzansiFleet.Domain.Entities;
 
 namespace MzansiFleet.Domain.Interfaces.IRepositories
@@ -9,6 +10,7 @@ namespace MzansiFleet.Domain.Interfaces.IRepositories
         IEnumerable<MechanicalRequest> GetAll();
         MechanicalRequest? GetById(Guid id);
         void Add(MechanicalRequest entity);
+        Task AddAsync(MechanicalRequest entity);
         void Update(MechanicalRequest entity);
         void Delete(Guid id);
     }

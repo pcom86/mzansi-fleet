@@ -4,11 +4,14 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
   Modal, TextInput, RefreshControl, ActivityIndicator, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import client from '../api/client';
+import { submitMechanicalRequestReview } from '../api/reviews';
+import RatingReviewModal from './RatingReviewModal';
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 const API = {
@@ -616,6 +619,17 @@ function MaintenanceTab({ maintenance, vehicle, profile, onNew, onEdit, onDelete
                 </TouchableOpacity>
               </View>
             )}
+            {state === 'completed' && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <TouchableOpacity
+                  style={[s.reqEditBtn, { borderColor: '#fbbf24' }]}
+                  onPress={() => { setRatingRequest(r); setRatingModalVisible(true); }}
+                >
+                  <Ionicons name="star-outline" size={13} color="#fbbf24" />
+                  <Text style={[s.reqEditBtnTxt, { color: '#fbbf24' }]}>Rate</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         );
       })}
@@ -876,6 +890,7 @@ export default function DriverDashboardScreen({ navigation }) {
   const { theme, mode, setMode } = useAppTheme();
   const c = theme.colors;
   const s = useMemo(() => createStyles(c), [c]);
+  const insets = useSafeAreaInsets();
 
   const [tab, setTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -892,6 +907,19 @@ export default function DriverDashboardScreen({ navigation }) {
   const [maintModal, setMaintModal] = useState(false);
   const [editMaintModal, setEditMaintModal] = useState(false);
   const [editingRequest, setEditingRequest] = useState(null);
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [ratingRequest, setRatingRequest] = useState(null);
+
+  async function submitReview({ rating, review }) {
+    await submitMechanicalRequestReview({
+      requestId: ratingRequest.id,
+      rating,
+      review,
+      role: 'driver',
+      userId: user?.id,
+    });
+    Alert.alert('Thank you', 'Your review has been submitted');
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -1038,7 +1066,7 @@ export default function DriverDashboardScreen({ navigation }) {
       </View>
 
       {/* Bottom tab bar */}
-      <View style={s.tabBar}>
+      <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         {TABS.map(t => (
           <TouchableOpacity key={t.key} style={s.tabItem} onPress={() => setTab(t.key)}>
             <View>
@@ -1057,6 +1085,13 @@ export default function DriverDashboardScreen({ navigation }) {
       <AddExpenseModal visible={expModal} vehicleId={vehicle?.id} onClose={() => setExpModal(false)} onSuccess={load} c={c} s={s} />
       <MaintenanceModal visible={maintModal} vehicleId={vehicle?.id} ownerId={vehicle?.ownerId} onClose={() => setMaintModal(false)} onSuccess={load} c={c} s={s} />
       <EditMaintenanceModal visible={editMaintModal} request={editingRequest} onClose={() => { setEditMaintModal(false); setEditingRequest(null); }} onSuccess={load} c={c} s={s} />
+      <RatingReviewModal
+        visible={ratingModalVisible}
+        onClose={() => setRatingModalVisible(false)}
+        onSubmit={submitReview}
+        request={ratingRequest}
+        role="driver"
+      />
     </View>
   );
 }
@@ -1191,8 +1226,8 @@ function createStyles(c) {
     muted: { fontSize: 13, color: c.textMuted },
 
     // ── Tab bar ──
-    tabBar: { flexDirection: 'row', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border, paddingBottom: 20, paddingTop: 10 },
-    tabItem: { flex: 1, alignItems: 'center', gap: 3 },
+    tabBar: { flexDirection: 'row', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 },
+    tabItem: { flex: 1, alignItems: 'center', gap: 3, minHeight: 44, justifyContent: 'center' },
     tabLbl: { fontSize: 10, fontWeight: '600', color: c.textMuted },
     tabBadge: { position: 'absolute', top: -4, right: -10, backgroundColor: '#ef4444', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
     tabBadgeTxt: { color: '#fff', fontSize: 9, fontWeight: '900' },

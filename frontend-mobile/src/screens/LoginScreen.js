@@ -28,13 +28,17 @@ export default function LoginScreen({ navigation }) {
         navigation.replace('OwnerDashboard');
       } else if (role === 'driver') {
         navigation.replace('DriverDashboard');
+      } else if (role === 'serviceprovider' || role === 'service_provider' || role === 'service provider') {
+        navigation.replace('ServiceProviderDashboard');
       } else if (role === 'taxirankadmin' || role === 'taximarshal' || role === 'user') {
         navigation.replace('TaxiRankDashboard');
       } else {
         navigation.replace('OwnerDashboard');
       }
     } catch (err) {
-      Alert.alert('Login failed', err.message || String(err));
+      const status = err?.response?.status;
+      const message = status ? `HTTP ${status}` : (err?.message || 'Login failed');
+      Alert.alert('Login failed', message);
     } finally {
       setLoading(false);
     }

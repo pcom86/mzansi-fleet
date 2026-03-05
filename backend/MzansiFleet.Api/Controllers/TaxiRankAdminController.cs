@@ -223,7 +223,28 @@ namespace MzansiFleet.Api.Controllers
 
             await _scheduleRepository.AddAsync(schedule);
 
-            return Ok(schedule);
+            // Save stops
+            if (dto.Stops != null && dto.Stops.Count > 0)
+            {
+                var stops = dto.Stops.Select((s, i) => new RouteStop
+                {
+                    Id = Guid.NewGuid(),
+                    TripScheduleId = schedule.Id,
+                    StopName = s.StopName,
+                    StopOrder = s.StopOrder > 0 ? s.StopOrder : i + 1,
+                    FareFromOrigin = s.FareFromOrigin,
+                    EstimatedMinutesFromDeparture = s.EstimatedMinutesFromDeparture,
+                    Notes = s.Notes
+                }).ToList();
+                _context.RouteStops.AddRange(stops);
+                await _context.SaveChangesAsync();
+            }
+
+            // Return with stops loaded
+            var result = await _context.TripSchedules
+                .Include(s => s.Stops)
+                .FirstOrDefaultAsync(s => s.Id == schedule.Id);
+            return Ok(result);
         }
 
         // GET: api/TaxiRankAdmin/{adminId}/schedules
@@ -234,7 +255,11 @@ namespace MzansiFleet.Api.Controllers
             if (admin == null)
                 return NotFound(new { message = "Admin not found" });
 
-            var schedules = await _scheduleRepository.GetByTaxiRankIdAsync(admin.TaxiRankId);
+            var schedules = await _context.TripSchedules
+                .Include(s => s.Stops)
+                .Where(s => s.TaxiRankId == admin.TaxiRankId)
+                .OrderBy(s => s.RouteName)
+                .ToListAsync();
             return Ok(schedules);
         }
 
@@ -260,6 +285,78 @@ namespace MzansiFleet.Api.Controllers
 
             var marshals = await _marshalRepository.GetByTaxiRankIdAsync(admin.TaxiRankId);
             return Ok(marshals);
+        }
+
+        // PUT: api/TaxiRankAdmin/{adminId}/update-schedule/{scheduleId}
+        [HttpPut("{adminId}/update-schedule/{scheduleId}")]
+        public async Task<ActionResult<TripSchedule>> UpdateTripSchedule(Guid adminId, Guid scheduleId, [FromBody] CreateScheduleDto dto)
+        {
+            var admin = await _adminRepository.GetByIdAsync(adminId);
+            if (admin == null)
+                return NotFound(new { message = "Admin not found" });
+
+            if (!admin.CanManageSchedules)
+                return Forbid("Admin does not have permission to manage schedules");
+
+            var schedule = await _scheduleRepository.GetByIdAsync(scheduleId);
+            if (schedule == null)
+                return NotFound(new { message = "Schedule not found" });
+
+            if (!string.IsNullOrEmpty(dto.RouteName)) schedule.RouteName = dto.RouteName;
+            if (!string.IsNullOrEmpty(dto.DepartureStation)) schedule.DepartureStation = dto.DepartureStation;
+            if (!string.IsNullOrEmpty(dto.DestinationStation)) schedule.DestinationStation = dto.DestinationStation;
+            if (dto.DepartureTime != default) schedule.DepartureTime = dto.DepartureTime;
+            if (dto.FrequencyMinutes > 0) schedule.FrequencyMinutes = dto.FrequencyMinutes;
+            if (!string.IsNullOrEmpty(dto.DaysOfWeek)) schedule.DaysOfWeek = dto.DaysOfWeek;
+            if (dto.StandardFare > 0) schedule.StandardFare = dto.StandardFare;
+            schedule.ExpectedDurationMinutes = dto.ExpectedDurationMinutes ?? schedule.ExpectedDurationMinutes;
+            schedule.MaxPassengers = dto.MaxPassengers ?? schedule.MaxPassengers;
+            schedule.Notes = dto.Notes ?? schedule.Notes;
+            schedule.UpdatedAt = DateTime.UtcNow;
+
+            await _scheduleRepository.UpdateAsync(schedule);
+
+            // Replace stops if provided
+            if (dto.Stops != null)
+            {
+                var existing = _context.RouteStops.Where(s => s.TripScheduleId == scheduleId);
+                _context.RouteStops.RemoveRange(existing);
+                if (dto.Stops.Count > 0)
+                {
+                    var newStops = dto.Stops.Select((s, i) => new RouteStop
+                    {
+                        Id = Guid.NewGuid(),
+                        TripScheduleId = scheduleId,
+                        StopName = s.StopName,
+                        StopOrder = s.StopOrder > 0 ? s.StopOrder : i + 1,
+                        FareFromOrigin = s.FareFromOrigin,
+                        EstimatedMinutesFromDeparture = s.EstimatedMinutesFromDeparture,
+                        Notes = s.Notes
+                    }).ToList();
+                    _context.RouteStops.AddRange(newStops);
+                }
+                await _context.SaveChangesAsync();
+            }
+
+            var result = await _context.TripSchedules
+                .Include(s => s.Stops)
+                .FirstOrDefaultAsync(s => s.Id == scheduleId);
+            return Ok(result);
+        }
+
+        // DELETE: api/TaxiRankAdmin/{adminId}/delete-schedule/{scheduleId}
+        [HttpDelete("{adminId}/delete-schedule/{scheduleId}")]
+        public async Task<ActionResult> DeleteTripSchedule(Guid adminId, Guid scheduleId)
+        {
+            var admin = await _adminRepository.GetByIdAsync(adminId);
+            if (admin == null)
+                return NotFound(new { message = "Admin not found" });
+
+            if (!admin.CanManageSchedules)
+                return Forbid("Admin does not have permission to manage schedules");
+
+            await _scheduleRepository.DeleteAsync(scheduleId);
+            return Ok(new { message = "Schedule deleted successfully" });
         }
 
         // DELETE: api/TaxiRankAdmin/{id}
@@ -317,6 +414,15 @@ namespace MzansiFleet.Api.Controllers
         public string Notes { get; set; }
     }
 
+    public class RouteStopDto
+    {
+        public string StopName { get; set; } = string.Empty;
+        public int StopOrder { get; set; }
+        public decimal FareFromOrigin { get; set; }
+        public int? EstimatedMinutesFromDeparture { get; set; }
+        public string? Notes { get; set; }
+    }
+
     public class CreateScheduleDto
     {
         public string RouteName { get; set; } = string.Empty;
@@ -329,5 +435,6 @@ namespace MzansiFleet.Api.Controllers
         public int? ExpectedDurationMinutes { get; set; }
         public int? MaxPassengers { get; set; }
         public string Notes { get; set; }
+        public List<RouteStopDto>? Stops { get; set; }
     }
 }

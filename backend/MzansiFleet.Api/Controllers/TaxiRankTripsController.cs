@@ -540,6 +540,57 @@ namespace MzansiFleet.Api.Controllers
             return CreatedAtAction(nameof(GetById), new { id = trip.Id }, passenger);
         }
 
+        // POST: api/TaxiRankTrips/{id}/passengers/add
+        // Marshal-friendly: userId passed in body instead of JWT
+        [HttpPost("{id:guid}/passengers/add")]
+        public async Task<ActionResult<TripPassenger>> AddPassengerByMarshal(Guid id, [FromBody] AddPassengerMarshalDto dto)
+        {
+            var trip = await _tripRepository.GetByIdAsync(id);
+            if (trip == null)
+                return NotFound("Trip not found");
+
+            var passenger = new TripPassenger
+            {
+                Id = Guid.NewGuid(),
+                TaxiRankTripId = id,
+                UserId = dto.UserId ?? Guid.Empty,
+                PassengerName = dto.PassengerName,
+                PassengerPhone = dto.PassengerPhone,
+                DepartureStation = dto.DepartureStation ?? trip.DepartureStation,
+                ArrivalStation = dto.ArrivalStation ?? trip.DestinationStation,
+                Amount = dto.Amount,
+                SeatNumber = dto.SeatNumber,
+                Notes = dto.Notes,
+                BoardedAt = DateTime.UtcNow
+            };
+
+            await _passengerRepository.AddAsync(passenger);
+
+            // Update trip totals
+            trip.PassengerCount++;
+            trip.TotalAmount += passenger.Amount;
+            trip.NetAmount = trip.TotalAmount - trip.TotalCosts;
+            await _tripRepository.UpdateAsync(trip);
+
+            // Update earnings record
+            var routeName = $"{trip.DepartureStation} → {trip.DestinationStation}";
+            var earnings = _context.VehicleEarnings
+                .Where(e => e.VehicleId == trip.VehicleId &&
+                           e.Date.Date == trip.DepartureTime.Date &&
+                           e.Source == routeName)
+                .OrderByDescending(e => e.CreatedAt)
+                .FirstOrDefault();
+
+            if (earnings != null)
+            {
+                earnings.Amount = trip.TotalAmount;
+                _context.VehicleEarnings.Update(earnings);
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(passenger);
+        }
+
         // GET: api/TaxiRankTrips/{id}/passengers
         [HttpGet("{id}/passengers")]
         public async Task<ActionResult<IEnumerable<TripPassenger>>> GetPassengers(Guid id)
@@ -670,6 +721,18 @@ namespace MzansiFleet.Api.Controllers
         public string PassengerPhone { get; set; }
         public string DepartureStation { get; set; } = string.Empty;
         public string ArrivalStation { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public int? SeatNumber { get; set; }
+        public string Notes { get; set; }
+    }
+
+    public class AddPassengerMarshalDto
+    {
+        public Guid? UserId { get; set; }
+        public string PassengerName { get; set; }
+        public string PassengerPhone { get; set; }
+        public string DepartureStation { get; set; }
+        public string ArrivalStation { get; set; }
         public decimal Amount { get; set; }
         public int? SeatNumber { get; set; }
         public string Notes { get; set; }

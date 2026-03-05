@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.Interfaces.IRepositories;
 
@@ -13,6 +14,7 @@ namespace MzansiFleet.Repository.Repositories
         public IEnumerable<MechanicalRequest> GetAll() => _context.MechanicalRequests.ToList();
         public MechanicalRequest GetById(Guid id) => _context.MechanicalRequests.Find(id);
         public void Add(MechanicalRequest entity) { _context.MechanicalRequests.Add(entity); _context.SaveChanges(); }
+        public async Task AddAsync(MechanicalRequest entity) { _context.MechanicalRequests.Add(entity); await _context.SaveChangesAsync(); }
         public void Update(MechanicalRequest entity) { _context.MechanicalRequests.Update(entity); _context.SaveChanges(); }
         public void Delete(Guid id) { var entity = _context.MechanicalRequests.Find(id); if (entity != null) { _context.MechanicalRequests.Remove(entity); _context.SaveChanges(); } }
     }

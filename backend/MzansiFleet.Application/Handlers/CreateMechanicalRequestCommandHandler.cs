@@ -14,7 +14,7 @@ namespace MzansiFleet.Application.Handlers
         {
             _repository = repository;
         }
-        public Task<MechanicalRequest> Handle(CreateMechanicalRequestCommand request, CancellationToken cancellationToken)
+        public async Task<MechanicalRequest> Handle(CreateMechanicalRequestCommand request, CancellationToken cancellationToken)
         {
             var entity = new MechanicalRequest
             {
@@ -33,8 +33,8 @@ namespace MzansiFleet.Application.Handlers
                 RequestedByType = request.RequestedByType,
                 CreatedAt = System.DateTime.UtcNow
             };
-            _repository.Add(entity);
-            return Task.FromResult(entity);
+            await _repository.AddAsync(entity);
+            return entity;
         }
     }
 }

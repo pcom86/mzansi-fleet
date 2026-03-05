@@ -51,12 +51,9 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAngularApp",
         policy =>
         {
-            // Allow localhost and loopback origins (Expo/Angular dev servers vary by port)
-            // Keep credentials enabled, so we cannot use AllowAnyOrigin.
-            policy.SetIsOriginAllowed(origin =>
-                Uri.TryCreate(origin, UriKind.Absolute, out var uri)
-                && (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)))
+            // Dev: allow every origin so LAN devices, Expo Go, and browsers all work.
+            // Keep credentials enabled, so we use SetIsOriginAllowed instead of AllowAnyOrigin.
+            policy.SetIsOriginAllowed(_ => true)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -104,6 +101,7 @@ builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITaxiMars
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITaxiRankAdminRepository, MzansiFleet.Repository.Repositories.TaxiRankAdminRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IVehicleTaxiRankRepository, MzansiFleet.Repository.Repositories.VehicleTaxiRankRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITripScheduleRepository, MzansiFleet.Repository.Repositories.TripScheduleRepository>();
+builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IScheduledTripBookingRepository, MzansiFleet.Repository.Repositories.ScheduledTripBookingRepository>();
 
 // Register authentication handlers
 builder.Services.AddScoped<LoginCommandHandler>();
@@ -249,6 +247,10 @@ app.Use(async (context, next) =>
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Lightweight health-check endpoint (no auth required)
+app.MapGet("/api/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
+
 app.MapControllers();
 
 try
