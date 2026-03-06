@@ -6,7 +6,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
-import { fetchAdminByUserId, fetchSchedules, createSchedule, updateSchedule, deleteSchedule } from '../api/taxiRanks';
+import { fetchAdminByUserId, fetchSchedules, createSchedule, updateSchedule, deleteSchedule, assignVehicleToRoute, unassignVehicleFromRoute } from '../api/taxiRanks';
+import { fetchVehiclesByTenant } from '../api/vehicles';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -22,7 +23,10 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [adminProfile, setAdminProfile] = useState(null);
   const [routes, setRoutes] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
+  const [selectedRoute, setSelectedRoute] = useState(null);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -30,8 +34,6 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
   const [routeName, setRouteName] = useState('');
   const [departure, setDeparture] = useState('');
   const [destination, setDestination] = useState('');
-  const [departureTime, setDepartureTime] = useState('06:00');
-  const [frequency, setFrequency] = useState('30');
   const [selectedDays, setSelectedDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
   const [fare, setFare] = useState('');
   const [duration, setDuration] = useState('');
@@ -52,6 +54,25 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
       if (admin?.id) {
         const schedResp = await fetchSchedules(admin.id);
         setRoutes(schedResp.data || schedResp || []);
+        
+        // Load vehicles for the tenant
+        if (admin.tenantId) {
+          try {
+            console.log('Fetching vehicles for tenantId:', admin.tenantId);
+            const vehiclesResp = await fetchVehiclesByTenant(admin.tenantId);
+            const vehiclesList = vehiclesResp.data || vehiclesResp || [];
+            console.log('Loaded vehicles:', vehiclesList.length);
+            if (vehiclesList.length > 0) {
+              console.log('Sample vehicle:', vehiclesList[0]);
+            }
+            setVehicles(vehiclesList);
+          } catch (vehicleErr) {
+            console.error('Failed to load vehicles:', vehicleErr?.message, vehicleErr?.response?.data);
+            setVehicles([]);
+          }
+        } else {
+          console.warn('No tenantId found for admin:', admin);
+        }
       }
     } catch (err) {
       console.warn('Routes load error', err?.response?.data?.message || err?.message);
@@ -74,7 +95,6 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
 
   function resetForm() {
     setRouteName(''); setDeparture(''); setDestination('');
-    setDepartureTime('06:00'); setFrequency('30');
     setSelectedDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
     setFare(''); setDuration(''); setMaxPassengers(''); setNotes('');
     setStops([]);
@@ -94,9 +114,6 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     setRouteName(r.routeName || '');
     setDeparture(r.departureStation || '');
     setDestination(r.destinationStation || '');
-    const t = r.departureTime || '06:00';
-    setDepartureTime(typeof t === 'string' ? t.slice(0, 5) : '06:00');
-    setFrequency(String(r.frequencyMinutes || 30));
     setSelectedDays(r.daysOfWeek ? r.daysOfWeek.split(',') : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
     setFare(String(r.standardFare || ''));
     setDuration(r.expectedDurationMinutes ? String(r.expectedDurationMinutes) : '');
@@ -107,7 +124,6 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
       id: s.id || String(Math.random()),
       stopName: s.stopName || '',
       fareFromOrigin: String(s.fareFromOrigin || ''),
-      estimatedMinutes: s.estimatedMinutesFromDeparture ? String(s.estimatedMinutesFromDeparture) : '',
     }));
     setStops(existingStops);
     setModalVisible(true);
@@ -115,7 +131,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
 
   // Stop helpers
   function addStop() {
-    setStops(prev => [...prev, { id: String(Date.now()), stopName: '', fareFromOrigin: '', estimatedMinutes: '' }]);
+    setStops(prev => [...prev, { id: String(Date.now()), stopName: '', fareFromOrigin: '' }]);
   }
 
   function removeStop(id) {
@@ -130,13 +146,6 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     setSelectedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
   }
 
-  // Parse "HH:MM" to "HH:MM:SS" TimeSpan
-  function parseTime(str) {
-    const parts = str.split(':');
-    const h = parseInt(parts[0] || '0', 10);
-    const m = parseInt(parts[1] || '0', 10);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
-  }
 
   async function handleSave() {
     if (!routeName.trim()) return Alert.alert('Validation', 'Route name is required');
@@ -156,8 +165,8 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
       routeName: routeName.trim(),
       departureStation: departure.trim(),
       destinationStation: destination.trim(),
-      departureTime: parseTime(departureTime),
-      frequencyMinutes: parseInt(frequency, 10) || 30,
+      departureTime: '00:00:00',
+      frequencyMinutes: 0,
       daysOfWeek: selectedDays.join(','),
       standardFare: parseFloat(fare),
       expectedDurationMinutes: duration ? parseInt(duration, 10) : null,
@@ -167,7 +176,6 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
         stopName: s.stopName.trim(),
         stopOrder: i + 1,
         fareFromOrigin: parseFloat(s.fareFromOrigin),
-        estimatedMinutesFromDeparture: s.estimatedMinutes ? parseInt(s.estimatedMinutes, 10) : null,
       })),
     };
 
@@ -202,6 +210,50 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
             loadData(true);
           } catch (err) {
             Alert.alert('Error', err?.response?.data?.message || err?.message || 'Delete failed');
+          }
+        }
+      },
+    ]);
+  }
+
+  function openVehicleModal(route) {
+    console.log('Opening vehicle modal for route:', route.routeName);
+    console.log('Total vehicles available:', vehicles.length);
+    console.log('Route vehicles:', route.routeVehicles?.length || 0);
+    setSelectedRoute(route);
+    setVehicleModalVisible(true);
+  }
+
+  async function handleAssignVehicle(vehicleId) {
+    if (!adminProfile?.id || !selectedRoute?.id) {
+      console.warn('Missing data:', { adminId: adminProfile?.id, scheduleId: selectedRoute?.id });
+      return;
+    }
+    console.log('Assigning vehicle:', vehicleId, 'to route:', selectedRoute.id);
+    try {
+      await assignVehicleToRoute(adminProfile.id, selectedRoute.id, vehicleId);
+      Alert.alert('Success', 'Vehicle assigned to route');
+      setVehicleModalVisible(false);
+      loadData(true);
+    } catch (err) {
+      console.error('Assignment error:', err);
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to assign vehicle');
+    }
+  }
+
+  async function handleUnassignVehicle(vehicleId) {
+    if (!adminProfile?.id || !selectedRoute?.id) return;
+    Alert.alert('Unassign Vehicle', 'Remove this vehicle from the route?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive', onPress: async () => {
+          try {
+            await unassignVehicleFromRoute(adminProfile.id, selectedRoute.id, vehicleId);
+            Alert.alert('Success', 'Vehicle unassigned from route');
+            setVehicleModalVisible(false);
+            loadData(true);
+          } catch (err) {
+            Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to unassign vehicle');
           }
         }
       },
@@ -272,12 +324,29 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                   </TouchableOpacity>
                 </View>
                 <View style={styles.cardDetails}>
-                  <Tag icon="time-outline" label={typeof r.departureTime === 'string' ? r.departureTime.slice(0, 5) : '--:--'} c={c} />
-                  <Tag icon="repeat-outline" label={`Every ${r.frequencyMinutes}m`} c={c} />
                   <Tag icon="cash-outline" label={`R${r.standardFare}`} c={c} />
                   {r.maxPassengers && <Tag icon="people-outline" label={`${r.maxPassengers} pax`} c={c} />}
                   {r.stops?.length > 0 && <Tag icon="location-outline" label={`${r.stops.length} stop${r.stops.length > 1 ? 's' : ''}`} c={c} />}
+                  {r.routeVehicles?.length > 0 && <Tag icon="car-outline" label={`${r.routeVehicles.length} vehicle${r.routeVehicles.length > 1 ? 's' : ''}`} c={c} />}
                 </View>
+                {r.routeVehicles?.length > 0 && (
+                  <View style={styles.vehiclesRow}>
+                    <Text style={[styles.vehiclesLabel, { color: c.textMuted }]}>Vehicles:</Text>
+                    {r.routeVehicles.map(rv => (
+                      <View key={rv.id} style={[styles.vehicleChip, { backgroundColor: GOLD_LIGHT, borderColor: GOLD }]}>
+                        <Text style={[styles.vehicleChipText, { color: c.text }]}>{rv.vehicle?.registrationNumber || 'Unknown'}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <TouchableOpacity 
+                  style={[styles.manageVehiclesBtn, { backgroundColor: GOLD_LIGHT, borderColor: GOLD }]} 
+                  onPress={(e) => { e.stopPropagation(); openVehicleModal(r); }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="car-outline" size={16} color={GOLD} />
+                  <Text style={[styles.manageVehiclesText, { color: GOLD }]}>Manage Vehicles</Text>
+                </TouchableOpacity>
                 {r.stops?.length > 0 && (
                   <View style={styles.cardStops}>
                     <Text style={[styles.cardMeta, { color: c.textMuted }]}>{r.departureStation}</Text>
@@ -324,17 +393,6 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
 
               <Text style={[styles.label, { color: c.textMuted }]}>Destination Station</Text>
               <TextInput placeholder="To" placeholderTextColor={c.textMuted} value={destination} onChangeText={setDestination} style={inp} />
-
-              <View style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Departure Time</Text>
-                  <TextInput placeholder="HH:MM" placeholderTextColor={c.textMuted} value={departureTime} onChangeText={setDepartureTime} style={inp} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Frequency (min)</Text>
-                  <TextInput placeholder="30" placeholderTextColor={c.textMuted} value={frequency} onChangeText={setFrequency} style={inp} keyboardType="numeric" />
-                </View>
-              </View>
 
               <Text style={[styles.label, { color: c.textMuted }]}>Days of Operation</Text>
               <View style={styles.daysSelector}>
@@ -395,29 +453,16 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                         placeholder="Stop name"
                         placeholderTextColor={c.textMuted}
                       />
-                      <View style={styles.stopFareRow}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.stopFieldLabel, { color: c.textMuted }]}>Fare from origin (R)</Text>
-                          <TextInput
-                            value={s.fareFromOrigin}
-                            onChangeText={v => updateStop(s.id, 'fareFromOrigin', v)}
-                            style={[styles.stopInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                            placeholder="15.00"
-                            placeholderTextColor={c.textMuted}
-                            keyboardType="decimal-pad"
-                          />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.stopFieldLabel, { color: c.textMuted }]}>Est. minutes</Text>
-                          <TextInput
-                            value={s.estimatedMinutes}
-                            onChangeText={v => updateStop(s.id, 'estimatedMinutes', v)}
-                            style={[styles.stopInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                            placeholder="20"
-                            placeholderTextColor={c.textMuted}
-                            keyboardType="numeric"
-                          />
-                        </View>
+                      <View style={{ marginTop: 4 }}>
+                        <Text style={[styles.stopFieldLabel, { color: c.textMuted }]}>Fare from origin (R)</Text>
+                        <TextInput
+                          value={s.fareFromOrigin}
+                          onChangeText={v => updateStop(s.id, 'fareFromOrigin', v)}
+                          style={[styles.stopInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                          placeholder="15.00"
+                          placeholderTextColor={c.textMuted}
+                          keyboardType="decimal-pad"
+                        />
                       </View>
                     </View>
                     <TouchableOpacity onPress={() => removeStop(s.id)} style={styles.removeStopBtn}>
@@ -441,6 +486,93 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Vehicle Selection Modal */}
+      <Modal visible={vehicleModalVisible} animationType="slide" transparent onRequestClose={() => setVehicleModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: c.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Manage Vehicles</Text>
+              <TouchableOpacity onPress={() => setVehicleModalVisible(false)}>
+                <Ionicons name="close" size={24} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.modalBody}>
+              <Text style={[styles.sectionTitle, { color: c.text }]}>{selectedRoute?.routeName}</Text>
+              <Text style={[styles.sectionHint, { color: c.textMuted, marginBottom: 16 }]}>
+                {selectedRoute?.departureStation} → {selectedRoute?.destinationStation}
+              </Text>
+
+              {/* Currently Assigned Vehicles */}
+              {selectedRoute?.routeVehicles?.length > 0 && (
+                <>
+                  <Text style={[styles.label, { color: c.textMuted }]}>Assigned Vehicles</Text>
+                  {selectedRoute.routeVehicles.map(rv => (
+                    <View key={rv.id} style={[styles.vehicleItem, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.vehicleReg, { color: c.text }]}>{rv.vehicle?.registrationNumber}</Text>
+                        <Text style={[styles.vehicleMake, { color: c.textMuted }]}>
+                          {rv.vehicle?.make} {rv.vehicle?.model}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => handleUnassignVehicle(rv.vehicleId)} style={styles.unassignBtn}>
+                        <Ionicons name="close-circle" size={24} color="#dc3545" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {/* Available Vehicles to Assign */}
+              <Text style={[styles.label, { color: c.textMuted, marginTop: 20 }]}>
+                Available Vehicles ({vehicles.filter(v => !selectedRoute?.routeVehicles?.some(rv => rv.vehicleId === v.id)).length})
+              </Text>
+              {vehicles.length === 0 ? (
+                <View style={[styles.emptyState, { marginTop: 20 }]}>
+                  <Ionicons name="car-outline" size={48} color={c.textMuted} />
+                  <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 12 }]}>
+                    No vehicles found for this taxi rank
+                  </Text>
+                  <Text style={[styles.emptyHint, { color: c.textMuted, textAlign: 'center', marginTop: 4 }]}>
+                    Add vehicles to your fleet first
+                  </Text>
+                </View>
+              ) : vehicles.filter(v => !selectedRoute?.routeVehicles?.some(rv => rv.vehicleId === v.id)).length === 0 ? (
+                <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 20 }]}>
+                  All vehicles are assigned to this route
+                </Text>
+              ) : (
+                vehicles
+                  .filter(v => !selectedRoute?.routeVehicles?.some(rv => rv.vehicleId === v.id))
+                  .map(v => (
+                    <TouchableOpacity 
+                      key={v.id} 
+                      style={[styles.vehicleItem, { backgroundColor: c.surface, borderColor: GOLD, borderWidth: 1.5 }]}
+                      onPress={() => {
+                        console.log('Vehicle tapped:', v.registrationNumber, v.id);
+                        handleAssignVehicle(v.id);
+                      }}
+                      activeOpacity={0.6}
+                    >
+                      <View style={[styles.vehicleIconCircle, { backgroundColor: GOLD_LIGHT }]}>
+                        <Ionicons name="car" size={20} color={GOLD} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.vehicleReg, { color: c.text }]}>{v.registrationNumber}</Text>
+                        <Text style={[styles.vehicleMake, { color: c.textMuted }]}>
+                          {v.make} {v.model}
+                        </Text>
+                      </View>
+                      <View style={[styles.addVehicleBtn, { backgroundColor: GOLD }]}>
+                        <Ionicons name="add" size={20} color="#000" />
+                      </View>
+                    </TouchableOpacity>
+                  ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -529,4 +661,20 @@ const styles = StyleSheet.create({
   stopFareRow: { flexDirection: 'row', gap: 8 },
   stopFieldLabel: { fontSize: 10, fontWeight: '600', marginBottom: 3 },
   removeStopBtn: { paddingTop: 8 },
+
+  vehiclesRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' },
+  vehiclesLabel: { fontSize: 11, fontWeight: '600' },
+  vehicleChip: { borderWidth: 1, borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8 },
+  vehicleChipText: { fontSize: 11, fontWeight: '700' },
+  manageVehiclesBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, marginTop: 10 },
+  manageVehiclesText: { fontSize: 12, fontWeight: '700' },
+
+  vehicleItem: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10, gap: 10 },
+  vehicleReg: { fontSize: 15, fontWeight: '800' },
+  vehicleMake: { fontSize: 12, marginTop: 2 },
+  unassignBtn: { padding: 4 },
+  vehicleIconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  addVehicleBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  emptyState: { alignItems: 'center', paddingVertical: 24 },
+  emptyHint: { fontSize: 12 },
 });

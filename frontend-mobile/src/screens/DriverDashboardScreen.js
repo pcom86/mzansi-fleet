@@ -12,6 +12,7 @@ import { useAppTheme } from '../theme';
 import client from '../api/client';
 import { submitMechanicalRequestReview } from '../api/reviews';
 import RatingReviewModal from './RatingReviewModal';
+import ThemeToggle from '../components/ThemeToggle';
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 const API = {
@@ -1014,6 +1015,7 @@ export default function DriverDashboardScreen({ navigation }) {
           <Text style={s.greeting}>Hello, {profile?.name?.split(' ')[0] || user?.fullName?.split(' ')[0] || 'Driver'} 👋</Text>
           <Text style={s.subhead}>Driver Portal</Text>
         </View>
+        <ThemeToggle style={{ marginRight: 8 }} size={20} />
         <TouchableOpacity style={[s.onBadge, profile?.isAvailable ? s.onBadgeGreen : s.onBadgeGrey]} onPress={toggleAvailability}>
           <View style={[s.onDot, { backgroundColor: profile?.isAvailable ? '#22c55e' : '#9ca3af' }]} />
           <Text style={s.onTxt}>{profile?.isAvailable ? 'Online' : 'Offline'}</Text>

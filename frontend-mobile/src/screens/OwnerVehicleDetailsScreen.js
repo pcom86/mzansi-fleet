@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Button, Image, TouchableOpacity, Alert, ActivityIndicator, Modal, Platform, TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { deleteVehicle, getVehicleById, updateVehicle } from '../api/vehicles';
 import client from '../api/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { getVehicleProfitability } from '../api/vehicleFinancials';
 import { useAppTheme } from '../theme';
+import { useAuth } from '../context/AuthContext';
+import { fetchAllTaxiRanks } from '../api/taxiRanks';
+import { createLinkRequest, getRequestsByUser } from '../api/vehicleTaxiRankRequests';
 
 const IMAGE_MEDIA_TYPES =
   ImagePicker?.MediaType?.Image
@@ -32,6 +36,7 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
   const { theme } = useAppTheme();
   const c = theme.colors;
   const styles = useMemo(() => createStyles(c), [c]);
+  const { user } = useAuth();
 
   const ImageComponent = ExpoImage || Image;
   const coverProps = ExpoImage ? { contentFit: 'cover' } : { resizeMode: 'cover' };
@@ -52,6 +57,13 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [statsData, setStatsData] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  
+  // Taxi Rank Linking
+  const [linkModalVisible, setLinkModalVisible] = useState(false);
+  const [taxiRanks, setTaxiRanks] = useState([]);
+  const [selectedTaxiRank, setSelectedTaxiRank] = useState(null);
+  const [linkNotes, setLinkNotes] = useState('');
+  const [linkRequests, setLinkRequests] = useState([]);
 
   const [assignedDriver, setAssignedDriver] = useState(null);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
@@ -435,6 +447,70 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
     return `${yyyy}-${mm}-${dd}`;
   }
 
+  async function loadTaxiRanks() {
+    try {
+      const resp = await fetchAllTaxiRanks();
+      const ranks = resp.data || resp || [];
+      setTaxiRanks(ranks);
+    } catch (err) {
+      console.error('Error loading taxi ranks:', err);
+      Alert.alert('Error', 'Failed to load taxi ranks');
+    }
+  }
+
+  async function loadLinkRequests() {
+    if (!user?.userId && !user?.id) return;
+    try {
+      const requests = await getRequestsByUser(user.userId || user.id);
+      setLinkRequests(requests || []);
+    } catch (err) {
+      console.error('Error loading link requests:', err);
+      // Set empty array if loading fails - table might not exist yet or no requests
+      setLinkRequests([]);
+    }
+  }
+
+  async function handleOpenLinkModal() {
+    setLinkModalVisible(true);
+    loadTaxiRanks();
+    loadLinkRequests();
+  }
+
+  async function handleSubmitLinkRequest() {
+    if (!selectedTaxiRank) {
+      Alert.alert('Error', 'Please select a taxi rank');
+      return;
+    }
+
+    if (!vehicleData) {
+      Alert.alert('Error', 'Vehicle data not available');
+      return;
+    }
+
+    try {
+      const request = {
+        VehicleId: vehicleData.id,
+        TaxiRankId: selectedTaxiRank.id,
+        RequestedByUserId: user.userId || user.id,
+        RequestedByName: user.fullName || user.email || 'Unknown',
+        VehicleRegistration: vehicleData.registrationNumber || vehicleData.registration || '',
+        TaxiRankName: selectedTaxiRank.name,
+        Notes: linkNotes.trim() || ''
+      };
+
+      console.log('Submitting link request:', JSON.stringify(request));
+      await createLinkRequest(request);
+      Alert.alert('Success', 'Link request submitted successfully. The taxi rank manager will review your request.');
+      setLinkModalVisible(false);
+      setSelectedTaxiRank(null);
+      setLinkNotes('');
+      loadLinkRequests();
+    } catch (err) {
+      console.error('Link request error:', err?.response?.status, JSON.stringify(err?.response?.data));
+      Alert.alert('Error', err?.response?.data?.error || err?.response?.data?.details || err?.message || 'Failed to submit request');
+    }
+  }
+
   async function loadStats() {
     if (!vehicleId) return;
     try {
@@ -549,6 +625,30 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
           <Text style={styles.btnText}>Add Earning</Text>
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity
+        style={[styles.btnSecondary, { marginTop: 10 }]}
+        onPress={handleOpenLinkModal}
+        disabled={busy}
+      >
+        <Ionicons name="link" size={18} color={c.primary} style={{ marginRight: 6 }} />
+        <Text style={[styles.btnSecondaryText, { color: c.primary }]}>
+          {v.taxiRankId ? 'Linked to Taxi Rank' : 'Link to Taxi Rank'}
+        </Text>
+      </TouchableOpacity>
+
+      {linkRequests.length > 0 && (
+        <View style={[styles.requestsInfo, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <Text style={[styles.requestsTitle, { color: c.text }]}>Link Requests</Text>
+          {linkRequests.slice(0, 3).map(req => (
+            <View key={req.id} style={styles.requestRow}>
+              <Text style={[styles.requestText, { color: c.textMuted }]}>
+                {req.taxiRankName} - {req.status}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       <View style={styles.galleryActionsRow}>
         <TouchableOpacity style={[styles.btn, styles.btnSpaced]} onPress={addGalleryPhotos} disabled={busy}>
@@ -851,6 +951,68 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
           )}
         </View>
       )}
+
+      {/* Taxi Rank Link Request Modal */}
+      <Modal visible={linkModalVisible} transparent animationType="slide" onRequestClose={() => setLinkModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: c.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Link to Taxi Rank</Text>
+              <TouchableOpacity onPress={() => setLinkModalVisible(false)}>
+                <Ionicons name="close" size={28} color={c.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalContent}>
+              <Text style={[styles.modalLabel, { color: c.text }]}>Select Taxi Rank</Text>
+              {taxiRanks.length === 0 ? (
+                <Text style={[styles.modalEmpty, { color: c.textMuted }]}>No taxi ranks available</Text>
+              ) : (
+                taxiRanks.map(rank => (
+                  <TouchableOpacity
+                    key={rank.id}
+                    style={[
+                      styles.rankOption,
+                      { backgroundColor: selectedTaxiRank?.id === rank.id ? c.primary + '20' : c.background, borderColor: selectedTaxiRank?.id === rank.id ? c.primary : c.border }
+                    ]}
+                    onPress={() => setSelectedTaxiRank(rank)}
+                  >
+                    <View style={[styles.rankIcon, { backgroundColor: c.primary + '20' }]}>
+                      <Ionicons name="business" size={20} color={c.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.rankName, { color: c.text }]}>{rank.name}</Text>
+                      <Text style={[styles.rankLocation, { color: c.textMuted }]}>{rank.location || 'No location'}</Text>
+                    </View>
+                    {selectedTaxiRank?.id === rank.id && (
+                      <Ionicons name="checkmark-circle" size={24} color={c.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
+
+              <Text style={[styles.modalLabel, { color: c.text, marginTop: 16 }]}>Notes (Optional)</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                placeholder="Add any notes for the taxi rank manager..."
+                placeholderTextColor={c.textMuted}
+                value={linkNotes}
+                onChangeText={setLinkNotes}
+                multiline
+                numberOfLines={3}
+              />
+
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: c.primary, opacity: selectedTaxiRank ? 1 : 0.5 }]}
+                onPress={handleSubmitLinkRequest}
+                disabled={!selectedTaxiRank}
+              >
+                <Text style={[styles.modalSubmitText, { color: c.primaryText }]}>Submit Request</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -875,6 +1037,24 @@ function createStyles(c) {
     btnPrimaryText: { color: c.primaryText, fontWeight: '900' },
     btnDanger: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: c.danger, borderWidth: 1, borderColor: c.danger },
     btnDangerText: { color: c.primaryText, fontWeight: '900' },
+    btnSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+    btnSecondaryText: { fontWeight: '800', fontSize: 14 },
+    
+    requestsInfo: { marginTop: 12, padding: 12, borderRadius: 12, borderWidth: 1 },
+    requestsTitle: { fontSize: 13, fontWeight: '800', marginBottom: 8 },
+    requestRow: { paddingVertical: 4 },
+    requestText: { fontSize: 12 },
+    
+    modalLabel: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
+    modalEmpty: { fontSize: 13, textAlign: 'center', paddingVertical: 20 },
+    modalContent: { padding: 20 },
+    rankOption: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 12, borderWidth: 2, marginBottom: 10, gap: 12 },
+    rankIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    rankName: { fontSize: 15, fontWeight: '800' },
+    rankLocation: { fontSize: 12, marginTop: 2 },
+    modalInput: { borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 14, minHeight: 80, textAlignVertical: 'top' },
+    modalSubmitBtn: { paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 20 },
+    modalSubmitText: { fontSize: 16, fontWeight: '800' },
     mainPhotoWrap: { width: '100%', height: 180, borderRadius: 14, overflow: 'hidden', backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border },
     mainPhoto: { width: '100%', height: '100%' },
     mainPhotoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },

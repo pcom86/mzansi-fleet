@@ -116,6 +116,94 @@ namespace MzansiFleet.Api.Controllers
             var vehicles = _getVehiclesHandler.Handle(query);
             return Ok(vehicles);
         }
+
+        [HttpGet("taxirank/{taxiRankId}")]
+        public ActionResult<IEnumerable<Vehicle>> GetByTaxiRankId(Guid taxiRankId)
+        {
+            var vehicles = _context.Vehicles.Where(v => v.TaxiRankId == taxiRankId).ToList();
+            return Ok(vehicles);
+        }
+
+        [HttpPost("{vehicleId}/assign-taxirank/{taxiRankId}")]
+        public IActionResult AssignToTaxiRank(Guid vehicleId, Guid taxiRankId)
+        {
+            try
+            {
+                var vehicle = _context.Vehicles.FirstOrDefault(v => v.Id == vehicleId);
+                if (vehicle == null)
+                {
+                    return NotFound(new { error = "Vehicle not found" });
+                }
+
+                vehicle.TaxiRankId = taxiRankId;
+
+                // Also create/reactivate VehicleTaxiRank junction record
+                var existing = _context.VehicleTaxiRanks
+                    .FirstOrDefault(vtr => vtr.VehicleId == vehicleId && vtr.TaxiRankId == taxiRankId);
+                if (existing != null)
+                {
+                    existing.IsActive = true;
+                    existing.RemovedDate = null;
+                    existing.AssignedDate = DateTime.UtcNow;
+                }
+                else
+                {
+                    _context.VehicleTaxiRanks.Add(new VehicleTaxiRank
+                    {
+                        Id = Guid.NewGuid(),
+                        VehicleId = vehicleId,
+                        TaxiRankId = taxiRankId,
+                        AssignedDate = DateTime.UtcNow,
+                        IsActive = true
+                    });
+                }
+
+                _context.SaveChanges();
+
+                return Ok(new { message = "Vehicle assigned to taxi rank successfully", vehicle });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{vehicleId}/unassign-taxirank")]
+        public IActionResult UnassignFromTaxiRank(Guid vehicleId)
+        {
+            try
+            {
+                var vehicle = _context.Vehicles.FirstOrDefault(v => v.Id == vehicleId);
+                if (vehicle == null)
+                {
+                    return NotFound(new { error = "Vehicle not found" });
+                }
+
+                var oldTaxiRankId = vehicle.TaxiRankId;
+                vehicle.TaxiRankId = null;
+
+                // Also deactivate VehicleTaxiRank junction records
+                if (oldTaxiRankId.HasValue)
+                {
+                    var junctions = _context.VehicleTaxiRanks
+                        .Where(vtr => vtr.VehicleId == vehicleId && vtr.TaxiRankId == oldTaxiRankId.Value && vtr.IsActive)
+                        .ToList();
+                    foreach (var j in junctions)
+                    {
+                        j.IsActive = false;
+                        j.RemovedDate = DateTime.UtcNow;
+                    }
+                }
+
+                _context.SaveChanges();
+
+                return Ok(new { message = "Vehicle unassigned from taxi rank successfully", vehicle });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
         [HttpPost]
         public IActionResult Add([FromBody] Vehicle vehicle)
         {

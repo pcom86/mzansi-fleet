@@ -234,7 +234,7 @@ namespace MzansiFleet.Api.Controllers
                     StopOrder = s.StopOrder > 0 ? s.StopOrder : i + 1,
                     FareFromOrigin = s.FareFromOrigin,
                     EstimatedMinutesFromDeparture = s.EstimatedMinutesFromDeparture,
-                    Notes = s.Notes
+                    StopNotes = s.StopNotes
                 }).ToList();
                 _context.RouteStops.AddRange(stops);
                 await _context.SaveChangesAsync();
@@ -257,6 +257,8 @@ namespace MzansiFleet.Api.Controllers
 
             var schedules = await _context.TripSchedules
                 .Include(s => s.Stops)
+                .Include(s => s.RouteVehicles.Where(rv => rv.IsActive))
+                    .ThenInclude(rv => rv.Vehicle)
                 .Where(s => s.TaxiRankId == admin.TaxiRankId)
                 .OrderBy(s => s.RouteName)
                 .ToListAsync();
@@ -331,7 +333,7 @@ namespace MzansiFleet.Api.Controllers
                         StopOrder = s.StopOrder > 0 ? s.StopOrder : i + 1,
                         FareFromOrigin = s.FareFromOrigin,
                         EstimatedMinutesFromDeparture = s.EstimatedMinutesFromDeparture,
-                        Notes = s.Notes
+                        StopNotes = s.StopNotes
                     }).ToList();
                     _context.RouteStops.AddRange(newStops);
                 }
@@ -369,6 +371,67 @@ namespace MzansiFleet.Api.Controllers
 
             await _adminRepository.DeleteAsync(id);
             return Ok(new { message = "Admin deleted successfully" });
+        }
+
+        // POST: api/TaxiRankAdmin/{adminId}/schedules/{scheduleId}/assign-vehicle
+        [HttpPost("{adminId}/schedules/{scheduleId}/assign-vehicle")]
+        public async Task<ActionResult> AssignVehicleToRoute(Guid adminId, Guid scheduleId, [FromBody] AssignVehicleDto dto)
+        {
+            var admin = await _adminRepository.GetByIdAsync(adminId);
+            if (admin == null)
+                return NotFound(new { message = "Admin not found" });
+
+            if (!admin.CanManageSchedules)
+                return Forbid("Admin does not have permission to manage schedules");
+
+            var schedule = await _context.TripSchedules.FindAsync(scheduleId);
+            if (schedule == null)
+                return NotFound(new { message = "Schedule not found" });
+
+            // Check if vehicle is already assigned
+            var existing = await _context.RouteVehicles
+                .FirstOrDefaultAsync(rv => rv.TripScheduleId == scheduleId && rv.VehicleId == dto.VehicleId && rv.IsActive);
+            
+            if (existing != null)
+                return BadRequest(new { message = "Vehicle is already assigned to this route" });
+
+            var routeVehicle = new RouteVehicle
+            {
+                Id = Guid.NewGuid(),
+                TripScheduleId = scheduleId,
+                VehicleId = dto.VehicleId,
+                AssignedAt = DateTime.UtcNow,
+                IsActive = true,
+                Notes = dto.Notes
+            };
+
+            _context.RouteVehicles.Add(routeVehicle);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Vehicle assigned to route successfully" });
+        }
+
+        // DELETE: api/TaxiRankAdmin/{adminId}/schedules/{scheduleId}/unassign-vehicle/{vehicleId}
+        [HttpDelete("{adminId}/schedules/{scheduleId}/unassign-vehicle/{vehicleId}")]
+        public async Task<ActionResult> UnassignVehicleFromRoute(Guid adminId, Guid scheduleId, Guid vehicleId)
+        {
+            var admin = await _adminRepository.GetByIdAsync(adminId);
+            if (admin == null)
+                return NotFound(new { message = "Admin not found" });
+
+            if (!admin.CanManageSchedules)
+                return Forbid("Admin does not have permission to manage schedules");
+
+            var routeVehicle = await _context.RouteVehicles
+                .FirstOrDefaultAsync(rv => rv.TripScheduleId == scheduleId && rv.VehicleId == vehicleId && rv.IsActive);
+
+            if (routeVehicle == null)
+                return NotFound(new { message = "Vehicle assignment not found" });
+
+            routeVehicle.IsActive = false;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Vehicle unassigned from route successfully" });
         }
     }
 
@@ -408,18 +471,18 @@ namespace MzansiFleet.Api.Controllers
         public Guid MarshalId { get; set; }
     }
 
-    public class AssignVehicleDto
-    {
-        public Guid VehicleId { get; set; }
-        public string Notes { get; set; }
-    }
-
     public class RouteStopDto
     {
         public string StopName { get; set; } = string.Empty;
         public int StopOrder { get; set; }
         public decimal FareFromOrigin { get; set; }
         public int? EstimatedMinutesFromDeparture { get; set; }
+        public string? StopNotes { get; set; }
+    }
+
+    public class AssignVehicleDto
+    {
+        public Guid VehicleId { get; set; }
         public string? Notes { get; set; }
     }
 

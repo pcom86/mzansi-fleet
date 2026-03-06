@@ -94,6 +94,21 @@ export async function cancelTripBooking(bookingId, reason) {
   return resp.data;
 }
 
+// Assign vehicle to route
+export async function assignVehicleToRoute(adminId, scheduleId, vehicleId, notes) {
+  const resp = await client.post(`/TaxiRankAdmin/${adminId}/schedules/${scheduleId}/assign-vehicle`, {
+    vehicleId,
+    notes
+  });
+  return resp.data;
+}
+
+// Unassign vehicle from route
+export async function unassignVehicleFromRoute(adminId, scheduleId, vehicleId) {
+  const resp = await client.delete(`/TaxiRankAdmin/${adminId}/schedules/${scheduleId}/unassign-vehicle/${vehicleId}`);
+  return resp.data;
+}
+
 // Get bookings for a rank (admin view)
 export function fetchRankBookings(taxiRankId) {
   return client.get(`/ScheduledTripBookings/rank/${taxiRankId}`);
@@ -144,4 +159,23 @@ export function fetchTripsByRank(taxiRankId) {
 // Fetch vehicles assigned to a rank (via admin)
 export function fetchRankVehicles(adminId) {
   return client.get(`/TaxiRankAdmin/${adminId}/vehicles`);
+}
+
+// === Taxi Rank Association (linking ranks to associations/tenants) ===
+
+// Link a taxi rank to an association (tenant)
+export async function linkTaxiRankToAssociation(taxiRankId, tenantId, isPrimary = false) {
+  const resp = await client.post(`/TaxiRanks/${taxiRankId}/associations/${tenantId}?isPrimary=${isPrimary}`);
+  return resp.data;
+}
+
+// Unlink a taxi rank from an association (tenant)
+export async function unlinkTaxiRankFromAssociation(taxiRankId, tenantId) {
+  const resp = await client.delete(`/TaxiRanks/${taxiRankId}/associations/${tenantId}`);
+  return resp.data;
+}
+
+// Get all associations for a taxi rank
+export function fetchTaxiRankAssociations(taxiRankId) {
+  return client.get(`/TaxiRanks/${taxiRankId}/associations`);
 }

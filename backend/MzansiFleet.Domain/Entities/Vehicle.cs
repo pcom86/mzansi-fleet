@@ -7,6 +7,7 @@ namespace MzansiFleet.Domain.Entities
     {
         public Guid Id { get; set; }
         public Guid TenantId { get; set; }
+        public Guid? TaxiRankId { get; set; }
         public string Registration { get; set; }
         public string Make { get; set; }
         public string Model { get; set; }

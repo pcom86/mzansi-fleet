@@ -61,8 +61,10 @@ namespace MzansiFleet.Repository
         public DbSet<TaxiMarshalProfile> TaxiMarshalProfiles { get; set; }
         public DbSet<TaxiRankAdminProfile> TaxiRankAdmins { get; set; }
         public DbSet<VehicleTaxiRank> VehicleTaxiRanks { get; set; }
+        public DbSet<VehicleTaxiRankRequest> VehicleTaxiRankRequests { get; set; }
         public DbSet<TripSchedule> TripSchedules { get; set; }
         public DbSet<RouteStop> RouteStops { get; set; }
+        public DbSet<RouteVehicle> RouteVehicles { get; set; }
         public DbSet<TaxiRankAssociation> TaxiRankAssociations { get; set; }
         public DbSet<ScheduledTripBooking> ScheduledTripBookings { get; set; }
         

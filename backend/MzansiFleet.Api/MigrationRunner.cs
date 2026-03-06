@@ -308,9 +308,13 @@ namespace MzansiFleet.Api
                 ";
                 command.ExecuteNonQuery();
 
+                // Drop and recreate TripSchedules table to add Notes column
+                command.CommandText = @"DROP TABLE IF EXISTS ""TripSchedules"" CASCADE;";
+                command.ExecuteNonQuery();
+
                 // Create TripSchedules table
                 command.CommandText = @"
-                    CREATE TABLE IF NOT EXISTS ""TripSchedules"" (
+                    CREATE TABLE ""TripSchedules"" (
                         ""Id"" uuid NOT NULL,
                         ""TaxiRankId"" uuid NOT NULL,
                         ""TenantId"" uuid NOT NULL,
@@ -324,10 +328,21 @@ namespace MzansiFleet.Api
                         ""ExpectedDurationMinutes"" integer NULL,
                         ""MaxPassengers"" integer NULL,
                         ""IsActive"" boolean NOT NULL DEFAULT true,
+                        ""Notes"" text NULL,
                         ""CreatedAt"" timestamp with time zone NOT NULL DEFAULT NOW(),
                         ""UpdatedAt"" timestamp with time zone NULL,
                         CONSTRAINT ""PK_TripSchedules"" PRIMARY KEY (""Id"")
                     );
+                ";
+                command.ExecuteNonQuery();
+
+                // Add missing UserId column to TripPassengers if it doesn't exist
+                command.CommandText = @"
+                    DO $$ BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='TripPassengers' AND column_name='UserId') THEN
+                            ALTER TABLE ""TripPassengers"" ADD COLUMN ""UserId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000';
+                        END IF;
+                    END $$;
                 ";
                 command.ExecuteNonQuery();
 
@@ -344,16 +359,20 @@ namespace MzansiFleet.Api
                 command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TaxiRankAssociations_TenantId"" ON ""TaxiRankAssociations"" (""TenantId"");";
                 command.ExecuteNonQuery();
 
+                // Drop and recreate RouteStops table to fix column name
+                command.CommandText = @"DROP TABLE IF EXISTS ""RouteStops"" CASCADE;";
+                command.ExecuteNonQuery();
+
                 // RouteStops table
                 command.CommandText = @"
-                    CREATE TABLE IF NOT EXISTS ""RouteStops"" (
+                    CREATE TABLE ""RouteStops"" (
                         ""Id"" UUID NOT NULL CONSTRAINT ""PK_RouteStops"" PRIMARY KEY,
                         ""TripScheduleId"" UUID NOT NULL,
                         ""StopName"" TEXT NOT NULL,
                         ""StopOrder"" INT NOT NULL DEFAULT 1,
                         ""FareFromOrigin"" NUMERIC(18,2) NOT NULL DEFAULT 0,
                         ""EstimatedMinutesFromDeparture"" INT NULL,
-                        ""Notes"" TEXT NULL,
+                        ""StopNotes"" TEXT NULL,
                         ""CreatedAt"" TIMESTAMP NOT NULL DEFAULT NOW(),
                         CONSTRAINT ""FK_RouteStops_TripSchedules"" FOREIGN KEY (""TripScheduleId"") REFERENCES ""TripSchedules"" (""Id"") ON DELETE CASCADE
                     );
@@ -361,6 +380,27 @@ namespace MzansiFleet.Api
                 command.ExecuteNonQuery();
 
                 command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_RouteStops_TripScheduleId"" ON ""RouteStops"" (""TripScheduleId"");";
+                command.ExecuteNonQuery();
+
+                // RouteVehicles table (many-to-many junction)
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ""RouteVehicles"" (
+                        ""Id"" UUID NOT NULL CONSTRAINT ""PK_RouteVehicles"" PRIMARY KEY,
+                        ""TripScheduleId"" UUID NOT NULL,
+                        ""VehicleId"" UUID NOT NULL,
+                        ""AssignedAt"" TIMESTAMP NOT NULL DEFAULT NOW(),
+                        ""IsActive"" BOOLEAN NOT NULL DEFAULT true,
+                        ""Notes"" TEXT NULL,
+                        CONSTRAINT ""FK_RouteVehicles_TripSchedules"" FOREIGN KEY (""TripScheduleId"") REFERENCES ""TripSchedules"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_RouteVehicles_Vehicles"" FOREIGN KEY (""VehicleId"") REFERENCES ""Vehicles"" (""Id"") ON DELETE CASCADE
+                    );
+                ";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_RouteVehicles_TripScheduleId"" ON ""RouteVehicles"" (""TripScheduleId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_RouteVehicles_VehicleId"" ON ""RouteVehicles"" (""VehicleId"");";
                 command.ExecuteNonQuery();
 
                 // ScheduledTripBookings table
@@ -397,8 +437,52 @@ namespace MzansiFleet.Api
                 command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_ScheduledTripBookings_TaxiRankId"" ON ""ScheduledTripBookings"" (""TaxiRankId"");";
                 command.ExecuteNonQuery();
 
+                // Add TaxiRankId column to Vehicles table
+                command.CommandText = @"
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'Vehicles' AND column_name = 'TaxiRankId'
+                        ) THEN
+                            ALTER TABLE ""Vehicles"" ADD COLUMN ""TaxiRankId"" UUID NULL;
+                            CREATE INDEX IF NOT EXISTS ""IX_Vehicles_TaxiRankId"" ON ""Vehicles"" (""TaxiRankId"");
+                        END IF;
+                    END $$;
+                ";
+                command.ExecuteNonQuery();
+
+                // Create VehicleTaxiRankRequests table
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ""VehicleTaxiRankRequests"" (
+                        ""Id"" UUID NOT NULL CONSTRAINT ""PK_VehicleTaxiRankRequests"" PRIMARY KEY,
+                        ""VehicleId"" UUID NOT NULL,
+                        ""TaxiRankId"" UUID NOT NULL,
+                        ""RequestedByUserId"" UUID NOT NULL,
+                        ""RequestedByName"" TEXT NOT NULL,
+                        ""VehicleRegistration"" TEXT NOT NULL,
+                        ""TaxiRankName"" TEXT NOT NULL,
+                        ""Status"" TEXT NOT NULL DEFAULT 'Pending',
+                        ""Notes"" TEXT,
+                        ""RequestedAt"" TIMESTAMP NOT NULL DEFAULT NOW(),
+                        ""ReviewedAt"" TIMESTAMP,
+                        ""ReviewedByUserId"" UUID,
+                        ""ReviewedByName"" TEXT,
+                        ""RejectionReason"" TEXT
+                    );
+                ";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_VehicleTaxiRankRequests_VehicleId"" ON ""VehicleTaxiRankRequests"" (""VehicleId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_VehicleTaxiRankRequests_TaxiRankId"" ON ""VehicleTaxiRankRequests"" (""TaxiRankId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_VehicleTaxiRankRequests_Status"" ON ""VehicleTaxiRankRequests"" (""Status"");";
+                command.ExecuteNonQuery();
+
                 Console.WriteLine("Taxi rank tables created successfully!");
-                
                 connection.Close();
             }
             catch (Exception ex)

@@ -40,9 +40,12 @@ import RentalMarketplaceScreen from './src/screens/RentalMarketplaceScreen';
 import TaxiRankRoleSelectionScreen from './src/screens/TaxiRankRoleSelectionScreen';
 import TaxiRankRoutesScreen from './src/screens/TaxiRankRoutesScreen';
 import TaxiRankEditScreen from './src/screens/TaxiRankEditScreen';
+import TaxiRankVehiclesScreen from './src/screens/TaxiRankVehiclesScreen';
 import BookTripScreen from './src/screens/BookTripScreen';
 import CaptureTripScreen from './src/screens/CaptureTripScreen';
 import MyBookingsScreen from './src/screens/MyBookingsScreen';
+import AdminTripDetailsScreen from './src/screens/AdminTripDetailsScreen';
+import CreateTripScheduleScreen from './src/screens/CreateTripScheduleScreen';
 import { ConnectivityProvider } from './src/context/ConnectivityContext';
 import BackendStatusBanner from './src/components/BackendStatusBanner';
 
@@ -132,9 +135,12 @@ function AppNavigator() {
           <Stack.Screen name="TaxiRankDetails" component={TaxiRankDetailsScreen} />
           <Stack.Screen name="TaxiRankRoutes" component={TaxiRankRoutesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TaxiRankEdit" component={TaxiRankEditScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TaxiRankVehicles" component={TaxiRankVehiclesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="BookTrip" component={BookTripScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CaptureTrip" component={CaptureTripScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MyBookings" component={MyBookingsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="AdminTripDetails" component={AdminTripDetailsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CreateTripSchedule" component={CreateTripScheduleScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

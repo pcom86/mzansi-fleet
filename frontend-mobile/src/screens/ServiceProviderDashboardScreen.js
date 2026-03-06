@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { getMyServiceProviderProfile, toggleServiceProviderAvailability } from '../api/serviceProviderProfiles';
 import { getMyProviderBookings } from '../api/maintenance';
 import { LinearGradient } from 'expo-linear-gradient';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function ServiceProviderDashboardScreen({ navigation }) {
   const { theme, mode, setMode } = useAppTheme();
@@ -150,10 +151,9 @@ export default function ServiceProviderDashboardScreen({ navigation }) {
               <Ionicons name={profile?.isAvailable ? 'radio-button-on' : 'radio-button-off'} size={20} color="#fff" />
               <Text style={styles.quickActionText}>{profile?.isAvailable ? 'Available' : 'Unavailable'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.quickActionBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]} onPress={onToggleTheme}>
-              <Ionicons name={mode === 'light' ? 'moon-outline' : 'sunny-outline'} size={20} color="#fff" />
-              <Text style={styles.quickActionText}>{mode === 'light' ? 'Dark' : 'Light'}</Text>
-            </TouchableOpacity>
+            <View style={[styles.quickActionBtn, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+              <ThemeToggle showBackground={false} size={20} />
+            </View>
           </View>
         </View>
       </LinearGradient>
@@ -300,45 +300,56 @@ export default function ServiceProviderDashboardScreen({ navigation }) {
       {profile && (
         <View style={styles.actionSection}>
           <Text style={[styles.sectionTitle, { color: c.text }]}>Quick Actions</Text>
-          <View style={styles.actionButtons}>
+          <View style={styles.quickActionsGrid}>
             <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: '#8b5cf6' }]}
-              onPress={() => navigation.navigate('SPScheduleManager')}
-            >
-              <View style={styles.actionBtnContent}>
-                <Ionicons name="calendar-number-outline" size={20} color="#fff" />
-                <View>
-                  <Text style={styles.actionBtnTitle}>Daily Schedule</Text>
-                  <Text style={styles.actionBtnSub}>Manage today's jobs</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="#fff" opacity={0.6} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]}
+              style={[styles.quickActionCard, { backgroundColor: c.surface, borderColor: c.border }]}
               onPress={() => navigation.navigate('SPBookings')}
+              activeOpacity={0.7}
             >
-              <View style={styles.actionBtnContent}>
-                <Ionicons name="calendar-outline" size={20} color="#fff" />
-                <View>
-                  <Text style={styles.actionBtnTitle}>My Bookings</Text>
-                  <Text style={styles.actionBtnSub}>View all appointments</Text>
-                </View>
+              <View style={[styles.quickActionIconWrap, { backgroundColor: '#3b82f620' }]}>
+                <Ionicons name="calendar" size={24} color="#3b82f6" />
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#fff" opacity={0.6} />
+              <Text style={[styles.quickActionTitle, { color: c.text }]}>Bookings</Text>
+              <Text style={[styles.quickActionCount, { color: '#3b82f6' }]}>{bookingStats.total}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.quickActionCard, { backgroundColor: c.surface, borderColor: c.border }]}
+              onPress={() => navigation.navigate('SPScheduleManager')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickActionIconWrap, { backgroundColor: '#8b5cf620' }]}>
+                <Ionicons name="time" size={24} color="#8b5cf6" />
+              </View>
+              <Text style={[styles.quickActionTitle, { color: c.text }]}>Schedule</Text>
+              <Text style={[styles.quickActionCount, { color: '#8b5cf6' }]}>Today</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.quickActionCard, { backgroundColor: c.surface, borderColor: c.border }]}
+              onPress={() => navigation.navigate('SPJobHistory')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickActionIconWrap, { backgroundColor: '#10b98120' }]}>
+                <Ionicons name="checkmark-done" size={24} color="#10b981" />
+              </View>
+              <Text style={[styles.quickActionTitle, { color: c.text }]}>Completed</Text>
+              <Text style={[styles.quickActionCount, { color: '#10b981' }]}>{earnings.jobsCompleted}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.quickActionCard, { backgroundColor: c.surface, borderColor: c.border }]}
+              onPress={() => navigation.navigate('ServiceProviderEdit', { profile })}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickActionIconWrap, { backgroundColor: c.primary + '20' }]}>
+                <Ionicons name="settings" size={24} color={c.primary} />
+              </View>
+              <Text style={[styles.quickActionTitle, { color: c.text }]}>Settings</Text>
+              <Text style={[styles.quickActionCount, { color: c.primary }]}>Profile</Text>
             </TouchableOpacity>
           </View>
         </View>
-      )}
-
-      {profile && (
-        <TouchableOpacity
-          style={[styles.editBtn, { backgroundColor: c.primary }]}
-          onPress={() => navigation.navigate('ServiceProviderEdit', { profile })}
-        >
-          <Ionicons name="create-outline" size={18} color="#fff" />
-          <Text style={styles.editBtnTxt}>Edit Profile</Text>
-        </TouchableOpacity>
       )}
 
       <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
@@ -450,11 +461,11 @@ function createStyles(c) {
 
     // Action Section
     actionSection: { marginBottom: 20 },
-    actionButtons: { paddingHorizontal: 16, gap: 12 },
-    actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16 },
-    actionBtnContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    actionBtnTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-    actionBtnSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 2 },
+    quickActionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 16 },
+    quickActionCard: { width: (width - 44) / 2, padding: 16, borderRadius: 16, borderWidth: 1, alignItems: 'center' },
+    quickActionIconWrap: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+    quickActionTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+    quickActionCount: { fontSize: 16, fontWeight: '800' },
 
     // Empty State
     emptyCard: { alignItems: 'center', backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 16, paddingVertical: 32, paddingHorizontal: 16, marginHorizontal: 16, marginBottom: 20 },

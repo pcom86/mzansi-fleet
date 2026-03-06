@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  StyleSheet, Alert, RefreshControl, Dimensions, Platform,
+  StyleSheet, Alert, RefreshControl, Dimensions, Platform, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
-import { fetchTaxiRanks, fetchMarshals, fetchTrips } from '../api/taxiRanks';
+import { fetchTaxiRanks, fetchMarshals, fetchTrips, fetchAllTaxiRanks, linkTaxiRankToAssociation } from '../api/taxiRanks';
+import ThemeToggle from '../components/ThemeToggle';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -28,6 +29,13 @@ export default function TaxiRankDashboardScreen({ navigation }) {
   const [marshals, setMarshals] = useState([]);
   const [trips, setTrips] = useState([]);
   const [activeRank, setActiveRank] = useState(null);
+
+  // Link taxi rank modal state
+  const [linkModalVisible, setLinkModalVisible] = useState(false);
+  const [allRanks, setAllRanks] = useState([]);
+  const [rankSearchQuery, setRankSearchQuery] = useState('');
+  const [loadingAllRanks, setLoadingAllRanks] = useState(false);
+  const [linking, setLinking] = useState(false);
 
   const loadData = useCallback(async (silent = false) => {
     if (!user || !hasTenant) return;
@@ -61,6 +69,59 @@ export default function TaxiRankDashboardScreen({ navigation }) {
   useEffect(() => { loadData(); }, [loadData]);
 
   const onRefresh = () => { setRefreshing(true); loadData(true); };
+
+  async function handleOpenLinkModal() {
+    setLinkModalVisible(true);
+    setRankSearchQuery('');
+    setLoadingAllRanks(true);
+    try {
+      const resp = await fetchAllTaxiRanks();
+      const ranks = resp.data || resp || [];
+      // Filter out ranks already linked to this association
+      const linkedIds = new Set(taxiRanks.map(r => r.id));
+      const available = ranks.filter(r => !linkedIds.has(r.id));
+      setAllRanks(available);
+    } catch (err) {
+      console.error('Error loading taxi ranks:', err);
+      Alert.alert('Error', 'Failed to load available taxi ranks');
+    } finally {
+      setLoadingAllRanks(false);
+    }
+  }
+
+  async function handleLinkRank(rank) {
+    Alert.alert(
+      'Link Taxi Rank',
+      `Link "${rank.name}" to your association?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Link',
+          onPress: async () => {
+            try {
+              setLinking(true);
+              await linkTaxiRankToAssociation(rank.id, user.tenantId);
+              Alert.alert('Success', `"${rank.name}" has been linked to your association`);
+              setLinkModalVisible(false);
+              loadData(true);
+            } catch (err) {
+              Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to link taxi rank');
+            } finally {
+              setLinking(false);
+            }
+          }
+        }
+      ]
+    );
+  }
+
+  const filteredRanks = rankSearchQuery.trim()
+    ? allRanks.filter(r =>
+        (r.name || '').toLowerCase().includes(rankSearchQuery.toLowerCase()) ||
+        (r.code || '').toLowerCase().includes(rankSearchQuery.toLowerCase()) ||
+        (r.city || '').toLowerCase().includes(rankSearchQuery.toLowerCase())
+      )
+    : allRanks;
 
   // Derived stats
   const todayTrips = trips.filter(t => {
@@ -109,6 +170,9 @@ export default function TaxiRankDashboardScreen({ navigation }) {
               </Text>
               <Text style={styles.headerRole}>{roleLabel} Portal</Text>
             </View>
+            <View style={{ marginRight: 8 }}>
+              <ThemeToggle showBackground={false} size={24} />
+            </View>
             <TouchableOpacity style={styles.headerAvatar} onPress={() => {}}>
               <Ionicons name="person-circle-outline" size={34} color="#fff" />
             </TouchableOpacity>
@@ -151,10 +215,28 @@ export default function TaxiRankDashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('TaxiRankRoutes', { rank: activeRank })}
           />
           <ActionCard
+            icon="car-sport-outline" title="Fleet Management"
+            desc="Assign and manage vehicles for this rank"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('TaxiRankVehicles')}
+          />
+          <ActionCard
             icon="create-outline" title="Edit Rank Details"
             desc="Update rank name, address, hours & status"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
             onPress={() => navigation.navigate('TaxiRankEdit', { rank: activeRank })}
+          />
+          <ActionCard
+            icon="calendar-outline" title="Create Trip Schedule"
+            desc="Plan daily trip rosters and assign vehicles"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('CreateTripSchedule')}
+          />
+          <ActionCard
+            icon="document-text-outline" title="Capture Trip Details"
+            desc="Capture trips, view history & revenue analytics"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('AdminTripDetails')}
           />
           <ActionCard
             icon="add-circle-outline" title="Capture Trip"
@@ -191,6 +273,12 @@ export default function TaxiRankDashboardScreen({ navigation }) {
             desc="Report and track incidents at your rank"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
             onPress={() => {}}
+          />
+          <ActionCard
+            icon="link-outline" title="Link Taxi Rank"
+            desc="Link another taxi rank to your association"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={handleOpenLinkModal}
           />
         </View>
 
@@ -251,6 +339,91 @@ export default function TaxiRankDashboardScreen({ navigation }) {
           </>
         )}
       </ScrollView>
+
+      {/* ====== LINK TAXI RANK MODAL ====== */}
+      <Modal visible={linkModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: c.background }]}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Link Taxi Rank</Text>
+              <TouchableOpacity onPress={() => setLinkModalVisible(false)}>
+                <Ionicons name="close" size={24} color={c.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modalSubtitle, { color: c.textMuted }]}>
+              Search and link a taxi rank to your association
+            </Text>
+
+            {/* Search Input */}
+            <View style={[styles.searchRow, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <Ionicons name="search" size={18} color={c.textMuted} />
+              <TextInput
+                style={[styles.searchInput, { color: c.text }]}
+                placeholder="Search by name, code or city..."
+                placeholderTextColor={c.textMuted}
+                value={rankSearchQuery}
+                onChangeText={setRankSearchQuery}
+              />
+              {rankSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setRankSearchQuery('')}>
+                  <Ionicons name="close-circle" size={18} color={c.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Results */}
+            {loadingAllRanks ? (
+              <View style={styles.modalCenter}>
+                <ActivityIndicator size="large" color={GOLD} />
+                <Text style={[{ color: c.textMuted, marginTop: 8, fontSize: 13 }]}>Loading taxi ranks...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList} contentContainerStyle={{ paddingBottom: 16 }}>
+                {filteredRanks.length === 0 ? (
+                  <View style={styles.modalCenter}>
+                    <Ionicons name="search-outline" size={40} color={c.textMuted} />
+                    <Text style={[{ color: c.textMuted, marginTop: 8, fontSize: 13, textAlign: 'center' }]}>
+                      {rankSearchQuery.trim() ? 'No taxi ranks match your search' : 'No available taxi ranks to link'}
+                    </Text>
+                  </View>
+                ) : (
+                  filteredRanks.map(rank => (
+                    <TouchableOpacity
+                      key={rank.id}
+                      style={[styles.rankLinkItem, { backgroundColor: c.surface, borderColor: c.border }]}
+                      onPress={() => handleLinkRank(rank)}
+                      disabled={linking}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.rankLinkIcon, { backgroundColor: GOLD_LIGHT }]}>
+                        <Ionicons name="location-outline" size={20} color={GOLD} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.rankLinkName, { color: c.text }]}>{rank.name}</Text>
+                        <Text style={[styles.rankLinkMeta, { color: c.textMuted }]}>
+                          {[rank.code, rank.city, rank.province].filter(Boolean).join(' · ')}
+                        </Text>
+                        {rank.address ? (
+                          <Text style={[styles.rankLinkMeta, { color: c.textMuted }]} numberOfLines={1}>{rank.address}</Text>
+                        ) : null}
+                      </View>
+                      <Ionicons name="add-circle" size={24} color={GOLD} />
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            )}
+
+            {linking && (
+              <View style={styles.linkingOverlay}>
+                <ActivityIndicator size="large" color={GOLD} />
+                <Text style={{ color: '#fff', marginTop: 8, fontWeight: '700' }}>Linking...</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* ====== BOTTOM BAR ====== */}
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
@@ -370,4 +543,20 @@ const styles = StyleSheet.create({
   noTenantTitle: { fontSize: 18, fontWeight: '800' },
   noTenantSub: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
   loadingText: { marginTop: 12, fontSize: 13 },
+
+  /* Link Taxi Rank Modal */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  modalTitle: { fontSize: 18, fontWeight: '900' },
+  modalSubtitle: { fontSize: 13, marginBottom: 12 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 6, gap: 8, marginBottom: 12 },
+  searchInput: { flex: 1, fontSize: 14 },
+  modalList: { flex: 1 },
+  modalCenter: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
+  rankLinkItem: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 8, gap: 10 },
+  rankLinkIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  rankLinkName: { fontSize: 14, fontWeight: '700' },
+  rankLinkMeta: { fontSize: 11, marginTop: 2 },
+  linkingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)', borderTopLeftRadius: 20, borderTopRightRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });

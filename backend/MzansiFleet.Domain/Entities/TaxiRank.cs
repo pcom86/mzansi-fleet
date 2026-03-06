@@ -137,6 +137,7 @@ namespace MzansiFleet.Domain.Entities
         public TaxiRank? TaxiRank { get; set; }
         public Tenant? Tenant { get; set; }
         public ICollection<RouteStop> Stops { get; set; } = new List<RouteStop>();
+        public ICollection<RouteVehicle> RouteVehicles { get; set; } = new List<RouteVehicle>();
     }
 
     /// <summary>
@@ -150,10 +151,11 @@ namespace MzansiFleet.Domain.Entities
         public int StopOrder { get; set; }          // 1-based order along the route
         public decimal FareFromOrigin { get; set; } // Fare to board at origin and alight here
         public int? EstimatedMinutesFromDeparture { get; set; }
-        public string? Notes { get; set; }
+        public string? StopNotes { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation Properties
+        [System.Text.Json.Serialization.JsonIgnore]
         public TripSchedule? TripSchedule { get; set; }
     }
 
@@ -352,5 +354,23 @@ namespace MzansiFleet.Domain.Entities
         public User? User { get; set; }
         public TripSchedule? TripSchedule { get; set; }
         public TaxiRank? TaxiRank { get; set; }
+    }
+
+    /// <summary>
+    /// Junction table linking vehicles to routes (many-to-many)
+    /// </summary>
+    public class RouteVehicle
+    {
+        public Guid Id { get; set; }
+        public Guid TripScheduleId { get; set; }
+        public Guid VehicleId { get; set; }
+        public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
+        public bool IsActive { get; set; } = true;
+        public string? Notes { get; set; }
+
+        // Navigation Properties
+        [System.Text.Json.Serialization.JsonIgnore]
+        public TripSchedule? TripSchedule { get; set; }
+        public Vehicle? Vehicle { get; set; }
     }
 }

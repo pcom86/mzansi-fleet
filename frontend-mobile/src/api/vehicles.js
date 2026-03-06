@@ -35,3 +35,23 @@ export async function getVehiclesByOwner(ownerId) {
   const all = await getAllVehicles();
   return (all || []).filter(v => v.ownerId === ownerId || v.ownerId === ownerId?.toString());
 }
+
+export async function fetchVehiclesByTenant(tenantId) {
+  return getVehiclesByTenantId(tenantId);
+}
+
+export async function getVehiclesByTaxiRank(taxiRankId) {
+  if (!taxiRankId) return [];
+  const resp = await client.get(`/Vehicles/taxirank/${taxiRankId}`);
+  return resp.data || [];
+}
+
+export async function assignVehicleToTaxiRank(vehicleId, taxiRankId) {
+  const resp = await client.post(`/Vehicles/${vehicleId}/assign-taxirank/${taxiRankId}`);
+  return resp.data;
+}
+
+export async function unassignVehicleFromTaxiRank(vehicleId) {
+  const resp = await client.post(`/Vehicles/${vehicleId}/unassign-taxirank`);
+  return resp.data;
+}

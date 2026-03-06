@@ -6,22 +6,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { PieChart, StackedBarChart } from 'react-native-chart-kit';
 
 // helper for pie chart data with zero fallback
-function buildPieData(earnings, expenses) {
+function buildPieData(earnings, expenses, mode = 'light') {
   const e = Number(earnings) || 0;
   const x = Number(expenses) || 0;
   const p = e - x;
+  const legendColor = mode === 'dark' ? '#e5e7eb' : '#000';
+  
   if (e === 0 && x === 0) {
-    return [{ name: 'None', amount: 1, color: '#ccc', legendFontColor: '#666', legendFontSize: 10 }];
+    return [{ name: 'None', amount: 1, color: '#ccc', legendFontColor: mode === 'dark' ? '#9ca3af' : '#666', legendFontSize: 10 }];
   }
   const arr = [];
-  if (e > 0) arr.push({ name: 'Earnings', amount: e, color: '#059669', legendFontColor: '#000', legendFontSize: 10 });
-  if (x > 0) arr.push({ name: 'Expenses', amount: x, color: '#dc2626', legendFontColor: '#000', legendFontSize: 10 });
+  if (e > 0) arr.push({ name: 'Earnings', amount: e, color: '#059669', legendFontColor: legendColor, legendFontSize: 10 });
+  if (x > 0) arr.push({ name: 'Expenses', amount: x, color: '#dc2626', legendFontColor: legendColor, legendFontSize: 10 });
   if (p !== 0) {
     arr.push({
       name: p >= 0 ? 'Profit' : 'Loss',
       amount: Math.abs(p),
       color: p >= 0 ? '#374151' : '#991b1b',
-      legendFontColor: '#000',
+      legendFontColor: legendColor,
       legendFontSize: 10
     });
   }
@@ -34,6 +36,7 @@ import { approveMechanicalRequest, completeMechanicalRequest, declineMechanicalR
 import { getUnreadCount } from '../api/messaging';
 import { getCurrentMonthRange, getOwnerAnalyticsDashboard } from '../api/analytics';
 import { useAppTheme } from '../theme';
+import ThemeToggle from '../components/ThemeToggle';
 
 function stateColor(state) {
   switch ((state || '').toLowerCase()) {
@@ -405,6 +408,7 @@ export default function OwnerDashboardScreen({ navigation }) {
           <Text style={styles.greeting}>Hello, {user?.fullName?.split(' ')[0] || 'Owner'} 👋</Text>
           <Text style={styles.subhead}>Owner Portal · This Month</Text>
         </View>
+        <ThemeToggle style={{ marginRight: 8 }} size={20} />
         <TouchableOpacity style={styles.headerNotifBtn} onPress={() => setTab('messages')}>
           <Ionicons name="notifications-outline" size={20} color={unreadMessages > 0 ? c.primary : c.textMuted} />
           {unreadMessages > 0 && <View style={styles.notifDot} />}
@@ -452,15 +456,25 @@ export default function OwnerDashboardScreen({ navigation }) {
 
             {/* Chart */}
             <View style={styles.chartCard}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={styles.sectionTitle}>Fleet Earnings vs Expenses</Text>
-                <Text style={styles.sectionSubTitle}>This Month</Text>
+              <View style={styles.chartHeader}>
+                <View style={styles.chartHeaderIcon}>
+                  <Ionicons name="bar-chart" size={20} color={c.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.chartTitle}>Fleet Performance</Text>
+                  <Text style={styles.chartSubtitle}>Earnings vs Expenses · This Month</Text>
+                </View>
               </View>
-              <View style={styles.legendRow}>
-                {[['#10b981','Earnings'],['#f87171','Expenses'],['#d1d5db','Profit']].map(([col, lbl]) => (
-                  <View key={lbl} style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: col }]} />
-                    <Text style={styles.legendText}>{lbl}</Text>
+              
+              <View style={styles.modernLegendRow}>
+                {[
+                  { color: '#10b981', label: 'Earnings', icon: 'trending-up' },
+                  { color: '#f87171', label: 'Expenses', icon: 'trending-down' },
+                  { color: '#8b5cf6', label: 'Profit', icon: 'cash' }
+                ].map((item) => (
+                  <View key={item.label} style={[styles.modernLegendItem, { backgroundColor: item.color + '15' }]}>
+                    <Ionicons name={item.icon} size={14} color={item.color} />
+                    <Text style={[styles.modernLegendText, { color: c.text }]}>{item.label}</Text>
                   </View>
                 ))}
               </View>
@@ -469,9 +483,9 @@ export default function OwnerDashboardScreen({ navigation }) {
                   <StackedBarChart
                     data={vehicleChartData} width={vehicleChartWidth} height={240} yAxisLabel="R"
                     fromZero withInnerLines segments={4}
-                    chartConfig={{ ...chartConfig, color: () => '#111827', decimalPlaces: 0,
+                    chartConfig={{ ...chartConfig, color: (opacity = 1) => mode === 'dark' ? `rgba(229, 231, 235, ${opacity})` : `rgba(17, 24, 39, ${opacity})`, decimalPlaces: 0,
                       formatYLabel: y => { const n = Number(y); return Number.isFinite(n) ? String(Math.round(n)) : String(y); },
-                      propsForLabels: { fontSize: 9 }, propsForBackgroundLines: { stroke: '#e5e7eb', strokeDasharray: '0' } }}
+                      propsForLabels: { fontSize: 9 }, propsForBackgroundLines: { stroke: mode === 'dark' ? '#374151' : '#e5e7eb', strokeDasharray: '0' } }}
                     style={styles.chart}
                   />
                 </ScrollView>
@@ -479,15 +493,33 @@ export default function OwnerDashboardScreen({ navigation }) {
 
               {vehiclePerfRows.length > 0 && (
                 <View style={styles.breakdownWrap}>
-                  <Text style={styles.breakdownTitle}>Per Vehicle</Text>
-                  {vehiclePerfRows.slice(0, 6).map(r => (
-                    <View key={r.id} style={styles.breakdownRow}>
-                      <Text style={styles.breakdownLabel}>{r.label}</Text>
-                      <Text style={styles.breakdownE}>+{currency(r.earnings)}</Text>
-                      <Text style={styles.breakdownX}>-{currency(r.expenses)}</Text>
-                      <Text style={[styles.breakdownP, { color: r.profit >= 0 ? '#059669' : '#dc2626' }]}>
-                        {r.profit >= 0 ? '+' : '-'}{currency(Math.abs(r.profit))}
-                      </Text>
+                  <View style={styles.breakdownHeader}>
+                    <Ionicons name="car-sport" size={16} color={c.primary} />
+                    <Text style={styles.breakdownTitle}>Top Performers</Text>
+                  </View>
+                  {vehiclePerfRows.slice(0, 5).map((r, idx) => (
+                    <View key={r.id} style={[styles.modernBreakdownRow, { backgroundColor: c.surface2 }]}>
+                      <View style={styles.vehicleRank}>
+                        <Text style={[styles.rankNumber, { color: idx === 0 ? '#f59e0b' : c.textMuted }]}>#{idx + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.breakdownLabel, { color: c.text }]}>{r.label}</Text>
+                        <View style={styles.miniMetrics}>
+                          <View style={styles.miniMetric}>
+                            <Ionicons name="arrow-up" size={10} color="#10b981" />
+                            <Text style={styles.miniMetricText}>{currency(r.earnings)}</Text>
+                          </View>
+                          <View style={styles.miniMetric}>
+                            <Ionicons name="arrow-down" size={10} color="#f87171" />
+                            <Text style={styles.miniMetricText}>{currency(r.expenses)}</Text>
+                          </View>
+                        </View>
+                      </View>
+                      <View style={[styles.profitBadge, { backgroundColor: r.profit >= 0 ? '#10b98115' : '#ef444415' }]}>
+                        <Text style={[styles.profitBadgeText, { color: r.profit >= 0 ? '#10b981' : '#ef4444' }]}>
+                          {r.profit >= 0 ? '+' : ''}{currency(r.profit)}
+                        </Text>
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -610,7 +642,7 @@ export default function OwnerDashboardScreen({ navigation }) {
                         </View>
                       </View>
                       <View style={styles.pieWrap}>
-                        <PieChart data={buildPieData(item.earnings, item.expenses)} width={96} height={96} chartConfig={chartConfig} accessor="amount" backgroundColor="transparent" paddingLeft="14" hasLegend={false} />
+                        <PieChart data={buildPieData(item.earnings, item.expenses, mode)} width={96} height={96} chartConfig={chartConfig} accessor="amount" backgroundColor="transparent" paddingLeft="14" hasLegend={false} />
                       </View>
                     </View>
 
@@ -804,16 +836,38 @@ function createStyles(c) {
     emptyTxt: { fontSize: 13, color: c.textMuted, marginTop: 4 },
 
     // ── Chart ──
-    chartCard: { backgroundColor: c.surface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: c.border, marginBottom: 16 },
-    chart: { borderRadius: 12, alignSelf: 'center' },
+    chartCard: { backgroundColor: c.surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: c.border, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
+    chart: { borderRadius: 12, alignSelf: 'center', marginTop: 8 },
+    
+    chartHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 12 },
+    chartHeaderIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: c.primary + '15', alignItems: 'center', justifyContent: 'center' },
+    chartTitle: { fontSize: 17, fontWeight: '800', color: c.text },
+    chartSubtitle: { fontSize: 12, color: c.textMuted, marginTop: 2, fontWeight: '500' },
+    
+    modernLegendRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+    modernLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+    modernLegendText: { fontSize: 12, fontWeight: '700' },
+    
+    breakdownWrap: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: c.border },
+    breakdownHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+    breakdownTitle: { fontSize: 14, fontWeight: '800', color: c.text },
+    
+    modernBreakdownRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 8, gap: 12 },
+    vehicleRank: { width: 32, height: 32, borderRadius: 8, backgroundColor: c.background, alignItems: 'center', justifyContent: 'center' },
+    rankNumber: { fontSize: 13, fontWeight: '900' },
+    breakdownLabel: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+    miniMetrics: { flexDirection: 'row', gap: 12, marginTop: 2 },
+    miniMetric: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    miniMetricText: { fontSize: 11, fontWeight: '600', color: c.textMuted },
+    profitBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+    profitBadgeText: { fontSize: 13, fontWeight: '800' },
+    
+    // Legacy chart styles (kept for compatibility)
     legendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingVertical: 10 },
     legendItem: { flexDirection: 'row', alignItems: 'center' },
     legendDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
     legendText: { fontSize: 12, color: c.text, fontWeight: '600' },
-    breakdownWrap: { marginTop: 12, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 12 },
-    breakdownTitle: { fontSize: 13, fontWeight: '800', color: c.text, marginBottom: 8 },
     breakdownRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
-    breakdownLabel: { flex: 1.4, fontSize: 12, fontWeight: '600', color: c.text },
     breakdownE: { flex: 1, textAlign: 'right', fontSize: 12, fontWeight: '700', color: '#10b981' },
     breakdownX: { flex: 1, textAlign: 'right', fontSize: 12, fontWeight: '700', color: '#ef4444' },
     breakdownP: { flex: 1, textAlign: 'right', fontSize: 12, fontWeight: '800' },

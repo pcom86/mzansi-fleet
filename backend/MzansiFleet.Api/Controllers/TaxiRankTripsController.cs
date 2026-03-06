@@ -128,8 +128,15 @@ namespace MzansiFleet.Api.Controllers
         [HttpGet("rank/{taxiRankId:guid}")]
         public async Task<ActionResult<IEnumerable<TaxiRankTrip>>> GetByTaxiRank(Guid taxiRankId)
         {
-            var trips = await _tripRepository.GetByTaxiRankIdAsync(taxiRankId);
-            return Ok(trips);
+            try
+            {
+                var trips = await _tripRepository.GetByTaxiRankIdAsync(taxiRankId);
+                return Ok(trips);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message, stack = ex.StackTrace?.Substring(0, Math.Min(ex.StackTrace?.Length ?? 0, 500)) });
+            }
         }
 
         // GET: api/TaxiRankTrips/available?taxiRankId={taxiRankId}&routeId={routeId}
