@@ -247,21 +247,38 @@ namespace MzansiFleet.Api.Controllers
             return Ok(result);
         }
 
-        // GET: api/TaxiRankAdmin/{adminId}/schedules
-        [HttpGet("{adminId}/schedules")]
-        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetAdminSchedules(Guid adminId)
+        // GET: api/TaxiRankAdmin/user/{userId}/schedules
+        [HttpGet("user/{userId}/schedules")]
+        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetAdminSchedules(Guid userId)
         {
-            var admin = await _adminRepository.GetByIdAsync(adminId);
+            var admin = await _context.TaxiRankAdmins
+                .Include(a => a.TaxiRank)
+                .FirstOrDefaultAsync(a => a.UserId == userId);
+            
             if (admin == null)
-                return NotFound(new { message = "Admin not found" });
+                return NotFound(new { message = "Admin not found for this user" });
 
+            // First try to get schedules for this admin's taxi rank
             var schedules = await _context.TripSchedules
                 .Include(s => s.Stops)
                 .Include(s => s.RouteVehicles.Where(rv => rv.IsActive))
                     .ThenInclude(rv => rv.Vehicle)
-                .Where(s => s.TaxiRankId == admin.TaxiRankId)
+                .Where(s => s.TaxiRankId == admin.TaxiRankId && s.IsActive)
                 .OrderBy(s => s.RouteName)
                 .ToListAsync();
+
+            // If no schedules found for this rank, return all active schedules
+            if (schedules.Count == 0)
+            {
+                schedules = await _context.TripSchedules
+                    .Include(s => s.Stops)
+                    .Include(s => s.RouteVehicles.Where(rv => rv.IsActive))
+                        .ThenInclude(rv => rv.Vehicle)
+                    .Where(s => s.IsActive)
+                    .OrderBy(s => s.RouteName)
+                    .ToListAsync();
+            }
+
             return Ok(schedules);
         }
 

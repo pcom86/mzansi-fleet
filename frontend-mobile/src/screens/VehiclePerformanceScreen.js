@@ -90,7 +90,7 @@ export default function VehiclePerformanceScreen({ route, navigation }) {
     labels,
     datasets: [{
       data: earningsSeries,
-      colors: earningsSeries.map(() => () => c.success),
+      colors: earningsSeries.map(() => () => '#4CAF50'), // Green for earnings
     }],
   };
 
@@ -98,7 +98,7 @@ export default function VehiclePerformanceScreen({ route, navigation }) {
     labels,
     datasets: [{
       data: expensesSeries,
-      colors: expensesSeries.map(() => () => c.danger),
+      colors: expensesSeries.map(() => () => '#FF6B6B'), // Coral red for expenses
     }],
   };
 
@@ -106,7 +106,7 @@ export default function VehiclePerformanceScreen({ route, navigation }) {
     labels,
     datasets: [{
       data: profitSeries,
-      colors: profitSeries.map(() => () => c.textMuted),
+      colors: profitSeries.map(() => () => '#2196F3'), // Blue for profit
     }],
   };
 
@@ -133,8 +133,8 @@ export default function VehiclePerformanceScreen({ route, navigation }) {
               yAxisLabel="R"
               chartConfig={{
                 ...chartConfig,
-                color: () => c.success,
-                fillShadowGradient: c.success,
+                color: () => '#4CAF50',
+                fillShadowGradient: '#4CAF50',
                 fillShadowGradientOpacity: 1,
                 decimalPlaces: 0,
                 propsForLabels: { fontSize: 10 },
@@ -162,8 +162,8 @@ export default function VehiclePerformanceScreen({ route, navigation }) {
               yAxisLabel="R"
               chartConfig={{
                 ...chartConfig,
-                color: () => c.danger,
-                fillShadowGradient: c.danger,
+                color: () => '#FF6B6B',
+                fillShadowGradient: '#FF6B6B',
                 fillShadowGradientOpacity: 1,
                 decimalPlaces: 0,
                 propsForLabels: { fontSize: 10 },
@@ -191,8 +191,8 @@ export default function VehiclePerformanceScreen({ route, navigation }) {
               yAxisLabel="R"
               chartConfig={{
                 ...chartConfig,
-                color: () => c.textMuted,
-                fillShadowGradient: c.textMuted,
+                color: () => '#2196F3',
+                fillShadowGradient: '#2196F3',
                 fillShadowGradientOpacity: 1,
                 decimalPlaces: 0,
                 propsForLabels: { fontSize: 10 },

@@ -27,25 +27,34 @@ namespace MzansiFleet.Api.Controllers
         public async Task<ActionResult<IEnumerable<MessageDto>>> GetInbox(Guid userId)
         {
             var messages = await _context.Messages
-                .Where(m => m.ReceiverId == userId && !m.IsDeletedByReceiver)
+                .Where(m => (m.RecipientId == userId || m.RecipientDriverId == userId || m.RecipientMarshalId == userId) && !m.IsDeletedByReceiver)
                 .OrderByDescending(m => m.CreatedAt)
                 .ToListAsync();
 
             var messageDtos = messages.Select(m => new MessageDto
             {
                 Id = m.Id,
-                SenderId = m.SenderId,
-                ReceiverId = m.ReceiverId,
+                SenderId = m.SenderId ?? Guid.Empty,
+                ReceiverId = m.RecipientId,
+                SenderType = m.SenderType,
+                SenderName = m.SenderName,
+                RecipientType = m.RecipientType,
+                RecipientDriverId = m.RecipientDriverId,
+                RecipientMarshalId = m.RecipientMarshalId,
+                TaxiRankId = m.TaxiRankId,
                 Subject = m.Subject,
                 Content = m.Content,
+                MessageType = m.MessageType,
                 IsRead = m.IsRead,
                 CreatedAt = m.CreatedAt,
                 ReadAt = m.ReadAt,
+                ExpiresAt = m.ExpiresAt,
                 RelatedEntityType = m.RelatedEntityType,
                 RelatedEntityId = m.RelatedEntityId,
                 ParentMessageId = m.ParentMessageId,
-                SenderName = GetUserName(m.SenderId),
-                SenderEmail = GetUserEmail(m.SenderId)
+                SenderEmail = GetUserEmail(m.SenderId ?? Guid.Empty),
+                ReceiverName = GetUserName(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty),
+                ReceiverEmail = GetUserEmail(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty)
             }).ToList();
 
             return Ok(messageDtos);
@@ -63,18 +72,27 @@ namespace MzansiFleet.Api.Controllers
             var messageDtos = messages.Select(m => new MessageDto
             {
                 Id = m.Id,
-                SenderId = m.SenderId,
-                ReceiverId = m.ReceiverId,
+                SenderId = m.SenderId ?? Guid.Empty,
+                ReceiverId = m.RecipientId,
+                SenderType = m.SenderType,
+                SenderName = m.SenderName,
+                RecipientType = m.RecipientType,
+                RecipientDriverId = m.RecipientDriverId,
+                RecipientMarshalId = m.RecipientMarshalId,
+                TaxiRankId = m.TaxiRankId,
                 Subject = m.Subject,
                 Content = m.Content,
+                MessageType = m.MessageType,
                 IsRead = m.IsRead,
                 CreatedAt = m.CreatedAt,
                 ReadAt = m.ReadAt,
+                ExpiresAt = m.ExpiresAt,
                 RelatedEntityType = m.RelatedEntityType,
                 RelatedEntityId = m.RelatedEntityId,
                 ParentMessageId = m.ParentMessageId,
-                ReceiverName = GetUserName(m.ReceiverId),
-                ReceiverEmail = GetUserEmail(m.ReceiverId)
+                SenderEmail = GetUserEmail(m.SenderId ?? Guid.Empty),
+                ReceiverName = GetUserName(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty),
+                ReceiverEmail = GetUserEmail(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty)
             }).ToList();
 
             return Ok(messageDtos);
@@ -85,27 +103,34 @@ namespace MzansiFleet.Api.Controllers
         public async Task<ActionResult<IEnumerable<MessageDto>>> GetConversation(Guid userId, Guid otherUserId)
         {
             var messages = await _context.Messages
-                .Where(m => 
-                    (m.SenderId == userId && m.ReceiverId == otherUserId && !m.IsDeletedBySender) ||
-                    (m.SenderId == otherUserId && m.ReceiverId == userId && !m.IsDeletedByReceiver))
+                .Where(m => ((m.SenderId == userId && (m.RecipientId == otherUserId || m.RecipientDriverId == otherUserId || m.RecipientMarshalId == otherUserId)) ||
+                             (m.SenderId == otherUserId && (m.RecipientId == userId || m.RecipientDriverId == userId || m.RecipientMarshalId == userId))) &&
+                             !m.IsDeletedBySender && !m.IsDeletedByReceiver)
                 .OrderBy(m => m.CreatedAt)
                 .Select(m => new MessageDto
                 {
                     Id = m.Id,
-                    SenderId = m.SenderId,
-                    ReceiverId = m.ReceiverId,
+                    SenderId = m.SenderId ?? Guid.Empty,
+                    ReceiverId = m.RecipientId,
+                    SenderType = m.SenderType,
+                    SenderName = m.SenderName,
+                    RecipientType = m.RecipientType,
+                    RecipientDriverId = m.RecipientDriverId,
+                    RecipientMarshalId = m.RecipientMarshalId,
+                    TaxiRankId = m.TaxiRankId,
                     Subject = m.Subject,
                     Content = m.Content,
+                    MessageType = m.MessageType,
                     IsRead = m.IsRead,
                     CreatedAt = m.CreatedAt,
                     ReadAt = m.ReadAt,
+                    ExpiresAt = m.ExpiresAt,
                     RelatedEntityType = m.RelatedEntityType,
                     RelatedEntityId = m.RelatedEntityId,
                     ParentMessageId = m.ParentMessageId,
-                    SenderName = GetUserName(m.SenderId),
-                    ReceiverName = GetUserName(m.ReceiverId),
-                    SenderEmail = GetUserEmail(m.SenderId),
-                    ReceiverEmail = GetUserEmail(m.ReceiverId)
+                    SenderEmail = GetUserEmail(m.SenderId ?? Guid.Empty),
+                    ReceiverName = GetUserName(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty),
+                    ReceiverEmail = GetUserEmail(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty)
                 })
                 .ToListAsync();
 
@@ -124,18 +149,27 @@ namespace MzansiFleet.Api.Controllers
             var dto = new MessageDto
             {
                 Id = message.Id,
-                SenderId = message.SenderId,
-                ReceiverId = message.ReceiverId,
+                SenderId = message.SenderId ?? Guid.Empty,
+                ReceiverId = message.RecipientId,
+                SenderType = message.SenderType,
+                SenderName = message.SenderName,
+                RecipientType = message.RecipientType,
+                RecipientDriverId = message.RecipientDriverId,
+                RecipientMarshalId = message.RecipientMarshalId,
+                TaxiRankId = message.TaxiRankId,
                 Subject = message.Subject,
                 Content = message.Content,
+                MessageType = message.MessageType,
                 IsRead = message.IsRead,
                 CreatedAt = message.CreatedAt,
                 ReadAt = message.ReadAt,
+                ExpiresAt = message.ExpiresAt,
                 RelatedEntityType = message.RelatedEntityType,
                 RelatedEntityId = message.RelatedEntityId,
                 ParentMessageId = message.ParentMessageId,
-                SenderName = GetUserName(message.SenderId),
-                ReceiverName = GetUserName(message.ReceiverId)
+                SenderEmail = GetUserEmail(message.SenderId ?? Guid.Empty),
+                ReceiverName = GetUserName(message.RecipientId ?? message.RecipientDriverId ?? message.RecipientMarshalId ?? Guid.Empty),
+                ReceiverEmail = GetUserEmail(message.RecipientId ?? message.RecipientDriverId ?? message.RecipientMarshalId ?? Guid.Empty)
             };
 
             return Ok(dto);
@@ -146,7 +180,7 @@ namespace MzansiFleet.Api.Controllers
         public async Task<ActionResult<int>> GetUnreadCount(Guid userId)
         {
             var count = await _context.Messages
-                .Where(m => m.ReceiverId == userId && !m.IsRead && !m.IsDeletedByReceiver)
+                .Where(m => (m.RecipientId == userId || m.RecipientDriverId == userId || m.RecipientMarshalId == userId) && !m.IsRead && !m.IsDeletedByReceiver)
                 .CountAsync();
 
             return Ok(count);
@@ -159,10 +193,17 @@ namespace MzansiFleet.Api.Controllers
             var message = new Message
             {
                 Id = Guid.NewGuid(),
+                SenderType = dto.SenderType ?? "User",
                 SenderId = dto.SenderId,
-                ReceiverId = dto.ReceiverId,
+                SenderName = dto.SenderName,
+                RecipientType = dto.RecipientType ?? "User",
+                RecipientId = dto.ReceiverId,
+                RecipientDriverId = dto.RecipientDriverId,
+                RecipientMarshalId = dto.RecipientMarshalId,
+                TaxiRankId = dto.TaxiRankId,
                 Subject = dto.Subject,
                 Content = dto.Content,
+                MessageType = dto.MessageType ?? "Info",
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow,
                 RelatedEntityType = dto.RelatedEntityType,
@@ -249,18 +290,27 @@ namespace MzansiFleet.Api.Controllers
                 .Select(m => new MessageDto
                 {
                     Id = m.Id,
-                    SenderId = m.SenderId,
-                    ReceiverId = m.ReceiverId,
+                    SenderId = m.SenderId ?? Guid.Empty,
+                    ReceiverId = m.RecipientId,
+                    SenderType = m.SenderType,
+                    SenderName = m.SenderName,
+                    RecipientType = m.RecipientType,
+                    RecipientDriverId = m.RecipientDriverId,
+                    RecipientMarshalId = m.RecipientMarshalId,
+                    TaxiRankId = m.TaxiRankId,
                     Subject = m.Subject,
                     Content = m.Content,
+                    MessageType = m.MessageType,
                     IsRead = m.IsRead,
                     CreatedAt = m.CreatedAt,
                     ReadAt = m.ReadAt,
+                    ExpiresAt = m.ExpiresAt,
                     RelatedEntityType = m.RelatedEntityType,
                     RelatedEntityId = m.RelatedEntityId,
                     ParentMessageId = m.ParentMessageId,
-                    SenderName = GetUserName(m.SenderId),
-                    ReceiverName = GetUserName(m.ReceiverId)
+                    SenderEmail = GetUserEmail(m.SenderId ?? Guid.Empty),
+                    ReceiverName = GetUserName(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty),
+                    ReceiverEmail = GetUserEmail(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty)
                 })
                 .ToListAsync();
 
@@ -305,27 +355,42 @@ namespace MzansiFleet.Api.Controllers
     {
         public Guid Id { get; set; }
         public Guid SenderId { get; set; }
-        public Guid ReceiverId { get; set; }
+        public Guid? ReceiverId { get; set; }
+        public string SenderType { get; set; } = string.Empty;
+        public string SenderName { get; set; } = string.Empty;
+        public string RecipientType { get; set; } = string.Empty;
+        public Guid? RecipientDriverId { get; set; }
+        public Guid? RecipientMarshalId { get; set; }
+        public Guid TaxiRankId { get; set; }
         public string Subject { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
+        public string MessageType { get; set; } = string.Empty;
         public bool IsRead { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? ReadAt { get; set; }
+        public DateTime? ExpiresAt { get; set; }
         public string? RelatedEntityType { get; set; }
         public Guid? RelatedEntityId { get; set; }
         public Guid? ParentMessageId { get; set; }
-        public string? SenderName { get; set; }
-        public string? ReceiverName { get; set; }
         public string? SenderEmail { get; set; }
+        public string? ReceiverName { get; set; }
         public string? ReceiverEmail { get; set; }
     }
 
     public class CreateMessageDto
     {
         public Guid SenderId { get; set; }
-        public Guid ReceiverId { get; set; }
+        public string SenderType { get; set; } = "User";
+        public string SenderName { get; set; } = string.Empty;
+        public Guid? ReceiverId { get; set; }
+        public string RecipientType { get; set; } = "User";
+        public Guid? RecipientDriverId { get; set; }
+        public Guid? RecipientMarshalId { get; set; }
+        public Guid TaxiRankId { get; set; }
         public string Subject { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
+        public string MessageType { get; set; } = "Info";
+        public DateTime? ExpiresAt { get; set; }
         public string? RelatedEntityType { get; set; }
         public Guid? RelatedEntityId { get; set; }
         public Guid? ParentMessageId { get; set; }

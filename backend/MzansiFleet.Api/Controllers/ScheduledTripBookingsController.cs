@@ -98,6 +98,10 @@ namespace MzansiFleet.Api.Controllers
                 if (!string.IsNullOrEmpty(schedule.DaysOfWeek) && !schedule.DaysOfWeek.Contains(dayName))
                     return BadRequest(new { message = $"This route does not operate on {dto.TravelDate.DayOfWeek}" });
 
+                // Validate passenger count matches passengers provided
+                if (dto.Passengers.Count != dto.SeatsBooked)
+                    return BadRequest(new { message = "Number of passengers must match seats booked" });
+
                 // Check seat availability if MaxPassengers is set
                 if (schedule.MaxPassengers.HasValue)
                 {
@@ -114,22 +118,113 @@ namespace MzansiFleet.Api.Controllers
                     TripScheduleId = dto.TripScheduleId,
                     TaxiRankId = schedule.TaxiRankId,
                     TravelDate = dto.TravelDate,
-                    SeatsBooked = dto.SeatsBooked > 0 ? dto.SeatsBooked : 1,
-                    TotalFare = schedule.StandardFare * (dto.SeatsBooked > 0 ? dto.SeatsBooked : 1),
-                    PassengerName = dto.PassengerName ?? "",
-                    PassengerPhone = dto.PassengerPhone ?? "",
+                    SeatsBooked = dto.SeatsBooked,
+                    TotalFare = dto.TotalFare,
+                    PaymentMethod = dto.PaymentMethod,
+                    PaymentStatus = "Pending",
                     Status = "Confirmed",
                     ConfirmedAt = DateTime.UtcNow,
                     Notes = dto.Notes
                 };
 
+                // Add passengers
+                foreach (var passengerDto in dto.Passengers)
+                {
+                    var passenger = new BookingPassenger
+                    {
+                        Id = Guid.NewGuid(),
+                        BookingId = booking.Id,
+                        Name = passengerDto.Name,
+                        ContactNumber = passengerDto.ContactNumber,
+                        Email = passengerDto.Email,
+                        IdNumber = passengerDto.IdNumber,
+                        Address = passengerDto.Address,
+                        Destination = passengerDto.Destination
+                    };
+                    booking.Passengers.Add(passenger);
+                }
+
                 await _bookingRepository.AddAsync(booking);
+
+                // Send notifications to marshal and manager
+                await SendBookingNotifications(booking, schedule);
 
                 return Ok(booking);
             }
             catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        private async Task SendBookingNotifications(ScheduledTripBooking booking, TripSchedule schedule)
+        {
+            try
+            {
+                // Get taxi rank marshals and admins
+                var marshals = await _context.TaxiMarshalProfiles
+                    .Where(m => m.TaxiRankId == schedule.TaxiRankId)
+                    .ToListAsync();
+
+                var admins = await _context.TaxiRankAdmins
+                    .Where(a => a.TaxiRankId == schedule.TaxiRankId)
+                    .ToListAsync();
+
+                var subject = $"New Booking: {schedule.RouteName}";
+                var body = $@"A new booking has been made for your scheduled trip:
+
+Route: {schedule.RouteName}
+From: {schedule.DepartureStation} → To: {schedule.DestinationStation}
+Date: {booking.TravelDate:yyyy-MM-dd}
+Seats: {booking.SeatsBooked}
+Total: R{booking.TotalFare:N2}
+Payment: {booking.PaymentMethod}
+
+Passengers:
+{string.Join("\n", booking.Passengers.Select(p => $"- {p.Name} ({p.ContactNumber})"))}";
+
+                // Send to marshals
+                foreach (var marshal in marshals)
+                {
+                    await _context.Messages.AddAsync(new Message
+                    {
+                        Id = Guid.NewGuid(),
+                        SenderType = "System",
+                        SenderId = Guid.Empty,
+                        SenderName = "System",
+                        RecipientType = "Marshal",
+                        RecipientId = marshal.UserId,
+                        Subject = subject,
+                        Content = body,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                // Send to admins
+                foreach (var admin in admins)
+                {
+                    await _context.Messages.AddAsync(new Message
+                    {
+                        Id = Guid.NewGuid(),
+                        SenderType = "System",
+                        SenderId = Guid.Empty,
+                        SenderName = "System",
+                        RecipientType = "Admin",
+                        RecipientId = admin.UserId,
+                        Subject = subject,
+                        Content = body,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't fail the booking
+                Console.WriteLine($"Failed to send booking notifications: {ex.Message}");
             }
         }
 
@@ -187,9 +282,20 @@ namespace MzansiFleet.Api.Controllers
         public Guid TripScheduleId { get; set; }
         public DateTime TravelDate { get; set; }
         public int SeatsBooked { get; set; } = 1;
-        public string PassengerName { get; set; } = string.Empty;
-        public string PassengerPhone { get; set; } = string.Empty;
+        public decimal TotalFare { get; set; }
+        public List<BookingPassengerDto> Passengers { get; set; } = new();
+        public string PaymentMethod { get; set; } = string.Empty; // ozow, wallet, cash
         public string? Notes { get; set; }
+    }
+
+    public class BookingPassengerDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string ContactNumber { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string? IdNumber { get; set; }
+        public string? Address { get; set; }
+        public string Destination { get; set; } = string.Empty;
     }
 
     public class CancelBookingDto

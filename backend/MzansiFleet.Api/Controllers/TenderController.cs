@@ -391,8 +391,11 @@ namespace MzansiFleet.Api.Controllers
                 var notificationMessage = new Message
                 {
                     Id = Guid.NewGuid(),
+                    SenderType = "User",
                     SenderId = userId,
-                    ReceiverId = tender.TenderPublisherId,
+                    SenderName = ownerProfile.CompanyName ?? ownerProfile.ContactName,
+                    RecipientType = "User",
+                    RecipientId = tender.TenderPublisherId,
                     Subject = $"New Application for: {tender.Title}",
                     Content = $"<p><strong>{ownerProfile.CompanyName ?? ownerProfile.ContactName}</strong> has submitted an application for your tender.</p>" +
                              $"<p><strong>Proposed Budget:</strong> R{dto.ProposedBudget:N2}</p>" +
@@ -677,8 +680,11 @@ namespace MzansiFleet.Api.Controllers
                         var acceptanceMessage = new Message
                         {
                             Id = Guid.NewGuid(),
+                            SenderType = "User",
                             SenderId = userId,
-                            ReceiverId = ownerUser.Id,
+                            SenderName = "System",
+                            RecipientType = "User",
+                            RecipientId = ownerUser.Id,
                             Subject = $"🎉 Application Accepted: {application.Tender.Title}",
                             Content = $"<p><strong>Congratulations!</strong> Your application for <strong>{application.Tender.Title}</strong> has been accepted!</p>" +
                                      $"<p><strong>Proposed Budget:</strong> R{application.ProposedBudget:N2}</p>" +
@@ -721,8 +727,11 @@ namespace MzansiFleet.Api.Controllers
                             var rejectionMessage = new Message
                             {
                                 Id = Guid.NewGuid(),
+                                SenderType = "User",
                                 SenderId = userId,
-                                ReceiverId = otherOwnerUser.Id,
+                                SenderName = "System",
+                                RecipientType = "User",
+                                RecipientId = otherOwnerUser.Id,
                                 Subject = $"Application Update: {application.Tender.Title}",
                                 Content = $"<p>Thank you for your interest in <strong>{application.Tender.Title}</strong>.</p>" +
                                          $"<p>Unfortunately, your application was not selected at this time. The tender has been awarded to another applicant.</p>" +
@@ -751,8 +760,11 @@ namespace MzansiFleet.Api.Controllers
                     var rejectionMessage = new Message
                     {
                         Id = Guid.NewGuid(),
+                        SenderType = "User",
                         SenderId = userId,
-                        ReceiverId = ownerUser.Id,
+                        SenderName = "System",
+                        RecipientType = "User",
+                        RecipientId = ownerUser.Id,
                         Subject = $"Application Update: {application.Tender.Title}",
                         Content = $"<p>Thank you for your interest in <strong>{application.Tender.Title}</strong>.</p>" +
                                  $"<p>After careful review, we have decided not to move forward with your application.</p>" +

@@ -28,8 +28,25 @@ export function fetchMarshals(taxiRankId) {
 }
 
 // Retrieves trips for a given taxi rank
-export function fetchTrips(taxiRankId) {
-  return client.get(`/TaxiRankTrips/rank/${taxiRankId}`);
+export function fetchTrips(taxiRankId, tenantId) {
+  // Use TripDetails API to get actual trip data
+  const today = new Date().toISOString().split('T')[0];
+  const params = new URLSearchParams();
+  
+  // Add tenantId if provided
+  if (tenantId) {
+    params.append('tenantId', tenantId);
+  }
+  
+  // Only add taxiRankId if provided and not empty
+  if (taxiRankId && taxiRankId !== '') {
+    params.append('taxiRankId', taxiRankId);
+  }
+  
+  params.append('startDate', today);
+  params.append('endDate', today);
+  
+  return client.get(`/TripDetails?${params.toString()}`);
 }
 
 // Get taxi rank by id
@@ -48,9 +65,9 @@ export function fetchAdminByUserId(userId) {
   return client.get(`/TaxiRankAdmin/user/${userId}`);
 }
 
-// Fetch routes/schedules for an admin
-export function fetchSchedules(adminId) {
-  return client.get(`/TaxiRankAdmin/${adminId}/schedules`);
+// Fetch routes/schedules for a user (expects userId, not admin profile id)
+export function fetchSchedules(userId) {
+  return client.get(`/TaxiRankAdmin/user/${userId}/schedules`);
 }
 
 // Create a route/schedule

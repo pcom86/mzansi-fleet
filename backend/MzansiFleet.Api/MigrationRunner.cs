@@ -308,13 +308,9 @@ namespace MzansiFleet.Api
                 ";
                 command.ExecuteNonQuery();
 
-                // Drop and recreate TripSchedules table to add Notes column
-                command.CommandText = @"DROP TABLE IF EXISTS ""TripSchedules"" CASCADE;";
-                command.ExecuteNonQuery();
-
-                // Create TripSchedules table
+                // Create TripSchedules table (preserving existing data)
                 command.CommandText = @"
-                    CREATE TABLE ""TripSchedules"" (
+                    CREATE TABLE IF NOT EXISTS ""TripSchedules"" (
                         ""Id"" uuid NOT NULL,
                         ""TaxiRankId"" uuid NOT NULL,
                         ""TenantId"" uuid NOT NULL,
@@ -336,6 +332,55 @@ namespace MzansiFleet.Api
                 ";
                 command.ExecuteNonQuery();
 
+                // Create ScheduledTrips table (for specific trip instances)
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ""ScheduledTrips"" (
+                        ""Id"" uuid NOT NULL,
+                        ""TripScheduleId"" uuid NOT NULL,
+                        ""TaxiRankId"" uuid NOT NULL,
+                        ""TenantId"" uuid NOT NULL,
+                        ""ScheduledDate"" date NOT NULL,
+                        ""ScheduledTime"" interval NOT NULL,
+                        ""VehicleId"" uuid NULL,
+                        ""DriverId"" uuid NULL,
+                        ""MarshalId"" uuid NULL,
+                        ""Status"" text NOT NULL DEFAULT 'Scheduled',
+                        ""ActualDepartureTime"" timestamp with time zone NULL,
+                        ""ActualArrivalTime"" timestamp with time zone NULL,
+                        ""ActualPassengerCount"" integer NULL,
+                        ""ActualFareCollected"" numeric(18,2) NULL,
+                        ""CancelledAt"" timestamp with time zone NULL,
+                        ""CancellationReason"" text NULL,
+                        ""CancelledBy"" uuid NULL,
+                        ""Notes"" text NULL,
+                        ""CreatedAt"" timestamp with time zone NOT NULL DEFAULT NOW(),
+                        ""UpdatedAt"" timestamp with time zone NULL,
+                        CONSTRAINT ""PK_ScheduledTrips"" PRIMARY KEY (""Id""),
+                        CONSTRAINT ""FK_ScheduledTrips_TripSchedules"" FOREIGN KEY (""TripScheduleId"") REFERENCES ""TripSchedules"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_ScheduledTrips_TaxiRanks"" FOREIGN KEY (""TaxiRankId"") REFERENCES ""TaxiRanks"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_ScheduledTrips_Vehicles"" FOREIGN KEY (""VehicleId"") REFERENCES ""Vehicles"" (""Id"") ON DELETE SET NULL,
+                        CONSTRAINT ""FK_ScheduledTrips_Drivers"" FOREIGN KEY (""DriverId"") REFERENCES ""DriverProfiles"" (""Id"") ON DELETE SET NULL,
+                        CONSTRAINT ""FK_ScheduledTrips_Marshals"" FOREIGN KEY (""MarshalId"") REFERENCES ""TaxiMarshalProfiles"" (""Id"") ON DELETE SET NULL
+                    );
+                ";
+                command.ExecuteNonQuery();
+
+                // Create indexes for ScheduledTrips table
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_ScheduledTrips_TripScheduleId"" ON ""ScheduledTrips"" (""TripScheduleId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_ScheduledTrips_TaxiRankId"" ON ""ScheduledTrips"" (""TaxiRankId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_ScheduledTrips_TenantId"" ON ""ScheduledTrips"" (""TenantId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_ScheduledTrips_ScheduledDate"" ON ""ScheduledTrips"" (""ScheduledDate"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_ScheduledTrips_Status"" ON ""ScheduledTrips"" (""Status"");";
+                command.ExecuteNonQuery();
+
                 // Add missing UserId column to TripPassengers if it doesn't exist
                 command.CommandText = @"
                     DO $$ BEGIN
@@ -353,19 +398,121 @@ namespace MzansiFleet.Api
                 command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TripCosts_TaxiRankTripId"" ON ""TripCosts"" (""TaxiRankTripId"");";
                 command.ExecuteNonQuery();
 
+                // Create QueueMarshals table
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ""QueueMarshals"" (
+                        ""Id"" uuid NOT NULL,
+                        ""FullName"" text NOT NULL,
+                        ""IdNumber"" text NOT NULL,
+                        ""PhoneNumber"" text NOT NULL,
+                        ""Email"" text NULL,
+                        ""MarshalCode"" text NOT NULL,
+                        ""EmergencyContact"" text NOT NULL,
+                        ""Experience"" text NULL,
+                        ""TaxiRankId"" uuid NOT NULL,
+                        ""Permissions"" jsonb NOT NULL DEFAULT '{}',
+                        ""Status"" text NOT NULL DEFAULT 'Active',
+                        ""CreatedAt"" timestamp with time zone NOT NULL DEFAULT NOW(),
+                        ""UpdatedAt"" timestamp with time zone NULL,
+                        ""CreatedBy"" uuid NULL,
+                        CONSTRAINT ""PK_QueueMarshals"" PRIMARY KEY (""Id""),
+                        CONSTRAINT ""FK_QueueMarshals_TaxiRanks"" FOREIGN KEY (""TaxiRankId"") REFERENCES ""TaxiRanks"" (""Id"") ON DELETE CASCADE
+                    );
+                ";
+                command.ExecuteNonQuery();
+
+                // Create indexes for QueueMarshals table
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_QueueMarshals_TaxiRankId"" ON ""QueueMarshals"" (""TaxiRankId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_QueueMarshals_MarshalCode"" ON ""QueueMarshals"" (""MarshalCode"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_QueueMarshals_PhoneNumber"" ON ""QueueMarshals"" (""PhoneNumber"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_QueueMarshals_Status"" ON ""QueueMarshals"" (""Status"");";
+                command.ExecuteNonQuery();
+
+                // Create TripCaptures table
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ""TripCaptures"" (
+                        ""Id"" uuid NOT NULL,
+                        ""MarshalId"" uuid NOT NULL,
+                        ""ScheduleId"" uuid NOT NULL,
+                        ""VehicleId"" uuid NOT NULL,
+                        ""TaxiRankId"" uuid NOT NULL,
+                        ""PassengerCount"" integer NOT NULL,
+                        ""FareCollected"" numeric(18,2) NOT NULL,
+                        ""CapturedAt"" timestamp with time zone NOT NULL,
+                        ""Notes"" text NULL,
+                        ""PhotoUri"" text NULL,
+                        ""Status"" text NOT NULL DEFAULT 'Completed',
+                        ""CreatedAt"" timestamp with time zone NOT NULL DEFAULT NOW(),
+                        ""UpdatedAt"" timestamp with time zone NULL,
+                        CONSTRAINT ""PK_TripCaptures"" PRIMARY KEY (""Id""),
+                        CONSTRAINT ""FK_TripCaptures_QueueMarshals"" FOREIGN KEY (""MarshalId"") REFERENCES ""QueueMarshals"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_TripCaptures_TripSchedules"" FOREIGN KEY (""ScheduleId"") REFERENCES ""TripSchedules"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_TripCaptures_Vehicles"" FOREIGN KEY (""VehicleId"") REFERENCES ""Vehicles"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_TripCaptures_TaxiRanks"" FOREIGN KEY (""TaxiRankId"") REFERENCES ""TaxiRanks"" (""Id"") ON DELETE CASCADE
+                    );
+                ";
+                command.ExecuteNonQuery();
+
+                // Create indexes for TripCaptures table
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TripCaptures_MarshalId"" ON ""TripCaptures"" (""MarshalId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TripCaptures_ScheduleId"" ON ""TripCaptures"" (""ScheduleId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TripCaptures_VehicleId"" ON ""TripCaptures"" (""VehicleId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TripCaptures_TaxiRankId"" ON ""TripCaptures"" (""TaxiRankId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TripCaptures_CapturedAt"" ON ""TripCaptures"" (""CapturedAt"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TripCaptures_Status"" ON ""TripCaptures"" (""Status"");";
+                command.ExecuteNonQuery();
+
+                // Update Messages table to support Queue Marshals
+                command.CommandText = @"
+                    DO $$ BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Messages' AND column_name='RecipientMarshalId') THEN
+                            ALTER TABLE ""Messages"" ADD COLUMN ""RecipientMarshalId"" uuid NULL;
+                        END IF;
+                    END $$;
+                ";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"
+                    DO $$ BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Messages' AND column_name='RecipientDriverId') THEN
+                            ALTER TABLE ""Messages"" ADD COLUMN ""RecipientDriverId"" uuid NULL;
+                        END IF;
+                    END $$;
+                ";
+                command.ExecuteNonQuery();
+
+                // Create indexes for Messages table
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_Messages_RecipientMarshalId"" ON ""Messages"" (""RecipientMarshalId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_Messages_RecipientDriverId"" ON ""Messages"" (""RecipientDriverId"");";
+                command.ExecuteNonQuery();
+
                 command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TaxiRankAssociations_TaxiRankId"" ON ""TaxiRankAssociations"" (""TaxiRankId"");";
                 command.ExecuteNonQuery();
 
                 command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_TaxiRankAssociations_TenantId"" ON ""TaxiRankAssociations"" (""TenantId"");";
                 command.ExecuteNonQuery();
 
-                // Drop and recreate RouteStops table to fix column name
-                command.CommandText = @"DROP TABLE IF EXISTS ""RouteStops"" CASCADE;";
-                command.ExecuteNonQuery();
-
-                // RouteStops table
+                // RouteStops table (preserving existing data)
                 command.CommandText = @"
-                    CREATE TABLE ""RouteStops"" (
+                    CREATE TABLE IF NOT EXISTS ""RouteStops"" (
                         ""Id"" UUID NOT NULL CONSTRAINT ""PK_RouteStops"" PRIMARY KEY,
                         ""TripScheduleId"" UUID NOT NULL,
                         ""StopName"" TEXT NOT NULL,
@@ -480,6 +627,80 @@ namespace MzansiFleet.Api
                 command.ExecuteNonQuery();
 
                 command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_VehicleTaxiRankRequests_Status"" ON ""VehicleTaxiRankRequests"" (""Status"");";
+                command.ExecuteNonQuery();
+
+                // Create Trips table for TripDetails module
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ""Trips"" (
+                        ""Id"" uuid NOT NULL,
+                        ""VehicleId"" uuid NOT NULL,
+                        ""RouteId"" uuid NULL,
+                        ""DriverId"" uuid NULL,
+                        ""TripDate"" timestamp with time zone NOT NULL,
+                        ""DepartureTime"" text NOT NULL,
+                        ""ArrivalTime"" text NULL,
+                        ""PassengerCount"" integer NOT NULL DEFAULT 0,
+                        ""TotalFare"" numeric NOT NULL DEFAULT 0,
+                        ""Notes"" text NULL,
+                        ""Status"" text NOT NULL DEFAULT 'Completed',
+                        ""PassengerListFileName"" text NULL,
+                        ""PassengerListFileData"" text NULL,
+                        ""CreatedAt"" timestamp with time zone NOT NULL DEFAULT NOW(),
+                        CONSTRAINT ""PK_Trips"" PRIMARY KEY (""Id"")
+                    );
+                ";
+                command.ExecuteNonQuery();
+
+                // Create Passengers table for TripDetails module
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ""Passengers"" (
+                        ""Id"" uuid NOT NULL,
+                        ""TripId"" uuid NOT NULL,
+                        ""Name"" text NOT NULL,
+                        ""ContactNumber"" text NULL,
+                        ""NextOfKin"" text NULL,
+                        ""NextOfKinContact"" text NULL,
+                        ""Address"" text NULL,
+                        ""Destination"" text NULL,
+                        ""FareAmount"" numeric NOT NULL DEFAULT 0,
+                        CONSTRAINT ""PK_Passengers"" PRIMARY KEY (""Id""),
+                        CONSTRAINT ""FK_Passengers_Trips_TripId"" FOREIGN KEY (""TripId"") REFERENCES ""Trips"" (""Id"") ON DELETE CASCADE
+                    );
+                ";
+                command.ExecuteNonQuery();
+
+                // Create indexes for Trips and Passengers
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_Trips_VehicleId"" ON ""Trips"" (""VehicleId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_Trips_RouteId"" ON ""Trips"" (""RouteId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_Trips_DriverId"" ON ""Trips"" (""DriverId"");";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_Passengers_TripId"" ON ""Passengers"" (""TripId"");";
+                command.ExecuteNonQuery();
+
+                // Create BookingPassengers table for enhanced booking system
+                command.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS ""BookingPassengers"" (
+                        ""Id"" uuid NOT NULL,
+                        ""BookingId"" uuid NOT NULL,
+                        ""Name"" text NOT NULL,
+                        ""ContactNumber"" text NOT NULL,
+                        ""Email"" text NULL,
+                        ""IdNumber"" text NULL,
+                        ""Address"" text NULL,
+                        ""Destination"" text NOT NULL,
+                        ""CreatedAt"" timestamp with time zone NOT NULL DEFAULT NOW(),
+                        CONSTRAINT ""PK_BookingPassengers"" PRIMARY KEY (""Id""),
+                        CONSTRAINT ""FK_BookingPassengers_ScheduledTripBookings_BookingId"" FOREIGN KEY (""BookingId"") REFERENCES ""ScheduledTripBookings"" (""Id"") ON DELETE CASCADE
+                    );
+                ";
+                command.ExecuteNonQuery();
+
+                command.CommandText = @"CREATE INDEX IF NOT EXISTS ""IX_BookingPassengers_BookingId"" ON ""BookingPassengers"" (""BookingId"");";
                 command.ExecuteNonQuery();
 
                 Console.WriteLine("Taxi rank tables created successfully!");

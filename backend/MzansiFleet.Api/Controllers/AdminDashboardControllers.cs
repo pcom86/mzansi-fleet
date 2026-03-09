@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MzansiFleet.Application.DTOs;
+using MzansiFleet.Application.Services;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.Interfaces.IRepositories;
 using MzansiFleet.Repository;
@@ -26,9 +27,9 @@ namespace MzansiFleet.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Route>>> GetAll([FromQuery] Guid? taxiRankId = null, [FromQuery] Guid? tenantId = null)
+        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetAll([FromQuery] Guid? taxiRankId = null, [FromQuery] Guid? tenantId = null)
         {
-            IQueryable<Route> query = _context.Routes;
+            IQueryable<TripSchedule> query = _context.TripSchedules;
 
             if (taxiRankId.HasValue)
             {
@@ -45,9 +46,9 @@ namespace MzansiFleet.Api.Controllers
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<Route>> GetById(Guid id)
+        public async Task<ActionResult<TripSchedule>> GetById(Guid id)
         {
-            var route = await _context.Routes.FindAsync(id);
+            var route = await _context.TripSchedules.FindAsync(id);
             if (route == null)
                 return NotFound();
 
@@ -55,24 +56,21 @@ namespace MzansiFleet.Api.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<Route>> Create([FromBody] CreateRouteDto dto)
+        public async Task<ActionResult<TripSchedule>> Create([FromBody] CreateRouteDto dto)
         {
-            var route = new Route
+            var route = new TripSchedule
             {
                 Id = Guid.NewGuid(),
                 TenantId = dto.TenantId,
-                Code = dto.Code,
-                Name = dto.Name,
-                Origin = dto.Origin,
-                Destination = dto.Destination,
-                Stops = dto.Stops,
-                Distance = dto.Distance,
-                EstimatedDuration = dto.EstimatedDuration,
-                FareAmount = dto.FareAmount,
-                Status = dto.Status
+                RouteName = dto.Name,
+                DepartureStation = dto.Origin,
+                DestinationStation = dto.Destination,
+                StandardFare = dto.FareAmount,
+                ExpectedDurationMinutes = dto.EstimatedDuration,
+                IsActive = dto.Status == "Active"
             };
             
-            _context.Routes.Add(route);
+            _context.TripSchedules.Add(route);
             await _context.SaveChangesAsync();
             
             return CreatedAtAction(nameof(GetById), new { id = route.Id }, route);
@@ -81,21 +79,18 @@ namespace MzansiFleet.Api.Controllers
         [HttpPut("{id}")]
         public async Task<ActionResult> Update(Guid id, [FromBody] UpdateRouteDto dto)
         {
-            var route = await _context.Routes.FindAsync(id);
+            var route = await _context.TripSchedules.FindAsync(id);
             if (route == null)
                 return NotFound();
 
             if (dto.TenantId.HasValue)
                 route.TenantId = dto.TenantId.Value;
-            route.Code = dto.Code ?? route.Code;
-            route.Name = dto.Name ?? route.Name;
-            route.Origin = dto.Origin ?? route.Origin;
-            route.Destination = dto.Destination ?? route.Destination;
-            route.Stops = dto.Stops ?? route.Stops;
-            route.Distance = dto.Distance ?? route.Distance;
-            route.EstimatedDuration = dto.EstimatedDuration ?? route.EstimatedDuration;
-            route.FareAmount = dto.FareAmount ?? route.FareAmount;
-            route.Status = dto.Status ?? route.Status;
+            route.RouteName = dto.Name ?? route.RouteName;
+            route.DepartureStation = dto.Origin ?? route.DepartureStation;
+            route.DestinationStation = dto.Destination ?? route.DestinationStation;
+            route.StandardFare = dto.FareAmount ?? route.StandardFare;
+            route.ExpectedDurationMinutes = dto.EstimatedDuration ?? route.ExpectedDurationMinutes;
+            route.IsActive = dto.Status == "Active" || dto.Status == "true";
 
             await _context.SaveChangesAsync();
             return NoContent();
@@ -104,11 +99,11 @@ namespace MzansiFleet.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<ActionResult> Delete(Guid id)
         {
-            var route = await _context.Routes.FindAsync(id);
+            var route = await _context.TripSchedules.FindAsync(id);
             if (route == null)
                 return NotFound();
 
-            _context.Routes.Remove(route);
+            _context.TripSchedules.Remove(route);
             await _context.SaveChangesAsync();
             return NoContent();
         }
@@ -190,35 +185,35 @@ namespace MzansiFleet.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<VehicleRouteAssignment>>> GetAll()
+        public async Task<ActionResult<IEnumerable<RouteVehicle>>> GetAll()
         {
-            var assignments = await _context.VehicleRouteAssignments
+            var assignments = await _context.RouteVehicles
                 .Include(a => a.Vehicle)
-                .Include(a => a.Route)
+                .Include(a => a.TripSchedule)
                 .ToListAsync();
             
             return Ok(assignments);
         }
 
         [HttpPost]
-        public async Task<ActionResult<VehicleRouteAssignment>> Create([FromBody] CreateVehicleRouteAssignmentDto dto)
+        public async Task<ActionResult<RouteVehicle>> Create([FromBody] CreateVehicleRouteAssignmentDto dto)
         {
-            var assignment = new VehicleRouteAssignment
+            var assignment = new RouteVehicle
             {
                 Id = Guid.NewGuid(),
                 VehicleId = dto.VehicleId,
-                RouteId = dto.RouteId,
-                AssignedDate = DateTime.UtcNow,
-                Status = "Active"
+                TripScheduleId = dto.RouteId,
+                AssignedAt = DateTime.UtcNow,
+                IsActive = true
             };
             
-            _context.VehicleRouteAssignments.Add(assignment);
+            _context.RouteVehicles.Add(assignment);
             await _context.SaveChangesAsync();
             
             // Reload with related entities
-            var created = await _context.VehicleRouteAssignments
+            var created = await _context.RouteVehicles
                 .Include(a => a.Vehicle)
-                .Include(a => a.Route)
+                .Include(a => a.TripSchedule)
                 .FirstOrDefaultAsync(a => a.Id == assignment.Id);
             
             return Ok(created);
@@ -227,13 +222,13 @@ namespace MzansiFleet.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<ActionResult> Delete(Guid id)
         {
-            var assignment = await _context.VehicleRouteAssignments.FindAsync(id);
+            var assignment = await _context.RouteVehicles.FindAsync(id);
             if (assignment == null)
             {
                 return NotFound();
             }
             
-            _context.VehicleRouteAssignments.Remove(assignment);
+            _context.RouteVehicles.Remove(assignment);
             await _context.SaveChangesAsync();
             
             return NoContent();
@@ -752,10 +747,14 @@ namespace MzansiFleet.Api.Controllers
     public class TripDetailsController : ControllerBase
     {
         private readonly MzansiFleetDbContext _context;
+        private readonly VehicleNotificationService _notificationService;
+        private readonly IBookingIntegrationService _bookingIntegrationService;
 
-        public TripDetailsController(MzansiFleetDbContext context)
+        public TripDetailsController(MzansiFleetDbContext context, VehicleNotificationService notificationService, IBookingIntegrationService bookingIntegrationService)
         {
             _context = context;
+            _notificationService = notificationService;
+            _bookingIntegrationService = bookingIntegrationService;
         }
 
         [HttpGet]
@@ -833,24 +832,36 @@ namespace MzansiFleet.Api.Controllers
                 if (vehicleIds.Count > 0)
                 {
                     Console.WriteLine($"First few vehicle IDs: {string.Join(", ", vehicleIds.Take(5))}");
+                    query = query.Where(t => vehicleIds.Contains(t.VehicleId));
+                    var afterVehicleFilterCount = await query.CountAsync();
+                    Console.WriteLine($"Trips after vehicle/tenant filter: {afterVehicleFilterCount}");
                 }
-                
-                query = query.Where(t => vehicleIds.Contains(t.VehicleId));
-                var afterVehicleFilterCount = await query.CountAsync();
-                Console.WriteLine($"Trips after vehicle/tenant filter: {afterVehicleFilterCount}");
+                else
+                {
+                    Console.WriteLine("No vehicles found for this tenant - returning empty result");
+                    return Ok(new List<object>());
+                }
 
                 // Optionally filter by taxiRankId if provided
                 if (taxiRankId.HasValue)
                 {
                     var rankVehicleIds = await _context.Set<VehicleTaxiRank>()
-                        .Where(vtr => vtr.TaxiRankId == taxiRankId.Value)
+                        .Where(vtr => vtr.TaxiRankId == taxiRankId.Value && vtr.IsActive)
                         .Select(vtr => vtr.VehicleId)
                         .ToListAsync();
                     
                     Console.WriteLine($"Vehicles found for taxi rank: {rankVehicleIds.Count}");
-                    query = query.Where(t => rankVehicleIds.Contains(t.VehicleId));
-                    var afterRankFilterCount = await query.CountAsync();
-                    Console.WriteLine($"Trips after taxi rank filter: {afterRankFilterCount}");
+                    // Only apply rank filter if vehicles are actually assigned to this rank
+                    if (rankVehicleIds.Count > 0)
+                    {
+                        query = query.Where(t => rankVehicleIds.Contains(t.VehicleId));
+                        var afterRankFilterCount = await query.CountAsync();
+                        Console.WriteLine($"Trips after taxi rank filter: {afterRankFilterCount}");
+                    }
+                    else
+                    {
+                        Console.WriteLine("No vehicles assigned to this rank - showing all tenant trips");
+                    }
                 }
 
                 var trips = await query
@@ -924,28 +935,74 @@ namespace MzansiFleet.Api.Controllers
             return Ok(trip);
         }
 
+        // NEW: Get passengers from bookings for a scheduled trip
+        [HttpGet("passengers/from-bookings")]
+        public async Task<ActionResult<IEnumerable<Passenger>>> GetPassengersFromBookings([FromQuery] Guid tripScheduleId, [FromQuery] DateTime travelDate)
+        {
+            try
+            {
+                var passengers = await _bookingIntegrationService.GetPassengersFromBookingsAsync(tripScheduleId, travelDate);
+                return Ok(passengers);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to get passengers from bookings: {ex.Message}");
+                return BadRequest(new { message = "Error retrieving passengers from bookings", error = ex.Message });
+            }
+        }
+
         [HttpPost]
         public async Task<ActionResult<Trip>> Create([FromBody] Trip trip)
         {
-            trip.Id = Guid.NewGuid();
-            trip.CreatedAt = DateTime.UtcNow;
-            
-            // Set IDs for passengers
-            foreach (var passenger in trip.Passengers)
+            try
             {
-                passenger.Id = Guid.NewGuid();
-                passenger.TripId = trip.Id;
+                trip.Id = Guid.NewGuid();
+                trip.CreatedAt = DateTime.UtcNow;
+                
+                // Set IDs for passengers
+                foreach (var passenger in trip.Passengers)
+                {
+                    passenger.Id = Guid.NewGuid();
+                    passenger.TripId = trip.Id;
+                }
+                
+                _context.Set<Trip>().Add(trip);
+                await _context.SaveChangesAsync();
+
+                // Send notification to vehicle owner about trip completion
+                try
+                {
+                    var routeName = trip.RouteId.HasValue
+                        ? await _context.Set<Route>().Where(r => r.Id == trip.RouteId.Value).Select(r => r.Name).FirstOrDefaultAsync()
+                        : "Unknown Route";
+
+                    await _notificationService.NotifyTripCompleted(
+                        trip.VehicleId,
+                        trip.Id,
+                        trip.PassengerCount,
+                        trip.TotalFare,
+                        trip.TripDate,
+                        routeName ?? "Unknown Route");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[TripDetails] Failed to send owner notification: {ex.Message}");
+                }
+                
+                // Reload with includes
+                var createdTrip = await _context.Set<Trip>()
+                    .Include(t => t.Passengers)
+                    .FirstOrDefaultAsync(t => t.Id == trip.Id);
+                
+                return CreatedAtAction(nameof(GetById), new { id = trip.Id }, createdTrip);
             }
-            
-            _context.Set<Trip>().Add(trip);
-            await _context.SaveChangesAsync();
-            
-            // Reload with includes
-            var createdTrip = await _context.Set<Trip>()
-                .Include(t => t.Passengers)
-                .FirstOrDefaultAsync(t => t.Id == trip.Id);
-            
-            return CreatedAtAction(nameof(GetById), new { id = trip.Id }, createdTrip);
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to create trip: {ex.Message}");
+                Console.WriteLine($"[ERROR] Inner exception: {ex.InnerException?.Message}");
+                Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+                return StatusCode(500, new { error = ex.Message, inner = ex.InnerException?.Message });
+            }
         }
 
         [HttpDelete("{id}")]

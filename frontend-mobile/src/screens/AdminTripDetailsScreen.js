@@ -3,7 +3,9 @@ import {
   View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
   StyleSheet, Alert, Modal, KeyboardAvoidingView, Platform, FlatList, RefreshControl,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
+import { fetchSchedules, deleteSchedule } from '../api/taxiRanks';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import client from '../api/client';
@@ -11,6 +13,7 @@ import client from '../api/client';
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
 const GREEN = '#198754';
+const GREEN_LIGHT = 'rgba(25,135,84,0.12)';
 const RED = '#dc3545';
 
 export default function AdminTripDetailsScreen({ navigation }) {
@@ -30,10 +33,11 @@ export default function AdminTripDetailsScreen({ navigation }) {
 
   // ===== CAPTURE TAB STATE =====
   const [selectedSchedule, setSelectedSchedule] = useState(null);
+  const [captureMode, setCaptureMode] = useState('schedule'); // 'schedule' | 'manual'
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
-  const [tripDate, setTripDate] = useState(new Date().toISOString().split('T')[0]);
+  const [tripDate, setTripDate] = useState(new Date());
   const [departureTime, setDepartureTime] = useState('');
   const [arrivalTime, setArrivalTime] = useState('');
   const [notes, setNotes] = useState('');
@@ -41,11 +45,16 @@ export default function AdminTripDetailsScreen({ navigation }) {
   const [totalPaxOverride, setTotalPaxOverride] = useState('');
   const [passengers, setPassengers] = useState([createEmptyPassenger()]);
   const [submitting, setSubmitting] = useState(false);
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [departureTimePickerVisible, setDepartureTimePickerVisible] = useState(false);
+  const [arrivalTimePickerVisible, setArrivalTimePickerVisible] = useState(false);
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
   const [routeModalVisible, setRouteModalVisible] = useState(false);
   const [driverModalVisible, setDriverModalVisible] = useState(false);
   const [paxModalVisible, setPaxModalVisible] = useState(false);
   const [editingPaxIndex, setEditingPaxIndex] = useState(-1);
+  const [deleteScheduleModalVisible, setDeleteScheduleModalVisible] = useState(false);
+  const [scheduleToDelete, setScheduleToDelete] = useState(null);
   const [paxForm, setPaxForm] = useState(createEmptyPassenger());
 
   // ===== HISTORY TAB STATE =====
@@ -69,36 +78,102 @@ export default function AdminTripDetailsScreen({ navigation }) {
       const userId = user?.userId || user?.id;
       if (!userId) { setLoading(false); return; }
 
-      // Fetch admin profile first
-      const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`).catch(() => ({ data: null }));
-      const admin = adminResp.data;
-      setAdminProfile(admin);
+      // Check if user is Rank Admin or Rank Manager (both have same permissions)
+      const isAdmin = user?.role === 'TaxiRankAdmin';
+      const isManager = user?.role === 'TaxiRankManager';
+      const hasPermission = isAdmin || isManager;
 
-      const promises = [
-        client.get('/Vehicles').catch(() => ({ data: [] })),
-        client.get('/Routes').catch(() => ({ data: [] })),
-        client.get('/Drivers').catch(() => ({ data: [] })),
-      ];
+      if (hasPermission) {
+        // For admins, fetch admin profile
+        const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`).catch(() => ({ data: null }));
+        const admin = adminResp.data;
 
-      // Fetch schedules (routes with linked vehicles) if admin exists
-      if (admin?.id) {
-        promises.push(client.get(`/TaxiRankAdmin/${admin.id}/schedules`).catch(() => ({ data: [] })));
+        // If admin profile doesn't exist but user has admin/manager role, create a mock profile
+        if (!admin && (user?.role === 'TaxiRankAdmin' || user?.role === 'TaxiRankManager')) {
+          console.warn('Admin/Manager profile not found, creating mock profile for user with admin/manager role');
+          const mockAdminProfile = {
+            id: user.id,
+            userId: user.userId || user.id,
+            tenantId: user.tenantId,
+            role: user.role,
+            fullName: user.fullName || 'Admin User',
+            email: user.email,
+            // Mock taxi rank info - this might need to be updated based on your business logic
+            taxiRankId: null,
+            adminCode: user?.role === 'TaxiRankAdmin' ? 'ADMIN' : 'MANAGER',
+            status: 'Active'
+          };
+          setAdminProfile(mockAdminProfile);
+          
+          // Load basic data including schedules for mock admin
+          const promises = [
+            client.get('/Vehicles').catch(() => ({ data: [] })),
+            client.get('/Drivers').catch(() => ({ data: [] })),
+            client.get(`/TaxiRankAdmin/user/${userId}/schedules`).catch(() => ({ data: [] }))
+          ];
+
+          const [vehResp, driverResp, schedResp] = await Promise.all(promises);
+          setVehicles(vehResp.data || []);
+          setRoutes(schedResp?.data || []); // Use schedules as routes
+          setSchedules(schedResp?.data || []);
+          const mappedDrivers = (driverResp.data || []).map(d => ({
+            id: d.id,
+            firstName: d.user?.firstName || d.name?.split(' ')[0] || d.firstName || 'Unknown',
+            lastName: d.user?.lastName || d.name?.split(' ').slice(1).join(' ') || d.lastName || '',
+            userCode: d.user?.userCode || d.idNumber || '',
+            assignedVehicleId: d.assignedVehicleId || null,
+          }));
+          setDrivers(mappedDrivers);
+        } else if (admin?.id) {
+          setAdminProfile(admin);
+
+          if (admin?.id) {
+            const promises = [
+              client.get('/Vehicles').catch(() => ({ data: [] })),
+              client.get('/Drivers').catch(() => ({ data: [] })),
+              client.get(`/TaxiRankAdmin/user/${userId}/schedules`)
+                .catch(err => {
+                  console.warn('Schedules API error:', err?.response?.status, err?.response?.statusText);
+                  return { data: [] }; // Return empty data as fallback
+                })
+            ];
+
+            const [vehResp, driverResp, schedResp] = await Promise.all(promises);
+            setVehicles(vehResp.data || []);
+            setRoutes(schedResp?.data || []); // Use schedules as routes
+            setSchedules(schedResp?.data || []);
+            const mappedDrivers = (driverResp.data || []).map(d => ({
+              id: d.id,
+              firstName: d.user?.firstName || d.name?.split(' ')[0] || d.firstName || 'Unknown',
+              lastName: d.user?.lastName || d.name?.split(' ').slice(1).join(' ') || d.lastName || '',
+              userCode: d.user?.userCode || d.idNumber || '',
+              assignedVehicleId: d.assignedVehicleId || null,
+            }));
+            setDrivers(mappedDrivers);
+          } else {
+            setVehicles([]);
+            setRoutes([]);
+            setSchedules([]);
+            setDrivers([]);
+          }
+        } else {
+          setAdminProfile(null);
+          setVehicles([]);
+          setRoutes([]);
+          setSchedules([]);
+          setDrivers([]);
+        }
+      } else {
+        console.warn('User does not have permission to manage routes. Role:', user?.role);
+        setAdminProfile(null);
+        setVehicles([]);
+        setRoutes([]);
+        setSchedules([]);
+        setDrivers([]);
       }
-
-      const [vehResp, routeResp, driverResp, schedResp] = await Promise.all(promises);
-      setVehicles(vehResp.data || []);
-      setRoutes(routeResp.data || []);
-      setSchedules(schedResp?.data || []);
-      const mappedDrivers = (driverResp.data || []).map(d => ({
-        id: d.id,
-        firstName: d.user?.firstName || d.name?.split(' ')[0] || d.firstName || 'Unknown',
-        lastName: d.user?.lastName || d.name?.split(' ').slice(1).join(' ') || d.lastName || '',
-        userCode: d.user?.userCode || d.idNumber || '',
-        assignedVehicleId: d.assignedVehicleId || null,
-      }));
-      setDrivers(mappedDrivers);
     } catch (err) {
       console.warn('Load base data error:', err?.message);
+      setAdminProfile(null);
     } finally {
       setLoading(false);
     }
@@ -159,18 +234,96 @@ export default function AdminTripDetailsScreen({ navigation }) {
   }, [selectedSchedule, routeStops, selectedRoute]);
 
   function selectScheduleRoute(sched) {
-    setSelectedSchedule(sched);
-    setSelectedRouteId(sched.id);
+    if (captureMode === 'schedule') {
+      // Scheduled trip mode: select the full schedule
+      setSelectedSchedule(sched);
+      setSelectedRouteId(sched.id);
+      // Set default fare for existing passengers (not the empty placeholder)
+      setPassengers(prev => prev.map(p => {
+        if (p.name.trim() || p.contactNumber.trim() || p.address.trim()) {
+          return { ...p, fareAmount: p.fareAmount || String(sched.standardFare || '') };
+        }
+        return p; // leave empty passenger unchanged
+      }));
+    } else {
+      // Manual mode: select only the route ID, don't set full schedule
+      setSelectedSchedule(null);
+      setSelectedRouteId(sched.id);
+      // Set default fare for existing passengers (not the empty placeholder)
+      setPassengers(prev => prev.map(p => {
+        if (p.name.trim() || p.contactNumber.trim() || p.address.trim()) {
+          return { ...p, fareAmount: p.fareAmount || String(sched.standardFare || '') };
+        }
+        return p; // leave empty passenger unchanged
+      }));
+    }
     // Clear vehicle on route change
     setSelectedVehicleId('');
-    // Set default fare for existing passengers (not the empty placeholder)
-    setPassengers(prev => prev.map(p => {
-      if (p.name.trim() || p.contactNumber.trim() || p.address.trim()) {
-        return { ...p, fareAmount: p.fareAmount || String(sched.standardFare || '') };
-      }
-      return p; // leave empty passenger unchanged
-    }));
     setRouteModalVisible(false);
+  }
+
+  // Delete schedule functions
+  function handleDeleteSchedule(schedule) {
+    console.log('handleDeleteSchedule called with:', schedule);
+    
+    // Check if we're using a mock admin profile
+    if (adminProfile?.id === user?.id && adminProfile?.adminCode === 'ADMIN') {
+      Alert.alert('Cannot Delete', 'Cannot delete scheduled trips when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+      return;
+    }
+    
+    // Check if schedule has active vehicles assigned
+    const assignedVehicles = schedule.routeVehicles?.filter(rv => rv.isActive !== false) || [];
+    if (assignedVehicles.length > 0) {
+      const vehicleNames = assignedVehicles
+        .map(rv => rv.vehicle?.registration || rv.vehicle?.registrationNumber || 'Unknown Vehicle')
+        .join(', ');
+      
+      Alert.alert(
+        'Cannot Delete Scheduled Trip', 
+        `This scheduled trip has ${assignedVehicles.length} vehicle(s) assigned: ${vehicleNames}. Please unassign all vehicles before deleting this scheduled trip.`,
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
+    
+    console.log('Showing delete confirmation modal');
+    setScheduleToDelete(schedule);
+    setDeleteScheduleModalVisible(true);
+  }
+
+  async function confirmDeleteSchedule() {
+    if (!scheduleToDelete || !adminProfile?.id) return;
+    
+    console.log('User confirmed delete schedule');
+    try {
+      console.log('Calling deleteSchedule with adminId:', adminProfile.id, 'scheduleId:', scheduleToDelete.id);
+      await deleteSchedule(adminProfile.id, scheduleToDelete.id);
+      console.log('Delete successful, reloading data');
+      setDeleteScheduleModalVisible(false);
+      setScheduleToDelete(null);
+      Alert.alert('Success', 'Scheduled trip deleted successfully');
+      
+      // Reload data to refresh the schedules list
+      loadBaseData();
+      
+      // Clear selected schedule if it was the deleted one
+      if (selectedSchedule?.id === scheduleToDelete.id) {
+        setSelectedSchedule(null);
+        setSelectedRouteId('');
+      }
+    } catch (err) {
+      console.error('Delete schedule error:', err);
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Delete failed');
+      setDeleteScheduleModalVisible(false);
+      setScheduleToDelete(null);
+    }
+  }
+
+  function cancelDeleteSchedule() {
+    console.log('Delete schedule cancelled');
+    setDeleteScheduleModalVisible(false);
+    setScheduleToDelete(null);
   }
 
   const totalFare = useMemo(() => {
@@ -228,7 +381,7 @@ export default function AdminTripDetailsScreen({ navigation }) {
         vehicleId: selectedVehicleId,
         routeId: selectedRouteId,
         driverId: selectedDriverId,
-        tripDate: new Date(tripDate).toISOString(),
+        tripDate: tripDate.toISOString(),
         departureTime: departureTime || null,
         arrivalTime: arrivalTime || null,
         passengers: passengers.filter(p => p.name.trim()).map(p => ({
@@ -363,12 +516,75 @@ export default function AdminTripDetailsScreen({ navigation }) {
     return new Date(d).toLocaleDateString();
   }
 
+  // Helper function to format departure time (TimeSpan or string)
+  function formatDepartureTime(time) {
+    if (!time) return 'Not set';
+    
+    // If it's a TimeSpan object or string like "08:00:00"
+    if (typeof time === 'string') {
+      // Handle TimeSpan format (HH:MM:SS)
+      if (time.includes(':')) {
+        const parts = time.split(':');
+        if (parts.length >= 2) {
+          const hours = parts[0];
+          const minutes = parts[1];
+          return `${hours}:${minutes}`;
+        }
+      }
+      return time;
+    }
+    
+    // If it's a Date object
+    if (time instanceof Date) {
+      return time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    // Fallback
+    return String(time);
+  }
+
+  // Date picker handler
+  const handleDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || tripDate;
+    setDatePickerVisible(false);
+    setTripDate(currentDate);
+  };
+
+  // Time picker handlers
+  const handleDepartureTimeChange = (event, selectedTime) => {
+    setDepartureTimePickerVisible(false);
+    if (selectedTime) {
+      const hours = selectedTime.getHours().toString().padStart(2, '0');
+      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+      setDepartureTime(`${hours}:${minutes}`);
+    }
+  };
+
+  const handleArrivalTimeChange = (event, selectedTime) => {
+    setArrivalTimePickerVisible(false);
+    if (selectedTime) {
+      const hours = selectedTime.getHours().toString().padStart(2, '0');
+      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+      setArrivalTime(`${hours}:${minutes}`);
+    }
+  };
+
   const inp = [styles.input, { backgroundColor: c.surface, borderColor: c.border, color: c.text }];
 
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: c.background }]}>
         <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  // Only Rank Admins can manage routes
+  if (!adminProfile) {
+    return (
+      <View style={[styles.center, { backgroundColor: c.background, flex: 1 }]}>
+        <Ionicons name="lock-closed-outline" size={40} color={c.textMuted} />
+        <Text style={[styles.emptyText, { color: c.textMuted }]}>Only Rank Admins can manage routes.</Text>
       </View>
     );
   }
@@ -389,7 +605,7 @@ export default function AdminTripDetailsScreen({ navigation }) {
       {/* Tabs */}
       <View style={[styles.tabRow, { borderColor: c.border }]}>
         {[
-          { key: 'capture', icon: 'add-circle-outline', label: 'Capture' },
+          { key: 'capture', icon: 'document-text-outline', label: 'Capture Trip Details' },
           { key: 'history', icon: 'time-outline', label: 'History' },
           { key: 'revenue', icon: 'bar-chart-outline', label: 'Revenue' },
         ].map(tab => (
@@ -407,38 +623,136 @@ export default function AdminTripDetailsScreen({ navigation }) {
       {/* ========== CAPTURE TAB ========== */}
       {activeTab === 'capture' && (
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          {/* Route (first) */}
-          <Text style={[styles.sectionTitle, { color: c.text }]}>Route *</Text>
-          <TouchableOpacity style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => setRouteModalVisible(true)}>
-            <Ionicons name="git-branch-outline" size={18} color={GOLD} />
-            <Text style={[styles.pickerText, { color: selectedSchedule ? c.text : c.textMuted }]}>
-              {selectedSchedule
-                ? `${selectedSchedule.routeName} (${selectedSchedule.departureStation} → ${selectedSchedule.destinationStation})`
-                : 'Select a route'}
+          {/* Capture Mode Selection */}
+          <View style={[styles.modeSelection, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Text style={[styles.sectionTitle, { color: c.text }]}>Capture Mode</Text>
+            <View style={styles.modeButtons}>
+              <TouchableOpacity
+                style={[styles.modeBtn, captureMode === 'schedule' && styles.modeBtnActive, { backgroundColor: captureMode === 'schedule' ? GOLD : c.background }]}
+                onPress={() => setCaptureMode('schedule')}
+              >
+                <Ionicons name="calendar-outline" size={20} color={captureMode === 'schedule' ? '#000' : c.text} />
+                <Text style={[styles.modeBtnText, { color: captureMode === 'schedule' ? '#000' : c.text }]}>
+                  Scheduled Trip
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeBtn, captureMode === 'manual' && styles.modeBtnActive, { backgroundColor: captureMode === 'manual' ? GOLD : c.background }]}
+                onPress={() => setCaptureMode('manual')}
+              >
+                <Ionicons name="create-outline" size={20} color={captureMode === 'manual' ? '#000' : c.text} />
+                <Text style={[styles.modeBtnText, { color: captureMode === 'manual' ? '#000' : c.text }]}>
+                  Manual Entry
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modeDescription, { color: c.textMuted }]}>
+              {captureMode === 'schedule' 
+                ? 'Select a pre-scheduled trip to capture its execution details'
+                : 'Capture trip details without a pre-scheduled trip'
+              }
             </Text>
-            <Ionicons name="chevron-down" size={16} color={c.textMuted} />
-          </TouchableOpacity>
+          </View>
 
-          {/* Vehicle (filtered by route) */}
-          <Text style={[styles.sectionTitle, { color: c.text, marginTop: 12 }]}>Vehicle *</Text>
-          <TouchableOpacity
-            style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]}
-            onPress={() => {
-              if (!selectedSchedule) return Alert.alert('Select Route First', 'Please select a route to see linked vehicles.');
-              if (displayVehicles.length === 0) return Alert.alert('No Vehicles', 'No vehicles assigned to this route. Assign vehicles via Manage Routes.');
-              setVehicleModalVisible(true);
-            }}
-          >
-            <Ionicons name="bus-outline" size={18} color={GOLD} />
-            <Text style={[styles.pickerText, { color: selectedVehicleId ? c.text : c.textMuted }]}>
-              {selectedVehicleId
-                ? (displayVehicles.find(v => v.id === selectedVehicleId || v.vehicleId === selectedVehicleId)?.registration || selectedVehicleId)
-                : (selectedSchedule ? `Select vehicle (${displayVehicles.length} available)` : 'Select route first')}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color={c.textMuted} />
-          </TouchableOpacity>
+          {captureMode === 'schedule' ? (
+            /* SCHEDULED TRIP CAPTURE */
+            <>
+              {/* Route (first) */}
+              <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Select Scheduled Trip *</Text>
+              <TouchableOpacity style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => setRouteModalVisible(true)}>
+                <Ionicons name="git-branch-outline" size={18} color={GOLD} />
+                <Text style={[styles.pickerText, { color: selectedSchedule ? c.text : c.textMuted }]}>
+                  {selectedSchedule
+                    ? `${selectedSchedule.routeName} (${selectedSchedule.departureStation} → ${selectedSchedule.destinationStation})`
+                    : 'Select a scheduled trip'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+              </TouchableOpacity>
 
-          {/* Driver */}
+              {/* Show schedule details when selected */}
+              {selectedSchedule && (
+                <View style={[styles.selectedScheduleInfo, { backgroundColor: c.surface, borderColor: c.border }]}>
+                  <Text style={[styles.selectedScheduleTitle, { color: c.text }]}>Selected Trip Details</Text>
+                  <View style={styles.scheduleDetailRow}>
+                    <Text style={[styles.scheduleDetailLabel, { color: c.textMuted }]}>Route:</Text>
+                    <Text style={[styles.scheduleDetailValue, { color: c.text }]}>{selectedSchedule.routeName}</Text>
+                  </View>
+                  <View style={styles.scheduleDetailRow}>
+                    <Text style={[styles.scheduleDetailLabel, { color: c.textMuted }]}>Time:</Text>
+                    <Text style={[styles.scheduleDetailValue, { color: c.text }]}>
+                      {formatDepartureTime(selectedSchedule.departureTime)} · {selectedSchedule.frequencyMinutes || 60} min interval
+                    </Text>
+                  </View>
+                  <View style={styles.scheduleDetailRow}>
+                    <Text style={[styles.scheduleDetailLabel, { color: c.textMuted }]}>Fare:</Text>
+                    <Text style={[styles.scheduleDetailValue, { color: GOLD }]}>R{selectedSchedule.standardFare || 0}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.changeScheduleBtn, { borderColor: c.border }]}
+                    onPress={() => setSelectedSchedule(null)}
+                  >
+                    <Ionicons name="refresh-outline" size={16} color={c.text} />
+                    <Text style={[styles.changeScheduleBtnText, { color: c.text }]}>Change Trip</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Vehicle (filtered by route) */}
+              <Text style={[styles.sectionTitle, { color: c.text, marginTop: 12 }]}>Vehicle *</Text>
+              <TouchableOpacity
+                style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]}
+                onPress={() => {
+                  if (!selectedSchedule) return Alert.alert('Select Trip First', 'Please select a scheduled trip to see linked vehicles.');
+                  if (displayVehicles.length === 0) return Alert.alert('No Vehicles', 'No vehicles assigned to this route.');
+                  setVehicleModalVisible(true);
+                }}
+              >
+                <Ionicons name="bus-outline" size={18} color={GOLD} />
+                <Text style={[styles.pickerText, { color: selectedVehicleId ? c.text : c.textMuted }]}>
+                  {selectedVehicleId
+                    ? (displayVehicles.find(v => v.id === selectedVehicleId || v.vehicleId === selectedVehicleId)?.registration || selectedVehicleId)
+                    : (selectedSchedule ? `Select vehicle (${displayVehicles.length} available)` : 'Select trip first')}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            /* MANUAL TRIP CAPTURE */
+            <>
+              {/* Route (manual selection from available routes) */}
+              <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Select Route *</Text>
+              <TouchableOpacity style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => setRouteModalVisible(true)}>
+                <Ionicons name="git-branch-outline" size={18} color={GOLD} />
+                <Text style={[styles.pickerText, { color: selectedRouteId ? c.text : c.textMuted }]}>
+                  {selectedRouteId
+                    ? (schedules.find(s => s.id === selectedRouteId)?.routeName || 'Unknown Route')
+                    : 'Select a route'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+              </TouchableOpacity>
+
+              {/* Vehicle */}
+              <Text style={[styles.sectionTitle, { color: c.text, marginTop: 12 }]}>Vehicle *</Text>
+              <TouchableOpacity
+                style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]}
+                onPress={() => {
+                  if (vehicles.length === 0) return Alert.alert('No Vehicles', 'No vehicles available.');
+                  setVehicleModalVisible(true);
+                }}
+              >
+                <Ionicons name="bus-outline" size={18} color={GOLD} />
+                <Text style={[styles.pickerText, { color: selectedVehicleId ? c.text : c.textMuted }]}>
+                  {selectedVehicleId
+                    ? (vehicles.find(v => v.id === selectedVehicleId || v.vehicleId === selectedVehicleId)?.registration || selectedVehicleId)
+                    : `Select vehicle (${vehicles.length} available)`
+                  }
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Driver (common for both modes) */}
           <Text style={[styles.sectionTitle, { color: c.text, marginTop: 12 }]}>Driver *</Text>
           <TouchableOpacity style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => setDriverModalVisible(true)}>
             <Ionicons name="person-outline" size={18} color={GOLD} />
@@ -456,15 +770,37 @@ export default function AdminTripDetailsScreen({ navigation }) {
           {/* Trip Date & Times */}
           <Text style={[styles.sectionTitle, { color: c.text, marginTop: 12 }]}>Trip Info</Text>
           <Text style={[styles.label, { color: c.textMuted }]}>Trip Date</Text>
-          <TextInput value={tripDate} onChangeText={setTripDate} style={inp} placeholder="YYYY-MM-DD" placeholderTextColor={c.textMuted} />
+          <TouchableOpacity
+            style={[styles.pickerBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+            onPress={() => setDatePickerVisible(true)}
+          >
+            <Text style={[styles.pickerText, { color: c.text }]}>{tripDate.toLocaleDateString()}</Text>
+            <Ionicons name="calendar-outline" size={16} color={c.textMuted} />
+          </TouchableOpacity>
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.label, { color: c.textMuted }]}>Departure Time</Text>
-              <TextInput value={departureTime} onChangeText={setDepartureTime} style={inp} placeholder="e.g. 07:30" placeholderTextColor={c.textMuted} />
+              <TouchableOpacity
+                style={[styles.pickerBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                onPress={() => setDepartureTimePickerVisible(true)}
+              >
+                <Text style={[styles.pickerText, { color: departureTime ? c.text : c.textMuted }]}>
+                  {departureTime || 'Select departure time'}
+                </Text>
+                <Ionicons name="time-outline" size={16} color={c.textMuted} />
+              </TouchableOpacity>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.label, { color: c.textMuted }]}>Arrival Time</Text>
-              <TextInput value={arrivalTime} onChangeText={setArrivalTime} style={inp} placeholder="e.g. 09:00" placeholderTextColor={c.textMuted} />
+              <TouchableOpacity
+                style={[styles.pickerBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                onPress={() => setArrivalTimePickerVisible(true)}
+              >
+                <Text style={[styles.pickerText, { color: arrivalTime ? c.text : c.textMuted }]}>
+                  {arrivalTime || 'Select arrival time'}
+                </Text>
+                <Ionicons name="time-outline" size={16} color={c.textMuted} />
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -595,101 +931,192 @@ export default function AdminTripDetailsScreen({ navigation }) {
 
       {/* ========== REVENUE TAB ========== */}
       {activeTab === 'revenue' && (
-        <ScrollView contentContainerStyle={styles.body}>
-          {/* Summary Cards */}
-          <View style={styles.revSummaryRow}>
-            <View style={[styles.revCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <Ionicons name="cash-outline" size={22} color={GOLD} />
-              <Text style={[styles.revCardVal, { color: c.text }]}>R{totalRevenue.toFixed(2)}</Text>
-              <Text style={[styles.revCardLabel, { color: c.textMuted }]}>Total Revenue</Text>
-            </View>
-            <View style={[styles.revCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <Ionicons name="people-outline" size={22} color={GOLD} />
-              <Text style={[styles.revCardVal, { color: c.text }]}>{totalPax}</Text>
-              <Text style={[styles.revCardLabel, { color: c.textMuted }]}>Total Passengers</Text>
-            </View>
-          </View>
-          <View style={styles.revSummaryRow}>
-            <View style={[styles.revCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <Ionicons name="analytics-outline" size={22} color={GOLD} />
-              <Text style={[styles.revCardVal, { color: c.text }]}>R{avgPerTrip.toFixed(2)}</Text>
-              <Text style={[styles.revCardLabel, { color: c.textMuted }]}>Avg Per Trip</Text>
-            </View>
-            <View style={[styles.revCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <Ionicons name="car-outline" size={22} color={GOLD} />
-              <Text style={[styles.revCardVal, { color: c.text }]}>{filteredHistory.length}</Text>
-              <Text style={[styles.revCardLabel, { color: c.textMuted }]}>Total Trips</Text>
-            </View>
-          </View>
-
-          {/* Revenue by Vehicle */}
-          <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Revenue by Vehicle</Text>
-          {revenueByVehicle.length === 0 ? (
-            <Text style={[styles.emptyText, { color: c.textMuted }]}>No data</Text>
-          ) : revenueByVehicle.map((item, i) => {
-            const maxRev = revenueByVehicle[0]?.revenue || 1;
-            return (
-              <View key={i} style={[styles.barRow, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <Text style={[styles.barLabel, { color: c.text }]} numberOfLines={1}>{item.vehicle}</Text>
-                <View style={styles.barTrack}>
-                  <View style={[styles.barFill, { width: `${(item.revenue / maxRev) * 100}%` }]} />
+        <FlatList
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.body}
+          data={[
+            { type: 'summary' },
+            { type: 'vehicleHeader' },
+            ...revenueByVehicle.map((item, index) => ({ type: 'vehicle', data: item, index })),
+            { type: 'routeHeader' },
+            ...revenueByRoute.map((item, index) => ({ type: 'route', data: item, index }))
+          ]}
+          keyExtractor={(item, index) => {
+            if (item.type === 'summary') return 'summary';
+            if (item.type === 'vehicleHeader') return 'vehicleHeader';
+            if (item.type === 'routeHeader') return 'routeHeader';
+            if (item.type === 'vehicle') return `vehicle-${item.index}`;
+            if (item.type === 'route') return `route-${item.index}`;
+            return `item-${index}`;
+          }}
+          renderItem={({ item }) => {
+            if (item.type === 'summary') {
+              return (
+                <View>
+                  {/* Summary Cards */}
+                  <View style={styles.revSummaryRow}>
+                    <View style={[styles.revCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      <Ionicons name="cash-outline" size={22} color={GOLD} />
+                      <Text style={[styles.revCardVal, { color: c.text }]}>R{totalRevenue.toFixed(2)}</Text>
+                      <Text style={[styles.revCardLabel, { color: c.textMuted }]}>Total Revenue</Text>
+                    </View>
+                    <View style={[styles.revCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      <Ionicons name="people-outline" size={22} color={GOLD} />
+                      <Text style={[styles.revCardVal, { color: c.text }]}>{totalPax}</Text>
+                      <Text style={[styles.revCardLabel, { color: c.textMuted }]}>Total Passengers</Text>
+                    </View>
+                  </View>
+                  <View style={styles.revSummaryRow}>
+                    <View style={[styles.revCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      <Ionicons name="analytics-outline" size={22} color={GOLD} />
+                      <Text style={[styles.revCardVal, { color: c.text }]}>R{avgPerTrip.toFixed(2)}</Text>
+                      <Text style={[styles.revCardLabel, { color: c.textMuted }]}>Avg Per Trip</Text>
+                    </View>
+                    <View style={[styles.revCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      <Ionicons name="car-outline" size={22} color={GOLD} />
+                      <Text style={[styles.revCardVal, { color: c.text }]}>{filteredHistory.length}</Text>
+                      <Text style={[styles.revCardLabel, { color: c.textMuted }]}>Total Trips</Text>
+                    </View>
+                  </View>
                 </View>
-                <Text style={[styles.barVal, { color: GOLD }]}>R{item.revenue.toFixed(0)}</Text>
-              </View>
-            );
-          })}
+              );
+            }
 
-          {/* Revenue by Route */}
-          <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Revenue by Route</Text>
-          {revenueByRoute.length === 0 ? (
-            <Text style={[styles.emptyText, { color: c.textMuted }]}>No data</Text>
-          ) : revenueByRoute.map((item, i) => {
-            const maxRev = revenueByRoute[0]?.revenue || 1;
-            return (
-              <View key={i} style={[styles.barRow, { backgroundColor: c.surface, borderColor: c.border }]}>
-                <Text style={[styles.barLabel, { color: c.text }]} numberOfLines={1}>{item.route}</Text>
-                <View style={styles.barTrack}>
-                  <View style={[styles.barFill, { width: `${(item.revenue / maxRev) * 100}%` }]} />
+            if (item.type === 'vehicleHeader') {
+              return (
+                <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Revenue by Vehicle</Text>
+              );
+            }
+
+            if (item.type === 'vehicle') {
+              const vehicleItem = item.data;
+              const maxRev = revenueByVehicle[0]?.revenue || 1;
+              return (
+                <View key={item.index} style={[styles.barRow, { backgroundColor: c.surface, borderColor: c.border }]}>
+                  <Text style={[styles.barLabel, { color: c.text }]} numberOfLines={1}>{vehicleItem.vehicle}</Text>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { width: `${(vehicleItem.revenue / maxRev) * 100}%` }]} />
+                  </View>
+                  <Text style={[styles.barVal, { color: GOLD }]}>R{vehicleItem.revenue.toFixed(0)}</Text>
                 </View>
-                <Text style={[styles.barVal, { color: GOLD }]}>R{item.revenue.toFixed(0)}</Text>
-              </View>
-            );
-          })}
-        </ScrollView>
+              );
+            }
+
+            if (item.type === 'routeHeader') {
+              return (
+                <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Revenue by Route</Text>
+              );
+            }
+
+            if (item.type === 'route') {
+              const routeItem = item.data;
+              const maxRev = revenueByRoute[0]?.revenue || 1;
+              return (
+                <View key={item.index} style={[styles.barRow, { backgroundColor: c.surface, borderColor: c.border }]}>
+                  <Text style={[styles.barLabel, { color: c.text }]} numberOfLines={1}>{routeItem.route}</Text>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { width: `${(routeItem.revenue / maxRev) * 100}%` }]} />
+                  </View>
+                  <Text style={[styles.barVal, { color: GOLD }]}>R{routeItem.revenue.toFixed(0)}</Text>
+                </View>
+              );
+            }
+
+            return null;
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Ionicons name="cash-outline" size={48} color={c.textMuted} />
+              <Text style={[styles.emptyText, { color: c.textMuted }]}>No revenue data available</Text>
+            </View>
+          }
+        />
       )}
 
       {/* ===== ROUTE PICKER MODAL ===== */}
       <Modal visible={routeModalVisible} animationType="slide" transparent onRequestClose={() => setRouteModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalSheet, { backgroundColor: c.background }]}>
-            <ModalHeader title="Select Route" onClose={() => setRouteModalVisible(false)} c={c} />
+            <ModalHeader title={captureMode === 'schedule' ? "Select Scheduled Trip" : "Select Route"} onClose={() => setRouteModalVisible(false)} c={c} />
             <FlatList
               data={schedules.filter(s => s.isActive)}
               keyExtractor={item => item.id}
               contentContainerStyle={{ padding: 16 }}
               renderItem={({ item }) => {
                 const rvCount = item.routeVehicles?.filter(rv => rv.isActive !== false)?.length || 0;
+                const isSelected = captureMode === 'schedule' 
+                  ? selectedSchedule?.id === item.id 
+                  : selectedRouteId === item.id;
+                
                 return (
-                  <TouchableOpacity
-                    style={[styles.listItem, { backgroundColor: selectedSchedule?.id === item.id ? GOLD_LIGHT : c.surface, borderColor: selectedSchedule?.id === item.id ? GOLD : c.border }]}
-                    onPress={() => selectScheduleRoute(item)}
-                  >
-                    <Ionicons name="git-branch-outline" size={18} color={GOLD} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.listItemTitle, { color: c.text }]}>{item.routeName}</Text>
-                      <Text style={[styles.listItemSub, { color: c.textMuted }]}>{item.departureStation} → {item.destinationStation} · R{item.standardFare}</Text>
-                      {rvCount > 0 && (
-                        <Text style={[styles.listItemSub, { color: GOLD, fontWeight: '600', marginTop: 2 }]}>
-                          {rvCount} vehicle{rvCount > 1 ? 's' : ''} assigned
-                        </Text>
-                      )}
-                    </View>
-                    {selectedSchedule?.id === item.id && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
-                  </TouchableOpacity>
+                  <View style={[styles.listItem, { backgroundColor: isSelected ? GOLD_LIGHT : c.surface, borderColor: isSelected ? GOLD : c.border }]}>
+                    <TouchableOpacity
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                      onPress={() => selectScheduleRoute(item)}
+                    >
+                      <Ionicons name="git-branch-outline" size={18} color={GOLD} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.listItemTitle, { color: c.text }]}>{item.routeName}</Text>
+                        <Text style={[styles.listItemSub, { color: c.textMuted }]}>{item.departureStation} → {item.destinationStation} · R{item.standardFare}</Text>
+                        {rvCount > 0 && (
+                          <Text style={[styles.listItemSub, { color: GOLD, fontWeight: '600', marginTop: 2 }]}>
+                            {rvCount} vehicle{rvCount > 1 ? 's' : ''} assigned
+                          </Text>
+                        )}
+                      </View>
+                      {isSelected && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
+                    </TouchableOpacity>
+                    
+                    {/* Delete button - only show in schedule mode */}
+                    {captureMode === 'schedule' && (
+                      <TouchableOpacity
+                        onPress={() => handleDeleteSchedule(item)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        style={{ marginLeft: 8, padding: 4 }}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#dc3545" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 );
               }}
-              ListEmptyComponent={<Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 40 }]}>No routes configured for this taxi rank</Text>}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* ===== DELETE SCHEDULE CONFIRMATION MODAL ===== */}
+      <Modal visible={deleteScheduleModalVisible} animationType="fade" transparent onRequestClose={cancelDeleteSchedule}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: c.background, margin: 20, borderRadius: 14 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Delete Scheduled Trip</Text>
+              <TouchableOpacity onPress={cancelDeleteSchedule}>
+                <Ionicons name="close" size={24} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <Text style={[styles.deleteMessage, { color: c.text, marginBottom: 24 }]}>
+                Are you sure you want to delete "{scheduleToDelete?.routeName}"? This action cannot be undone.
+              </Text>
+              
+              <View style={styles.deleteActions}>
+                <TouchableOpacity 
+                  style={[styles.deleteCancelBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
+                  onPress={cancelDeleteSchedule}
+                >
+                  <Text style={[styles.deleteCancelText, { color: c.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.deleteConfirmBtn, { backgroundColor: '#dc3545' }]} 
+                  onPress={confirmDeleteSchedule}
+                >
+                  <Text style={[styles.deleteConfirmText]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
@@ -889,6 +1316,36 @@ export default function AdminTripDetailsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Date Picker */}
+      {datePickerVisible && (
+        <DateTimePicker
+          value={tripDate}
+          mode="date"
+          display="default"
+          onChange={handleDateChange}
+        />
+      )}
+
+      {/* Departure Time Picker */}
+      {departureTimePickerVisible && (
+        <DateTimePicker
+          value={departureTime ? new Date(`1970-01-01T${departureTime}:00`) : new Date()}
+          mode="time"
+          display="default"
+          onChange={handleDepartureTimeChange}
+        />
+      )}
+
+      {/* Arrival Time Picker */}
+      {arrivalTimePickerVisible && (
+        <DateTimePicker
+          value={arrivalTime ? new Date(`1970-01-01T${arrivalTime}:00`) : new Date()}
+          mode="time"
+          display="default"
+          onChange={handleArrivalTimeChange}
+        />
+      )}
     </View>
   );
 }
@@ -935,6 +1392,28 @@ const styles = StyleSheet.create({
   pickerBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 6 },
   pickerText: { flex: 1, fontSize: 14 },
 
+  // Capture mode selection styles
+  modeSelection: { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
+  modeButtons: { flexDirection: 'row', gap: 12, marginTop: 12, marginBottom: 12 },
+  modeBtn: { flex: 1, flexDirection: 'column', alignItems: 'center', gap: 8, padding: 16, borderRadius: 12, borderWidth: 1 },
+  modeBtnActive: { borderWidth: 2, borderColor: GOLD },
+  modeBtnText: { fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  modeDescription: { fontSize: 12, textAlign: 'center', lineHeight: 18 },
+
+  // Selected schedule info styles
+  selectedScheduleInfo: { borderWidth: 1, borderRadius: 12, padding: 16, marginTop: 12 },
+  selectedScheduleTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12 },
+  scheduleDetailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  scheduleDetailLabel: { fontSize: 12, fontWeight: '600' },
+  scheduleDetailValue: { fontSize: 14, fontWeight: '500' },
+  changeScheduleBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', borderWidth: 1, borderRadius: 8, padding: 10, marginTop: 12 },
+  changeScheduleBtnText: { fontSize: 12, fontWeight: '600' },
+
+  // Empty state styles
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 64 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', marginTop: 16, marginBottom: 8 },
+  emptySubtitle: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
 
   paxCard: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 6, gap: 10 },
@@ -969,6 +1448,7 @@ const styles = StyleSheet.create({
 
   emptyWrap: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { fontSize: 13, marginTop: 8 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   destChip: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8 },
 
@@ -977,6 +1457,25 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.1)' },
   modalTitle: { fontSize: 17, fontWeight: '900' },
   modalBody: { padding: 16, paddingBottom: 40 },
+
+  // Delete modal styles
+  deleteMessage: { fontSize: 16, lineHeight: 22, textAlign: 'center' },
+  deleteActions: { flexDirection: 'row', gap: 12 },
+  deleteCancelBtn: { 
+    flex: 1, 
+    padding: 14, 
+    borderRadius: 10, 
+    borderWidth: 1, 
+    alignItems: 'center' 
+  },
+  deleteCancelText: { fontSize: 16, fontWeight: '600' },
+  deleteConfirmBtn: { 
+    flex: 1, 
+    padding: 14, 
+    borderRadius: 10, 
+    alignItems: 'center' 
+  },
+  deleteConfirmText: { fontSize: 16, fontWeight: '600', color: '#fff' },
 
   listItem: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 8 },
   listItemTitle: { fontSize: 14, fontWeight: '700' },

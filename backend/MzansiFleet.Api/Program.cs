@@ -91,6 +91,7 @@ builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IMechanic
 
 // Register services
 builder.Services.AddScoped<MzansiFleet.Application.Services.VehicleNotificationService>();
+builder.Services.AddScoped<MzansiFleet.Application.Services.IBookingIntegrationService, MzansiFleet.Application.Services.BookingIntegrationService>();
 
 // Register Taxi Rank repositories
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITaxiRankRepository, MzansiFleet.Repository.Repositories.TaxiRankRepository>();
@@ -189,10 +190,14 @@ catch (Exception ex)
     logger.LogWarning(ex, "Failed to apply database migrations, but continuing startup");
 }
 
-// Create taxi rank tables manually
+// Create taxi rank tables manually AFTER EF migrations
 try
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    
+    // Remove conflicting Routes table if it exists
+    Program_RemoveRoutes.RemoveRoutesTable(connectionString);
+    
     MigrationRunner.CreateTaxiRankTables(connectionString);
     logger.LogInformation("Taxi rank tables created successfully");
 }

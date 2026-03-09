@@ -39,8 +39,12 @@ namespace MzansiFleet.Application.Services
                 var message = new Message
                 {
                     Id = Guid.NewGuid(),
-                    SenderId = driverUser.Id, // Send from driver to driver (system notification)
-                    ReceiverId = driverUser.Id,
+                    SenderType = "System",
+                    SenderId = driverUser.Id,
+                    SenderName = "System",
+                    RecipientType = "Driver",
+                    RecipientId = driverUser.Id,
+                    RecipientDriverId = driverUser.Id,
                     Subject = subject,
                     Content = messageBody,
                     CreatedAt = DateTime.UtcNow,
@@ -95,8 +99,11 @@ namespace MzansiFleet.Application.Services
                 var message = new Message
                 {
                     Id = Guid.NewGuid(),
-                    SenderId = serviceProviderUser.Id, // Send from provider to provider (system notification)
-                    ReceiverId = serviceProviderUser.Id,
+                    SenderType = "System",
+                    SenderId = serviceProviderUser.Id,
+                    SenderName = "System",
+                    RecipientType = "ServiceProvider",
+                    RecipientId = serviceProviderUser.Id,
                     Subject = subject,
                     Content = messageBody,
                     CreatedAt = DateTime.UtcNow,
@@ -164,8 +171,11 @@ namespace MzansiFleet.Application.Services
                 var message = new Message
                 {
                     Id = Guid.NewGuid(),
-                    SenderId = ownerUser.Id, // Send from owner to owner (system notification)
-                    ReceiverId = ownerUser.Id,
+                    SenderType = "System",
+                    SenderId = ownerUser.Id,
+                    SenderName = "System",
+                    RecipientType = "Owner",
+                    RecipientId = ownerUser.Id,
                     Subject = subject,
                     Content = messageBody,
                     CreatedAt = DateTime.UtcNow,
@@ -330,8 +340,11 @@ namespace MzansiFleet.Application.Services
                     var message = new Message
                     {
                         Id = Guid.NewGuid(),
-                        SenderId = serviceProviderUser.Id, // Send from provider to provider (system notification)
-                        ReceiverId = serviceProviderUser.Id,
+                        SenderType = "System",
+                        SenderId = serviceProviderUser.Id,
+                        SenderName = "System",
+                        RecipientType = "ServiceProvider",
+                        RecipientId = serviceProviderUser.Id,
                         Subject = subject,
                         Content = body,
                         CreatedAt = DateTime.UtcNow,
@@ -380,6 +393,20 @@ namespace MzansiFleet.Application.Services
                       $"Date: {date:yyyy-MM-dd}\n" +
                       $"Description: {description}\n\n" +
                       $"You can view more details in your vehicle financial reports.";
+
+            await SendMessageToOwner(vehicleId, subject, body);
+        }
+
+        public async Task NotifyTripCompleted(Guid vehicleId, Guid tripId, int passengerCount, decimal totalFare, DateTime tripDate, string routeName)
+        {
+            var vehicle = await _context.Vehicles.FindAsync(vehicleId);
+            var subject = $"Trip Completed: {vehicle?.Registration ?? "Unknown Vehicle"}";
+            var body = $"A trip has been completed for your vehicle {vehicle?.Registration}.\n\n" +
+                      $"Date: {tripDate:yyyy-MM-dd}\n" +
+                      $"Route: {routeName}\n" +
+                      $"Passengers: {passengerCount}\n" +
+                      $"Total Fare: R{totalFare:N2}\n\n" +
+                      $"You can view trip details and passenger list in your dashboard.";
 
             await SendMessageToOwner(vehicleId, subject, body);
         }

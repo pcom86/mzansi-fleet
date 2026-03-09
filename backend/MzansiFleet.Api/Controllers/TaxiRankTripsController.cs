@@ -150,12 +150,12 @@ namespace MzansiFleet.Api.Controllers
             // Try to get route information
             if (routeId.HasValue)
             {
-                var route = await _context.Routes.FindAsync(routeId.Value);
+                var route = await _context.TripSchedules.FindAsync(routeId.Value);
                 if (route != null)
                 {
-                    departureStation = route.Origin;
-                    destinationStation = route.Destination;
-                    fareAmount = route.FareAmount;
+                    departureStation = route.DepartureStation;
+                    destinationStation = route.DestinationStation;
+                    fareAmount = route.StandardFare;
                 }
             }
 
@@ -497,8 +497,11 @@ namespace MzansiFleet.Api.Controllers
                             var adminMessage = new Message
                             {
                                 Id = Guid.NewGuid(),
+                                SenderType = "User",
                                 SenderId = userId,
-                                ReceiverId = admin.UserId,
+                                SenderName = "System",
+                                RecipientType = "Admin",
+                                RecipientId = admin.UserId,
                                 Subject = "New Passenger Booking",
                                 Content = $"A new passenger '{passenger.PassengerName}' has booked a seat on trip from {trip.DepartureStation} to {trip.DestinationStation} departing at {trip.DepartureTime:yyyy-MM-dd HH:mm}. Seat: {passenger.SeatNumber}, Amount: R{passenger.Amount}",
                                 CreatedAt = DateTime.UtcNow,
@@ -522,8 +525,11 @@ namespace MzansiFleet.Api.Controllers
                             var marshalMessage = new Message
                             {
                                 Id = Guid.NewGuid(),
+                                SenderType = "User",
                                 SenderId = userId,
-                                ReceiverId = marshal.UserId,
+                                SenderName = "System",
+                                RecipientType = "Marshal",
+                                RecipientId = marshal.UserId,
                                 Subject = "New Passenger Booking",
                                 Content = $"A new passenger '{passenger.PassengerName}' has booked a seat on your assigned trip from {trip.DepartureStation} to {trip.DestinationStation} departing at {trip.DepartureTime:yyyy-MM-dd HH:mm}. Seat: {passenger.SeatNumber}, Amount: R{passenger.Amount}",
                                 CreatedAt = DateTime.UtcNow,

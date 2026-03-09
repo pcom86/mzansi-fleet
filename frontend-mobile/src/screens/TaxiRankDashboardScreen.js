@@ -51,7 +51,7 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       if (rank?.id) {
         const [mResp, tResp] = await Promise.all([
           fetchMarshals(rank.id).catch(() => ({ data: [] })),
-          fetchTrips(rank.id).catch(() => ({ data: [] })),
+          fetchTrips(rank.id, user?.tenantId).catch(() => ({ data: [] })),
         ]);
         setMarshals(mResp.data || mResp || []);
         setTrips(tResp.data || tResp || []);
@@ -123,15 +123,31 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       )
     : allRanks;
 
-  // Derived stats
-  const todayTrips = trips.filter(t => {
-    const d = new Date(t.departureTime || t.createdAt);
-    const now = new Date();
-    return d.toDateString() === now.toDateString();
-  });
-  const totalPassengers = todayTrips.reduce((sum, t) => sum + (t.passengerCount || 0), 0);
-  const todayRevenue = todayTrips.reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+  // Derived stats - revenue API already returns today's trips
+  const todayTrips = trips || [];
+  
+  // Debug: Log the actual data structure
+  if (typeof __DEV__ !== 'undefined' && __DEV__ && todayTrips.length > 0) {
+    console.log('[Dashboard] First trip data structure:', todayTrips[0]);
+    console.log('[Dashboard] All trips keys:', todayTrips.map(t => Object.keys(t)));
+  }
+  
+  const totalPassengers = todayTrips.reduce((sum, t) => sum + (t.passengerCount || t.passengers || 0), 0);
+  const todayRevenue = todayTrips.reduce((sum, t) => sum + (t.totalFare || t.fare || t.revenue || 0), 0);
   const activeTrips = trips.filter(t => t.status === 'InProgress' || t.status === 'Active');
+
+  // Calculate current month revenue
+  const currentMonthRevenue = trips.reduce((sum, t) => {
+    if (t.tripDate || t.date) {
+      const tripDate = new Date(t.tripDate || t.date);
+      const currentDate = new Date();
+      if (tripDate.getMonth() === currentDate.getMonth() && 
+          tripDate.getFullYear() === currentDate.getFullYear()) {
+        return sum + (t.totalFare || t.fare || t.revenue || 0);
+      }
+    }
+    return sum;
+  }, 0);
 
   const roleLabel = user?.role === 'TaxiRankAdmin' ? 'Rank Manager' : 'Taxi Marshal';
 
@@ -164,19 +180,24 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       <View style={styles.header}>
         <View style={styles.headerGradient}>
           <View style={styles.headerTop}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
               <Text style={styles.headerRank} numberOfLines={1}>
                 {activeRank?.name || 'Taxi Rank'}
               </Text>
-              <Text style={styles.headerRole}>{roleLabel} Portal</Text>
+              {activeRank && (
+                <TouchableOpacity 
+                  onPress={() => navigation.navigate('TaxiRankEdit', { rank: activeRank })}
+                  style={{ marginLeft: 8, padding: 4 }}
+                >
+                  <Ionicons name="pencil-outline" size={18} color="#ffffffcc" />
+                </TouchableOpacity>
+              )}
             </View>
             <View style={{ marginRight: 8 }}>
               <ThemeToggle showBackground={false} size={24} />
             </View>
-            <TouchableOpacity style={styles.headerAvatar} onPress={() => {}}>
-              <Ionicons name="person-circle-outline" size={34} color="#fff" />
-            </TouchableOpacity>
           </View>
+          <Text style={styles.headerRole}>{roleLabel} Portal</Text>
 
           <Text style={styles.headerWelcome}>
             Welcome, {user?.fullName || user?.email || 'User'}
@@ -201,8 +222,57 @@ export default function TaxiRankDashboardScreen({ navigation }) {
         <View style={styles.statsRow}>
           <StatCard icon="navigate-outline" label="Today's Trips" value={todayTrips.length} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
           <StatCard icon="people-outline" label="Passengers" value={totalPassengers} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
-          <StatCard icon="cash-outline" label="Revenue" value={`R${todayRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
-          <StatCard icon="bus-outline" label="Marshals" value={marshals.length} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
+          <StatCard icon="cash-outline" label="Today's Revenue" value={`R${todayRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
+          <StatCard icon="calendar-outline" label="Monthly Revenue" value={`R${currentMonthRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
+        </View>
+
+        {/* Monthly Revenue Summary */}
+        <View style={[styles.monthlyRevenueCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <View style={styles.monthlyRevenueHeader}>
+            <View style={styles.monthlyRevenueIcon}>
+              <Ionicons name="analytics-outline" size={24} color={GOLD} />
+            </View>
+            <View style={styles.monthlyRevenueText}>
+              <Text style={[styles.monthlyRevenueTitle, { color: c.text }]}>Current Month Performance</Text>
+              <Text style={[styles.monthlyRevenueSubtitle, { color: c.textMuted }]}>
+                {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.monthlyRevenueStats}>
+            <View style={styles.monthlyRevenueStat}>
+              <Text style={[styles.monthlyRevenueValue, { color: c.text }]}>R{currentMonthRevenue.toFixed(2)}</Text>
+              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Total Revenue</Text>
+            </View>
+            <View style={styles.monthlyRevenueStat}>
+              <Text style={[styles.monthlyRevenueValue, { color: c.text }]}>
+                {todayTrips.filter(t => {
+                  if (t.tripDate || t.date) {
+                    const tripDate = new Date(t.tripDate || t.date);
+                    const currentDate = new Date();
+                    return tripDate.getMonth() === currentDate.getMonth() && 
+                           tripDate.getFullYear() === currentDate.getFullYear();
+                  }
+                  return false;
+                }).length}
+              </Text>
+              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Total Trips</Text>
+            </View>
+            <View style={styles.monthlyRevenueStat}>
+              <Text style={[styles.monthlyRevenueValue, { color: c.text }]}>
+                R{currentMonthRevenue > 0 ? (currentMonthRevenue / todayTrips.filter(t => {
+                  if (t.tripDate || t.date) {
+                    const tripDate = new Date(t.tripDate || t.date);
+                    const currentDate = new Date();
+                    return tripDate.getMonth() === currentDate.getMonth() && 
+                           tripDate.getFullYear() === currentDate.getFullYear();
+                  }
+                  return false;
+                }).length).toFixed(2) : '0.00'}
+              </Text>
+              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Avg per Trip</Text>
+            </View>
+          </View>
         </View>
 
         {/* Action cards grid */}
@@ -215,22 +285,22 @@ export default function TaxiRankDashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('TaxiRankRoutes', { rank: activeRank })}
           />
           <ActionCard
-            icon="car-sport-outline" title="Fleet Management"
-            desc="Assign and manage vehicles for this rank"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('TaxiRankVehicles')}
-          />
-          <ActionCard
-            icon="create-outline" title="Edit Rank Details"
-            desc="Update rank name, address, hours & status"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('TaxiRankEdit', { rank: activeRank })}
-          />
-          <ActionCard
             icon="calendar-outline" title="Create Trip Schedule"
             desc="Plan daily trip rosters and assign vehicles"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
             onPress={() => navigation.navigate('CreateTripSchedule')}
+          />
+          <ActionCard
+            icon="car-outline" title="Fleet Management"
+            desc="Assign vehicles to routes and approve vehicle requests"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('VehicleRouteAssignment')}
+          />
+          <ActionCard
+            icon="shield-outline" title="Marshal Management"
+            desc="Create and manage queue marshal profiles"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('MarshalManagement', { admin })}
           />
           <ActionCard
             icon="document-text-outline" title="Capture Trip Details"
@@ -239,28 +309,10 @@ export default function TaxiRankDashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('AdminTripDetails')}
           />
           <ActionCard
-            icon="add-circle-outline" title="Capture Trip"
-            desc="Record departing trip details and passenger list"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('CaptureTrip', { rank: activeRank })}
-          />
-          <ActionCard
-            icon="time-outline" title="Trip History"
-            desc="View all trips recorded for your assigned rank"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('TaxiRankDetails', { rank: activeRank, tab: 'history' })}
-          />
-          <ActionCard
             icon="calendar-outline" title="Today's Schedule"
             desc="Your shift and scheduled tasks for today"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
             onPress={() => navigation.navigate('TaxiRankRoutes', { rank: activeRank })}
-          />
-          <ActionCard
-            icon="bus-outline" title="Active Vehicles"
-            desc={taxiRanks.length > 0 ? `${taxiRanks.length} rank(s) active` : 'No vehicles assigned'}
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('TaxiRankDetails', { rank: activeRank })}
           />
           <ActionCard
             icon="people-circle-outline" title="Passenger Management"
@@ -429,7 +481,6 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <BottomTab icon="grid-outline" label="Dashboard" active onPress={() => {}} textColor={c.text} muted={c.textMuted} />
         <BottomTab icon="add-circle-outline" label="Capture" onPress={() => navigation.navigate('TaxiRankDetails', { rank: activeRank, tab: 'capture' })} textColor={c.text} muted={c.textMuted} />
-        <BottomTab icon="list-outline" label="Trips" onPress={() => navigation.navigate('TaxiRankDetails', { rank: activeRank, tab: 'history' })} textColor={c.text} muted={c.textMuted} />
         <BottomTab icon="chatbubble-outline" label="Messages" onPress={() => {}} textColor={c.text} muted={c.textMuted} />
         <BottomTab icon="log-out-outline" label="Logout" onPress={() => { signOut(); navigation.reset({ index: 0, routes: [{ name: 'Login' }] }); }} textColor={c.text} muted={c.textMuted} />
       </View>
@@ -532,6 +583,18 @@ const styles = StyleSheet.create({
   /* Marshals */
   marshalChip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12, gap: 6 },
   marshalName: { fontSize: 12, fontWeight: '600', maxWidth: 100 },
+
+  /* Monthly Revenue Card */
+  monthlyRevenueCard: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 18 },
+  monthlyRevenueHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  monthlyRevenueIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: GOLD_LIGHT, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  monthlyRevenueText: { flex: 1 },
+  monthlyRevenueTitle: { fontSize: 16, fontWeight: '800', marginBottom: 2 },
+  monthlyRevenueSubtitle: { fontSize: 12, fontWeight: '500' },
+  monthlyRevenueStats: { flexDirection: 'row', justifyContent: 'space-between' },
+  monthlyRevenueStat: { alignItems: 'center' },
+  monthlyRevenueValue: { fontSize: 18, fontWeight: '900', marginBottom: 2 },
+  monthlyRevenueLabel: { fontSize: 11, fontWeight: '600' },
 
   /* Bottom bar */
   bottomBar: { flexDirection: 'row', borderTopWidth: 1, paddingTop: 8, paddingHorizontal: 4 },

@@ -52,7 +52,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AuditLogs");
+                    b.ToTable("AuditLogs", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.DailyTaxiQueue", b =>
@@ -121,7 +121,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("DailyTaxiQueue");
+                    b.ToTable("DailyTaxiQueue", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.DisputeCase", b =>
@@ -149,7 +149,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DisputeCases");
+                    b.ToTable("DisputeCases", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.DriverProfile", b =>
@@ -212,7 +212,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("DriverProfiles");
+                    b.ToTable("DriverProfiles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Inventory", b =>
@@ -229,7 +229,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Inventories");
+                    b.ToTable("Inventories", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.LedgerEntry", b =>
@@ -257,7 +257,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("LedgerEntries");
+                    b.ToTable("LedgerEntries", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.MaintenanceEvent", b =>
@@ -294,7 +294,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("MaintenanceEvents");
+                    b.ToTable("MaintenanceEvents", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.MaintenanceHistory", b =>
@@ -365,7 +365,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MaintenanceHistories");
+                    b.ToTable("MaintenanceHistories", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.MechanicProfile", b =>
@@ -409,7 +409,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("MechanicProfiles");
+                    b.ToTable("MechanicProfiles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.MechanicalRequest", b =>
@@ -483,7 +483,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MechanicalRequests");
+                    b.ToTable("MechanicalRequests", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Message", b =>
@@ -532,7 +532,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Messages");
+                    b.ToTable("Messages", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Order", b =>
@@ -559,7 +559,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Orders");
+                    b.ToTable("Orders", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.OrderItem", b =>
@@ -582,7 +582,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("OrderItems");
+                    b.ToTable("OrderItems", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.OwnerAssignment", b =>
@@ -613,7 +613,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TaxiRankId");
 
-                    b.ToTable("OwnerAssignments");
+                    b.ToTable("OwnerAssignments", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.OwnerProfile", b =>
@@ -648,7 +648,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("OwnerProfiles");
+                    b.ToTable("OwnerProfiles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PartRule", b =>
@@ -674,7 +674,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("PartRules");
+                    b.ToTable("PartRules", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Passenger", b =>
@@ -711,7 +711,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TripId");
 
-                    b.ToTable("Passengers");
+                    b.ToTable("Passengers", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PassengerProfile", b =>
@@ -738,7 +738,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("PassengerProfiles");
+                    b.ToTable("PassengerProfiles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PaymentIntent", b =>
@@ -765,7 +765,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PaymentIntents");
+                    b.ToTable("PaymentIntents", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PaymentTransaction", b =>
@@ -792,7 +792,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PaymentTransactions");
+                    b.ToTable("PaymentTransactions", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PayoutBatch", b =>
@@ -809,7 +809,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PayoutBatches");
+                    b.ToTable("PayoutBatches", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PayoutItem", b =>
@@ -833,7 +833,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PayoutItems");
+                    b.ToTable("PayoutItems", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PoolingGroup", b =>
@@ -847,7 +847,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PoolingGroups");
+                    b.ToTable("PoolingGroups", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Product", b =>
@@ -893,7 +893,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Products");
+                    b.ToTable("Products", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Quote", b =>
@@ -929,7 +929,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Quotes");
+                    b.ToTable("Quotes", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.RentalOffer", b =>
@@ -991,7 +991,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("RentalOffers");
+                    b.ToTable("RentalOffers", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Review", b =>
@@ -1021,7 +1021,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Reviews");
+                    b.ToTable("Reviews", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.RoadsideAssistanceRequest", b =>
@@ -1130,7 +1130,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("RoadsideAssistanceRequests");
+                    b.ToTable("RoadsideAssistanceRequests", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Route", b =>
@@ -1186,7 +1186,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Routes");
+                    b.ToTable("Routes", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceBooking", b =>
@@ -1215,7 +1215,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ServiceBookings");
+                    b.ToTable("ServiceBookings", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceHistory", b =>
@@ -1270,7 +1270,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ServiceHistories");
+                    b.ToTable("ServiceHistories", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceProvider", b =>
@@ -1356,7 +1356,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ServiceProviders");
+                    b.ToTable("ServiceProviders", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceProviderProfile", b =>
@@ -1450,7 +1450,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ServiceProviderProfiles");
+                    b.ToTable("ServiceProviderProfiles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceRule", b =>
@@ -1476,7 +1476,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("ServiceRules");
+                    b.ToTable("ServiceRules", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ShopProfile", b =>
@@ -1514,7 +1514,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ShopProfiles");
+                    b.ToTable("ShopProfiles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.StaffProfile", b =>
@@ -1533,7 +1533,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("StaffProfiles");
+                    b.ToTable("StaffProfiles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.StuffQuote", b =>
@@ -1580,7 +1580,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("StuffRequestId");
 
-                    b.ToTable("StuffQuotes");
+                    b.ToTable("StuffQuotes", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.StuffRequest", b =>
@@ -1655,7 +1655,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("StuffRequests");
+                    b.ToTable("StuffRequests", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiMarshalProfile", b =>
@@ -1714,7 +1714,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TaxiMarshalProfiles");
+                    b.ToTable("TaxiMarshalProfiles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiRank", b =>
@@ -1775,7 +1775,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("TaxiRanks");
+                    b.ToTable("TaxiRanks", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiRankAdminProfile", b =>
@@ -1847,7 +1847,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TaxiRankAdmins");
+                    b.ToTable("TaxiRankAdmins", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiRankAssociation", b =>
@@ -1878,7 +1878,7 @@ namespace MzansiFleet.Repository.Migrations
                     b.HasIndex("TaxiRankId", "TenantId")
                         .IsUnique();
 
-                    b.ToTable("TaxiRankAssociations");
+                    b.ToTable("TaxiRankAssociations", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiRankTrip", b =>
@@ -1950,7 +1950,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("TaxiRankTrips");
+                    b.ToTable("TaxiRankTrips", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Tenant", b =>
@@ -1980,7 +1980,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Tenants");
+                    b.ToTable("Tenants", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Tender", b =>
@@ -2063,7 +2063,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenderPublisherId");
 
-                    b.ToTable("Tenders");
+                    b.ToTable("Tenders", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TenderApplication", b =>
@@ -2130,7 +2130,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenderId");
 
-                    b.ToTable("TenderApplications");
+                    b.ToTable("TenderApplications", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TrackingDeviceOffer", b =>
@@ -2207,7 +2207,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TrackingDeviceRequestId");
 
-                    b.ToTable("TrackingDeviceOffers");
+                    b.ToTable("TrackingDeviceOffers", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TrackingDeviceRequest", b =>
@@ -2280,7 +2280,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("TrackingDeviceRequests");
+                    b.ToTable("TrackingDeviceRequests", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Trip", b =>
@@ -2331,7 +2331,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Trips");
+                    b.ToTable("Trips", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripBooking", b =>
@@ -2368,7 +2368,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("PoolingGroupId");
 
-                    b.ToTable("TripBookings");
+                    b.ToTable("TripBookings", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripCost", b =>
@@ -2405,7 +2405,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TaxiRankTripId");
 
-                    b.ToTable("TripCosts");
+                    b.ToTable("TripCosts", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripOffer", b =>
@@ -2431,7 +2431,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("TripOffers");
+                    b.ToTable("TripOffers", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripPassenger", b =>
@@ -2477,7 +2477,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TripPassengers");
+                    b.ToTable("TripPassengers", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripRequest", b =>
@@ -2518,7 +2518,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("TripRequests");
+                    b.ToTable("TripRequests", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripSchedule", b =>
@@ -2582,7 +2582,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("TripSchedules");
+                    b.ToTable("TripSchedules", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripStop", b =>
@@ -2607,7 +2607,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("TripStops");
+                    b.ToTable("TripStops", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.User", b =>
@@ -2641,7 +2641,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Vehicle", b =>
@@ -2722,7 +2722,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Vehicles");
+                    b.ToTable("Vehicles", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleDocument", b =>
@@ -2748,7 +2748,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleDocuments");
+                    b.ToTable("VehicleDocuments", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleEarning", b =>
@@ -2778,7 +2778,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("VehicleEarningRecords");
+                    b.ToTable("VehicleEarningRecords", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleEarnings", b =>
@@ -2814,7 +2814,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleEarnings");
+                    b.ToTable("VehicleEarnings", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleExpense", b =>
@@ -2852,7 +2852,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleExpenses");
+                    b.ToTable("VehicleExpenses", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleRentalBooking", b =>
@@ -2927,7 +2927,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleRentalBookings");
+                    b.ToTable("VehicleRentalBookings", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleRentalRequest", b =>
@@ -2997,7 +2997,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("VehicleRentalRequests");
+                    b.ToTable("VehicleRentalRequests", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleRouteAssignment", b =>
@@ -3028,7 +3028,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleRouteAssignments");
+                    b.ToTable("VehicleRouteAssignments", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleTaxiRank", b =>
@@ -3061,7 +3061,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleTaxiRanks");
+                    b.ToTable("VehicleTaxiRanks", (string)null);
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.DailyTaxiQueue", b =>

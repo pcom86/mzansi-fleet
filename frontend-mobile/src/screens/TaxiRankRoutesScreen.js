@@ -26,6 +26,8 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
   const [vehicles, setVehicles] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [routeToDelete, setRouteToDelete] = useState(null);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -47,32 +49,92 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     if (!user?.userId && !user?.id) return;
     if (!silent) setLoading(true);
     try {
-      const adminResp = await fetchAdminByUserId(user.userId || user.id);
-      const admin = adminResp.data || adminResp;
-      setAdminProfile(admin);
-
-      if (admin?.id) {
-        const schedResp = await fetchSchedules(admin.id);
-        setRoutes(schedResp.data || schedResp || []);
+      // Check if user is Rank Admin or Rank Manager (both have same permissions)
+      const isAdmin = user?.role === 'TaxiRankAdmin';
+      const isManager = user?.role === 'TaxiRankManager';
+      const hasPermission = isAdmin || isManager;
+      
+      if (hasPermission) {
+        // For admins, fetch admin profile
+        const adminResp = await fetchAdminByUserId(user.userId || user.id);
+        const admin = adminResp.data || adminResp;
         
-        // Load vehicles for the tenant
-        if (admin.tenantId) {
-          try {
-            console.log('Fetching vehicles for tenantId:', admin.tenantId);
-            const vehiclesResp = await fetchVehiclesByTenant(admin.tenantId);
-            const vehiclesList = vehiclesResp.data || vehiclesResp || [];
-            console.log('Loaded vehicles:', vehiclesList.length);
-            if (vehiclesList.length > 0) {
-              console.log('Sample vehicle:', vehiclesList[0]);
+        // If admin profile doesn't exist but user has admin/manager role, create a mock profile
+        if (!admin && (user?.role === 'TaxiRankAdmin' || user?.role === 'TaxiRankManager')) {
+          console.warn('Admin/Manager profile not found, creating mock profile for user with admin/manager role');
+          const mockAdminProfile = {
+            id: user.id,
+            userId: user.userId || user.id,
+            tenantId: user.tenantId,
+            role: user.role,
+            fullName: user.fullName || 'Admin User',
+            email: user.email,
+            taxiRankId: null,
+            adminCode: user?.role === 'TaxiRankAdmin' ? 'ADMIN' : 'MANAGER',
+            status: 'Active'
+          };
+          setAdminProfile(mockAdminProfile);
+          
+          // Load schedules for mock admin
+          const schedResp = await fetchSchedules(user.userId || user.id);
+          setRoutes(Array.isArray(schedResp) ? schedResp : (schedResp?.data || []));
+            // Load vehicles for the taxi rank
+            try {
+              const vehResp = await fetchVehiclesByTenant(mockAdminProfile.tenantId);
+              setVehicles(vehResp || []);
+            } catch (vehicleErr) {
+              console.error('Failed to load vehicles:', vehicleErr?.message, vehicleErr?.response?.data);
+              setVehicles([]);
             }
-            setVehicles(vehiclesList);
-          } catch (vehicleErr) {
-            console.error('Failed to load vehicles:', vehicleErr?.message, vehicleErr?.response?.data);
-            setVehicles([]);
-          }
         } else {
-          console.warn('No tenantId found for admin:', admin);
+          setAdminProfile(admin);
+
+          if (admin?.id) {
+            const schedResp = await fetchSchedules(user.userId || user.id);
+            setRoutes(Array.isArray(schedResp) ? schedResp : (schedResp?.data || []));
+            // Load vehicles for the taxi rank
+            try {
+              const vehResp = await fetchVehiclesByTenant(admin.tenantId);
+              setVehicles(vehResp || []);
+            } catch (vehicleErr) {
+              console.error('Failed to load vehicles:', vehicleErr?.message, vehicleErr?.response?.data);
+              setVehicles([]);
+            }
+          } else {
+            console.warn('No tenantId found for admin:', admin);
+          }
         }
+      } else if (isManager && user?.tenantId) {
+        // For managers, create a mock admin profile with tenant info
+        const mockAdminProfile = {
+          id: user.id,
+          tenantId: user.tenantId,
+          role: user.role,
+          userId: user.userId || user.id
+        };
+        setAdminProfile(mockAdminProfile);
+
+        // Load routes for the tenant
+        try {
+          const schedResp = await fetchSchedules(user.tenantId);
+          setRoutes(Array.isArray(schedResp) ? schedResp : (schedResp?.data || []));
+        } catch (routeErr) {
+          console.warn('Failed to load routes for manager:', routeErr?.message);
+          setRoutes([]);
+        }
+
+        // Load vehicles for the tenant
+        try {
+          const vehiclesResp = await fetchVehiclesByTenant(user.tenantId);
+          const vehiclesList = vehiclesResp.data || vehiclesResp || [];
+          setVehicles(vehiclesList);
+        } catch (vehicleErr) {
+          console.error('Failed to load vehicles for manager:', vehicleErr?.message);
+          setVehicles([]);
+        }
+      } else {
+        console.warn('User does not have permission to manage routes. Role:', user?.role);
+        setAdminProfile(null);
       }
     } catch (err) {
       console.warn('Routes load error', err?.response?.data?.message || err?.message);
@@ -153,7 +215,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     if (!destination.trim()) return Alert.alert('Validation', 'Destination station is required');
     if (!fare.trim() || isNaN(Number(fare))) return Alert.alert('Validation', 'Valid fare is required');
     if (selectedDays.length === 0) return Alert.alert('Validation', 'Select at least one day');
-    if (!adminProfile?.id) return Alert.alert('Error', 'Admin profile not found. Only rank admins can manage routes.');
+    if (!adminProfile?.id) return Alert.alert('Error', 'User profile not found. Only rank admins and managers can manage routes.');
 
     // Validate stops
     for (const s of stops) {
@@ -181,6 +243,13 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
 
     setSaving(true);
     try {
+      // Check if we're using a mock admin profile (no real admin profile exists)
+      if (adminProfile.id === user.id && adminProfile.adminCode === 'ADMIN') {
+        Alert.alert('Cannot Save', 'Cannot create or edit routes when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+        setSaving(false);
+        return;
+      }
+      
       if (editing) {
         await updateSchedule(adminProfile.id, editing.id, body);
         Alert.alert('Success', 'Route updated');
@@ -200,49 +269,95 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
   }
 
   async function handleDelete(r) {
-    if (!adminProfile?.id) return;
-    Alert.alert('Delete Route', `Delete "${r.routeName}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive', onPress: async () => {
-          try {
-            await deleteSchedule(adminProfile.id, r.id);
-            loadData(true);
-          } catch (err) {
-            Alert.alert('Error', err?.response?.data?.message || err?.message || 'Delete failed');
-          }
-        }
-      },
-    ]);
+    if (!adminProfile?.id) {
+      return;
+    }
+    
+    // Check if we're using a mock admin profile (no real admin profile exists)
+    const isMockProfile = adminProfile.id === user.id && adminProfile.adminCode === 'ADMIN';
+    
+    if (isMockProfile) {
+      Alert.alert('Cannot Delete', 'Cannot delete routes when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+      return;
+    }
+    
+    // Check if route has active vehicles assigned
+    const assignedVehicles = r.routeVehicles?.filter(rv => rv.isActive !== false) || [];
+    
+    if (assignedVehicles.length > 0) {
+      const vehicleNames = assignedVehicles
+        .map(rv => rv.vehicle?.registration || rv.vehicle?.registrationNumber || 'Unknown Vehicle')
+        .join(', ');
+      
+      Alert.alert(
+        'Cannot Delete Route', 
+        `This route has ${assignedVehicles.length} vehicle(s) assigned: ${vehicleNames}. Please unassign all vehicles before deleting this route.`,
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
+    
+    setRouteToDelete(r);
+    setDeleteModalVisible(true);
   }
 
   function openVehicleModal(route) {
-    console.log('Opening vehicle modal for route:', route.routeName);
-    console.log('Total vehicles available:', vehicles.length);
-    console.log('Route vehicles:', route.routeVehicles?.length || 0);
     setSelectedRoute(route);
     setVehicleModalVisible(true);
   }
 
+  async function confirmDelete() {
+    if (!routeToDelete || !adminProfile?.id) return;
+    
+    try {
+      await deleteSchedule(adminProfile.id, routeToDelete.id);
+      setDeleteModalVisible(false);
+      setRouteToDelete(null);
+      Alert.alert('Success', 'Route deleted successfully');
+      loadData(true);
+    } catch (err) {
+      console.error('Delete error:', err);
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Delete failed');
+      setDeleteModalVisible(false);
+      setRouteToDelete(null);
+    }
+  }
+
+  function cancelDelete() {
+    setDeleteModalVisible(false);
+    setRouteToDelete(null);
+  }
+
   async function handleAssignVehicle(vehicleId) {
     if (!adminProfile?.id || !selectedRoute?.id) {
-      console.warn('Missing data:', { adminId: adminProfile?.id, scheduleId: selectedRoute?.id });
       return;
     }
-    console.log('Assigning vehicle:', vehicleId, 'to route:', selectedRoute.id);
+    
+    // Check if we're using a mock admin profile (no real admin profile exists)
+    if (adminProfile.id === user.id && adminProfile.adminCode === 'ADMIN') {
+      Alert.alert('Cannot Assign', 'Cannot assign vehicles when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+      return;
+    }
+    
     try {
       await assignVehicleToRoute(adminProfile.id, selectedRoute.id, vehicleId);
       Alert.alert('Success', 'Vehicle assigned to route');
       setVehicleModalVisible(false);
       loadData(true);
     } catch (err) {
-      console.error('Assignment error:', err);
-      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to assign vehicle');
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Assignment failed');
     }
   }
 
   async function handleUnassignVehicle(vehicleId) {
     if (!adminProfile?.id || !selectedRoute?.id) return;
+    
+    // Check if we're using a mock admin profile (no real admin profile exists)
+    if (adminProfile.id === user.id && adminProfile.adminCode === 'ADMIN') {
+      Alert.alert('Cannot Unassign', 'Cannot unassign vehicles when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+      return;
+    }
+    
     Alert.alert('Unassign Vehicle', 'Remove this vehicle from the route?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -253,7 +368,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
             setVehicleModalVisible(false);
             loadData(true);
           } catch (err) {
-            Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to unassign vehicle');
+            Alert.alert('Error', err?.response?.data?.message || err?.message || 'Unassign failed');
           }
         }
       },
@@ -300,7 +415,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} colors={[GOLD]} />}
         >
-          {routes.length === 0 ? (
+          {!Array.isArray(routes) || routes.length === 0 ? (
             <View style={styles.emptyWrap}>
               <Ionicons name="map-outline" size={48} color={c.textMuted} />
               <Text style={[styles.emptyText, { color: c.textMuted }]}>No routes yet</Text>
@@ -319,24 +434,64 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                       {r.departureStation} → {r.destinationStation}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => handleDelete(r)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Ionicons name="trash-outline" size={18} color="#dc3545" />
-                  </TouchableOpacity>
+                  {(() => {
+                    const assignedVehicles = r.routeVehicles?.filter(rv => rv.isActive !== false) || [];
+                    const hasAssignedVehicles = assignedVehicles.length > 0;
+                    console.log(`Route ${r.routeName}: ${assignedVehicles.length} assigned vehicles, hasAssigned: ${hasAssignedVehicles}`);
+                    return (
+                      <TouchableOpacity 
+                        onPress={() => {
+                          console.log('Delete button pressed for route:', r.routeName);
+                          handleDelete(r);
+                        }} 
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        disabled={hasAssignedVehicles}
+                        style={{ opacity: hasAssignedVehicles ? 0.4 : 1 }}
+                      >
+                        <Ionicons 
+                          name="trash-outline" 
+                          size={18} 
+                          color={hasAssignedVehicles ? c.textMuted : "#dc3545"} 
+                        />
+                      </TouchableOpacity>
+                    );
+                  })()}
                 </View>
                 <View style={styles.cardDetails}>
                   <Tag icon="cash-outline" label={`R${r.standardFare}`} c={c} />
                   {r.maxPassengers && <Tag icon="people-outline" label={`${r.maxPassengers} pax`} c={c} />}
                   {r.stops?.length > 0 && <Tag icon="location-outline" label={`${r.stops.length} stop${r.stops.length > 1 ? 's' : ''}`} c={c} />}
-                  {r.routeVehicles?.length > 0 && <Tag icon="car-outline" label={`${r.routeVehicles.length} vehicle${r.routeVehicles.length > 1 ? 's' : ''}`} c={c} />}
+                  {(() => {
+                    const activeVehicles = r.routeVehicles?.filter(rv => rv.isActive !== false) || [];
+                    return activeVehicles.length > 0 && (
+                      <Tag icon="car-outline" label={`${activeVehicles.length} vehicle${activeVehicles.length > 1 ? 's' : ''} assigned`} c={c} />
+                    );
+                  })()}
                 </View>
                 {r.routeVehicles?.length > 0 && (
                   <View style={styles.vehiclesRow}>
                     <Text style={[styles.vehiclesLabel, { color: c.textMuted }]}>Vehicles:</Text>
-                    {r.routeVehicles.map(rv => (
-                      <View key={rv.id} style={[styles.vehicleChip, { backgroundColor: GOLD_LIGHT, borderColor: GOLD }]}>
-                        <Text style={[styles.vehicleChipText, { color: c.text }]}>{rv.vehicle?.registrationNumber || 'Unknown'}</Text>
-                      </View>
-                    ))}
+                    {r.routeVehicles.map(rv => {
+                      const isActive = rv.isActive !== false;
+                      return (
+                        <View 
+                          key={rv.id} 
+                          style={[
+                            styles.vehicleChip, 
+                            { 
+                              backgroundColor: isActive ? GOLD_LIGHT : c.surface, 
+                              borderColor: isActive ? GOLD : c.border,
+                              opacity: isActive ? 1 : 0.6
+                            }
+                          ]}
+                        >
+                          <Text style={[styles.vehicleChipText, { color: isActive ? c.text : c.textMuted }]}>
+                            {rv.vehicle?.registration || rv.vehicle?.registrationNumber || 'Unknown'}
+                            {!isActive && ' (Inactive)'}
+                          </Text>
+                        </View>
+                      );
+                    })}
                   </View>
                 )}
                 <TouchableOpacity 
@@ -511,7 +666,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                   {selectedRoute.routeVehicles.map(rv => (
                     <View key={rv.id} style={[styles.vehicleItem, { backgroundColor: c.surface, borderColor: c.border }]}>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.vehicleReg, { color: c.text }]}>{rv.vehicle?.registrationNumber}</Text>
+                        <Text style={[styles.vehicleReg, { color: c.text }]}>{rv.vehicle?.registration || rv.vehicle?.registrationNumber}</Text>
                         <Text style={[styles.vehicleMake, { color: c.textMuted }]}>
                           {rv.vehicle?.make} {rv.vehicle?.model}
                         </Text>
@@ -550,7 +705,6 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                       key={v.id} 
                       style={[styles.vehicleItem, { backgroundColor: c.surface, borderColor: GOLD, borderWidth: 1.5 }]}
                       onPress={() => {
-                        console.log('Vehicle tapped:', v.registrationNumber, v.id);
                         handleAssignVehicle(v.id);
                       }}
                       activeOpacity={0.6}
@@ -559,7 +713,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                         <Ionicons name="car" size={20} color={GOLD} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.vehicleReg, { color: c.text }]}>{v.registrationNumber}</Text>
+                        <Text style={[styles.vehicleReg, { color: c.text }]}>{v.registration || v.registrationNumber}</Text>
                         <Text style={[styles.vehicleMake, { color: c.textMuted }]}>
                           {v.make} {v.model}
                         </Text>
@@ -571,6 +725,42 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                   ))
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal visible={deleteModalVisible} animationType="fade" transparent onRequestClose={cancelDelete}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: c.background, margin: 20, borderRadius: 14 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Delete Route</Text>
+              <TouchableOpacity onPress={cancelDelete}>
+                <Ionicons name="close" size={24} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <Text style={[styles.deleteMessage, { color: c.text, marginBottom: 24 }]}>
+                Are you sure you want to delete "{routeToDelete?.routeName}"? This action cannot be undone.
+              </Text>
+              
+              <View style={styles.deleteActions}>
+                <TouchableOpacity 
+                  style={[styles.deleteCancelBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
+                  onPress={cancelDelete}
+                >
+                  <Text style={[styles.deleteCancelText, { color: c.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.deleteConfirmBtn, { backgroundColor: '#dc3545' }]} 
+                  onPress={confirmDelete}
+                >
+                  <Text style={[styles.deleteConfirmText]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
@@ -625,6 +815,25 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderColor: 'rgba(0,0,0,0.08)' },
   modalTitle: { fontSize: 18, fontWeight: '900' },
   modalBody: { padding: 16, paddingBottom: 40 },
+
+  // Delete modal styles
+  deleteMessage: { fontSize: 16, lineHeight: 22, textAlign: 'center' },
+  deleteActions: { flexDirection: 'row', gap: 12 },
+  deleteCancelBtn: { 
+    flex: 1, 
+    padding: 14, 
+    borderRadius: 10, 
+    borderWidth: 1, 
+    alignItems: 'center' 
+  },
+  deleteCancelText: { fontSize: 16, fontWeight: '600' },
+  deleteConfirmBtn: { 
+    flex: 1, 
+    padding: 14, 
+    borderRadius: 10, 
+    alignItems: 'center' 
+  },
+  deleteConfirmText: { fontSize: 16, fontWeight: '600', color: '#fff' },
 
   label: { fontSize: 12, fontWeight: '700', marginBottom: 4, marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14 },

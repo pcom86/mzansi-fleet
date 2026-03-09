@@ -63,15 +63,19 @@ namespace MzansiFleet.Repository
         public DbSet<VehicleTaxiRank> VehicleTaxiRanks { get; set; }
         public DbSet<VehicleTaxiRankRequest> VehicleTaxiRankRequests { get; set; }
         public DbSet<TripSchedule> TripSchedules { get; set; }
+        public DbSet<ScheduledTrip> ScheduledTrips { get; set; }
         public DbSet<RouteStop> RouteStops { get; set; }
         public DbSet<RouteVehicle> RouteVehicles { get; set; }
         public DbSet<TaxiRankAssociation> TaxiRankAssociations { get; set; }
         public DbSet<ScheduledTripBooking> ScheduledTripBookings { get; set; }
+        public DbSet<BookingPassenger> BookingPassengers { get; set; }
         
-        // Admin Dashboard Module
-        public DbSet<Route> Routes { get; set; }
+        // Queue Marshal Module
+        public DbSet<QueueMarshal> QueueMarshals { get; set; }
+        public DbSet<TripCapture> TripCaptures { get; set; }
+        
+        // Admin Dashboard Module  
         public DbSet<OwnerAssignment> OwnerAssignments { get; set; }
-        public DbSet<VehicleRouteAssignment> VehicleRouteAssignments { get; set; }
         public DbSet<Trip> Trips { get; set; }
         public DbSet<Passenger> Passengers { get; set; }
         public DbSet<VehicleEarning> VehicleEarningRecords { get; set; }
@@ -148,6 +152,8 @@ namespace MzansiFleet.Repository
             modelBuilder.Entity<TripPassenger>().Property(t => t.Id).ValueGeneratedNever();
             modelBuilder.Entity<TripCost>().Property(t => t.Id).ValueGeneratedNever();
             modelBuilder.Entity<TaxiMarshalProfile>().Property(t => t.Id).ValueGeneratedNever();
+            modelBuilder.Entity<ScheduledTripBooking>().Property(s => s.Id).ValueGeneratedNever();
+            modelBuilder.Entity<BookingPassenger>().Property(b => b.Id).ValueGeneratedNever();
             
             // Configure TaxiRankTrip foreign keys
             modelBuilder.Entity<TaxiRankTrip>()
@@ -172,6 +178,13 @@ namespace MzansiFleet.Repository
             modelBuilder.Entity<TaxiRankAssociation>()
                 .HasIndex(tra => new { tra.TaxiRankId, tra.TenantId })
                 .IsUnique();
+                
+            // Configure BookingPassenger relationship
+            modelBuilder.Entity<BookingPassenger>()
+                .HasOne(bp => bp.Booking)
+                .WithMany(b => b.Passengers)
+                .HasForeignKey(bp => bp.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
                 
             // Tender Module
             modelBuilder.Entity<Tender>().Property(t => t.Id).ValueGeneratedNever();

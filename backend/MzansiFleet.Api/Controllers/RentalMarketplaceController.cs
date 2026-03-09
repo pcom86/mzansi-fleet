@@ -318,8 +318,11 @@ namespace MzansiFleet.Api.Controllers
                     var notificationMessage = new Message
                     {
                         Id = Guid.NewGuid(),
+                        SenderType = "System",
                         SenderId = userId,
-                        ReceiverId = request.UserId,
+                        SenderName = "System",
+                        RecipientType = "User",
+                        RecipientId = request.UserId,
                         Subject = $"New Rental Offer for {request.VehicleType}",
                         Content = $"<p><strong>{ownerProfile.CompanyName ?? ownerProfile.ContactName}</strong> has submitted an offer for your rental request.</p>" +
                                  $"<p><strong>Vehicle:</strong> {vehicle.Make} {vehicle.Model} ({vehicle.Registration})</p>" +
@@ -654,8 +657,11 @@ namespace MzansiFleet.Api.Controllers
                         var acceptanceMessage = new Message
                         {
                             Id = Guid.NewGuid(),
+                            SenderType = "System",
                             SenderId = userId,
-                            ReceiverId = ownerUser.Id,
+                            SenderName = "System",
+                            RecipientType = "User",
+                            RecipientId = ownerUser.Id,
                             Subject = $"🎉 Rental Offer Accepted: {vehicle?.Make} {vehicle?.Model}",
                             Content = $"<p><strong>Great news!</strong> Your rental offer has been accepted!</p>" +
                                      $"<p><strong>Vehicle:</strong> {vehicle?.Make} {vehicle?.Model} ({vehicle?.Registration})</p>" +
@@ -700,8 +706,11 @@ namespace MzansiFleet.Api.Controllers
                             var rejectionMessage = new Message
                             {
                                 Id = Guid.NewGuid(),
+                                SenderType = "System",
                                 SenderId = userId,
-                                ReceiverId = otherOwnerUser.Id,
+                                SenderName = "System",
+                                RecipientType = "User",
+                                RecipientId = otherOwnerUser.Id,
                                 Subject = $"Rental Offer Update: {otherVehicle?.Make} {otherVehicle?.Model}",
                                 Content = $"<p>Thank you for submitting your rental offer.</p>" +
                                          $"<p>The requester has chosen another vehicle for this rental period. We appreciate your offer and encourage you to check for other rental opportunities.</p>" +
@@ -827,8 +836,11 @@ namespace MzansiFleet.Api.Controllers
                         var rejectionMessage = new Message
                         {
                             Id = Guid.NewGuid(),
+                            SenderType = "System",
                             SenderId = userId,
-                            ReceiverId = ownerUser.Id,
+                            SenderName = "System",
+                            RecipientType = "User",
+                            RecipientId = ownerUser.Id,
                             Subject = $"Rental Offer Update: {vehicle?.Make} {vehicle?.Model}",
                             Content = $"<p>Thank you for submitting your rental offer.</p>" +
                                      $"<p>After consideration, the requester has decided not to proceed with your offer at this time.</p>" +

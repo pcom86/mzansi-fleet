@@ -33,4 +33,4 @@ const expoHost = hostUriCandidates.map(extractHost).find(Boolean) || null;
 const defaultHost = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
 const host = Platform.OS === 'web' ? 'localhost' : (expoHost || defaultHost);
 
-export const API_URL = extraApiUrl || envApiUrl || `http://${host}:5000/api`;
+export const API_URL = extraApiUrl || envApiUrl || `http://192.168.68.108:5001/api`;

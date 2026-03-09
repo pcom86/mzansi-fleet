@@ -160,6 +160,51 @@ namespace MzansiFleet.Domain.Entities
     }
 
     /// <summary>
+    /// Represents a specific scheduled trip instance (not the route template)
+    /// </summary>
+    public class ScheduledTrip
+    {
+        public Guid Id { get; set; }
+        public Guid TripScheduleId { get; set; } // Links to the route template
+        public Guid TaxiRankId { get; set; }
+        public Guid TenantId { get; set; }
+        
+        // Specific trip details
+        public DateTime ScheduledDate { get; set; } // The specific date this trip occurs
+        public TimeSpan ScheduledTime { get; set; } // The specific time this trip occurs
+        public DateTime ScheduledDateTime => ScheduledDate.Date.Add(ScheduledTime);
+        
+        // Trip execution details
+        public Guid? VehicleId { get; set; }
+        public Guid? DriverId { get; set; }
+        public Guid? MarshalId { get; set; }
+        
+        // Status tracking
+        public string Status { get; set; } = "Scheduled"; // Scheduled, InProgress, Completed, Cancelled
+        public DateTime? ActualDepartureTime { get; set; }
+        public DateTime? ActualArrivalTime { get; set; }
+        public int? ActualPassengerCount { get; set; }
+        public decimal? ActualFareCollected { get; set; }
+        
+        // Cancellation details
+        public DateTime? CancelledAt { get; set; }
+        public string? CancellationReason { get; set; }
+        public string? CancelledBy { get; set; } // User ID who cancelled
+        
+        // Metadata
+        public string? Notes { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
+        
+        // Navigation Properties
+        public TripSchedule? TripSchedule { get; set; }
+        public TaxiRank? TaxiRank { get; set; }
+        public Vehicle? Vehicle { get; set; }
+        public DriverProfile? Driver { get; set; }
+        public TaxiMarshalProfile? Marshal { get; set; }
+    }
+
+    /// <summary>
     /// Represents a taxi rank trip captured by a marshal
     /// </summary>
     public class TaxiRankTrip
@@ -336,8 +381,12 @@ namespace MzansiFleet.Domain.Entities
         public DateTime TravelDate { get; set; } // The specific date the user wants to travel
         public int SeatsBooked { get; set; } = 1;
         public decimal TotalFare { get; set; }
-        public string PassengerName { get; set; } = string.Empty;
-        public string PassengerPhone { get; set; } = string.Empty;
+        
+        // Payment Information
+        public string PaymentMethod { get; set; } = string.Empty; // ozow, wallet, cash
+        public string PaymentStatus { get; set; } = "Pending"; // Pending, Paid, Failed, Refunded
+        public string? PaymentReference { get; set; }
+        public DateTime? PaidAt { get; set; }
         
         // Status: Pending, Confirmed, Cancelled, Completed, NoShow
         public string Status { get; set; } = "Pending";
@@ -354,6 +403,30 @@ namespace MzansiFleet.Domain.Entities
         public User? User { get; set; }
         public TripSchedule? TripSchedule { get; set; }
         public TaxiRank? TaxiRank { get; set; }
+        public ICollection<BookingPassenger> Passengers { get; set; } = new List<BookingPassenger>();
+    }
+
+    /// <summary>
+    /// Represents passenger details for a booking
+    /// </summary>
+    public class BookingPassenger
+    {
+        public Guid Id { get; set; }
+        public Guid BookingId { get; set; }
+        
+        // Passenger Details
+        public string Name { get; set; } = string.Empty;
+        public string ContactNumber { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string? IdNumber { get; set; }
+        public string? Address { get; set; }
+        public string Destination { get; set; } = string.Empty; // If different from route destination
+        
+        // Metadata
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        
+        // Navigation Properties
+        public ScheduledTripBooking? Booking { get; set; }
     }
 
     /// <summary>
