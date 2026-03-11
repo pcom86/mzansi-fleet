@@ -39,21 +39,20 @@ export default function CreateTripScheduleScreen({ navigation }) {
   const [vehicles, setVehicles] = useState([]);
   const [displayVehicles, setDisplayVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [trips, setTrips] = useState([]);
+  const [groupedTrips, setGroupedTrips] = useState({});
+  const [tripDates, setTripDates] = useState([]);
+  const [vehicleRouteAssignments, setVehicleRouteAssignments] = useState([]);
   const [marshals, setMarshals] = useState([]);
   const [schedules, setSchedules] = useState([]);
-  const [scheduledTrips, setScheduledTrips] = useState([]);
   const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
 
   // Schedule management state
-  const [showAllSchedules, setShowAllSchedules] = useState(false);
+  // Filters
+  const [showAllTrips, setShowAllTrips] = useState(false);
   const [filterDate, setFilterDate] = useState(new Date());
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [scheduleToDelete, setScheduleToDelete] = useState(null);
-  const [scheduledTripToDelete, setScheduledTripToDelete] = useState(null);
-  const [scheduledTripToEdit, setScheduledTripToEdit] = useState(null);
-  const [filterRouteId, setFilterRouteId] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
   // Modals
@@ -64,60 +63,74 @@ export default function CreateTripScheduleScreen({ navigation }) {
   const [marshalModalVisible, setMarshalModalVisible] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [arrivalTimePickerVisible, setArrivalTimePickerVisible] = useState(false);
   const [timePickerDate, setTimePickerDate] = useState(new Date());
-  const [editTripModalVisible, setEditTripModalVisible] = useState(false);
-  const [editScheduleModalVisible, setEditScheduleModalVisible] = useState(false);
+  const [endDatePickerVisible, setEndDatePickerVisible] = useState(false);
   
-  // Edit trip form state
-  const [editTripDate, setEditTripDate] = useState(new Date());
-  const [editTripTime, setEditTripTime] = useState('08:00');
-  const [editTripVehicleId, setEditTripVehicleId] = useState('');
-  const [editTripDriverId, setEditTripDriverId] = useState('');
-  const [editTripMarshalId, setEditTripMarshalId] = useState('');
-  const [editTripNotes, setEditTripNotes] = useState('');
-  const [editDatePickerVisible, setEditDatePickerVisible] = useState(false);
+  // Multi-trip generation settings
+  const [scheduleEndDate, setScheduleEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7); // Default 7 days
+    return d;
+  });
+  const [frequencyMinutes, setFrequencyMinutes] = useState(60);
+  const [selectedDays, setSelectedDays] = useState([1, 2, 3, 4, 5]); // Mon-Fri
+  const [generateMultipleTrips, setGenerateMultipleTrips] = useState(true);
 
-  // Edit schedule form state
-  const [scheduleToEdit, setScheduleToEdit] = useState(null);
-  const [editRouteName, setEditRouteName] = useState('');
-  const [editDepartureStation, setEditDepartureStation] = useState('');
-  const [editDestinationStation, setEditDestinationStation] = useState('');
-  const [editDepartureTime, setEditDepartureTime] = useState('08:00');
-  const [editFrequencyMinutes, setEditFrequencyMinutes] = useState(60);
-  const [editDaysOfWeek, setEditDaysOfWeek] = useState('1,2,3,4,5');
-  const [editStandardFare, setEditStandardFare] = useState(0);
-  const [editExpectedDurationMinutes, setEditExpectedDurationMinutes] = useState(30);
-  const [editMaxPassengers, setEditMaxPassengers] = useState(16);
-  const [editScheduleNotes, setEditScheduleNotes] = useState('');
-  const [editIsActive, setEditIsActive] = useState(true);
-  const [editTimePickerVisible, setEditTimePickerVisible] = useState(false);
-  const [editTimePickerDate, setEditTimePickerDate] = useState(new Date());
+  // Passenger capture modal
+  const [passengerModalVisible, setPassengerModalVisible] = useState(false);
+  const [selectedTripForPassengers, setSelectedTripForPassengers] = useState(null);
+  const [passengerName, setPassengerName] = useState('');
+  const [passengerPhone, setPassengerPhone] = useState('');
+  const [passengerDepartureStation, setPassengerDepartureStation] = useState('');
+  const [passengerArrivalStation, setPassengerArrivalStation] = useState('');
+  const [passengerAmount, setPassengerAmount] = useState('');
+  const [passengerPaymentMethod, setPassengerPaymentMethod] = useState('Cash');
+  const [passengerSeatNumber, setPassengerSeatNumber] = useState('');
+  const [tripStops, setTripStops] = useState([]);
+  const [selectedStop, setSelectedStop] = useState(null);
+  const [stopModalVisible, setStopModalVisible] = useState(false);
 
-  // ===== DATA LOADING =====
+  // Delete confirmation
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [tripToDelete, setTripToDelete] = useState(null);
+
+  // ===== DATA LOADING - Aligned with Web =====
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const userId = user?.userId || user?.id;
       if (!userId) return;
 
-      // Load admin profile to get taxi rank
-      const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`).catch(() => ({ data: null }));
-      const admin = adminResp.data;
+      // Only fetch admin profile for non-marshal roles
+      let admin = null;
+      const isMarshal = (user.role || '').toLowerCase() === 'taximarshal';
+      if (!isMarshal) {
+        try {
+          const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`);
+          admin = adminResp.data;
+        } catch (_) {}
+      }
       setAdmin(admin);
 
+      // Load data using same APIs as web
       const promises = [
         client.get('/TaxiRanks').catch(() => ({ data: [] })),
-        client.get(`/TaxiRankAdmin/user/${userId}/schedules`).catch(() => ({ data: [] })),
-        client.get('/Vehicles').catch(() => ({ data: [] })),
+        client.get('/TaxiRankTrips').catch(() => ({ data: [] })),
+        client.get('/VehicleRouteAssignments').catch(() => ({ data: [] })),
         client.get('/Drivers').catch(() => ({ data: [] })),
         client.get('/TaxiRankUsers/marshals').catch(() => ({ data: [] })),
       ];
 
-      const [rankResp, routeResp, vehicleResp, driverResp, marshalResp] = await Promise.all(promises);
+      const [rankResp, tripsResp, vraResp, driverResp, marshalResp] = await Promise.all(promises);
       setTaxiRanks(rankResp.data || []);
-      setRoutes(routeResp.data || []);
-      setVehicles(vehicleResp.data || []);
+      setVehicleRouteAssignments((vraResp.data || []).filter(a => a.isActive));
       setMarshals(marshalResp.data || []);
+
+      // Process trips like web does
+      const loadedTrips = tripsResp.data || [];
+      setTrips(loadedTrips);
+      groupTripsByDate(loadedTrips);
 
       const mappedDrivers = (driverResp.data || []).map(d => ({
         id: d.id,
@@ -126,10 +139,11 @@ export default function CreateTripScheduleScreen({ navigation }) {
       }));
       setDrivers(mappedDrivers);
 
-      // Auto-select admin's taxi rank
+      // Auto-select admin's taxi rank or first available rank
       if (admin?.taxiRankId) {
         setSelectedTaxiRankId(admin.taxiRankId);
-        // Routes are already loaded from schedules above
+      } else if (rankResp.data?.length > 0) {
+        setSelectedTaxiRankId(rankResp.data[0].id);
       }
     } catch (err) {
       console.warn('Load data error:', err?.message);
@@ -140,89 +154,115 @@ export default function CreateTripScheduleScreen({ navigation }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Load schedules when taxi rank changes
+  // Group trips by date like web does
+  const groupTripsByDate = (tripsData) => {
+    const groups = {};
+    tripsData.forEach(trip => {
+      if (trip.departureTime) {
+        const date = new Date(trip.departureTime).toDateString();
+        if (!groups[date]) {
+          groups[date] = [];
+        }
+        groups[date].push(trip);
+      }
+    });
+    
+    // Sort dates in descending order (most recent first)
+    const sortedDates = Object.keys(groups).sort((a, b) => 
+      new Date(b).getTime() - new Date(a).getTime()
+    );
+    
+    setGroupedTrips(groups);
+    setTripDates(sortedDates);
+  };
+
+  // Load routes when taxi rank changes
   useEffect(() => {
     if (selectedTaxiRankId) {
-      loadSchedules();
+      loadTripsForRank();
+      loadRoutesForTaxiRank(selectedTaxiRankId);
     }
   }, [selectedTaxiRankId]);
 
-  // Load vehicles when route changes
-  useEffect(() => {
-    if (selectedRouteId) {
-      // Find the selected route to get its linked vehicles
-      const selectedRoute = routes.find(r => r.id === selectedRouteId);
-      if (selectedRoute && selectedRoute.routeVehicles) {
-        // Extract vehicles from the route's RouteVehicles collection
-        const routeVehicles = selectedRoute.routeVehicles
-          .filter(rv => rv.isActive && rv.vehicle)
-          .map(rv => rv.vehicle);
-        setDisplayVehicles(routeVehicles);
-        
-        // Clear selected vehicle if it's not in the new route's vehicles
-        if (selectedVehicleId && !routeVehicles.find(v => v.id === selectedVehicleId)) {
-          setSelectedVehicleId(null);
-          setSelectedDriverId(null);
-        }
-      } else {
-        // If no vehicles linked to route, show empty list
-        setDisplayVehicles([]);
-        setSelectedVehicleId(null);
-        setSelectedDriverId(null);
-      }
-    } else {
-      // If no route selected, show all vehicles
-      setDisplayVehicles(vehicles);
-    }
-  }, [selectedRouteId, routes, vehicles, selectedVehicleId]);
-
-  async function loadSchedules() {
+  async function loadTripsForRank() {
     try {
       setLoadingSchedules(true);
-      const userId = user?.id || user?.userId;
-      if (!userId) return;
-      // Use the userId endpoint
-      const resp = await client.get(`/TaxiRankAdmin/user/${userId}/schedules`);
-      setSchedules(resp.data || []);
+      // Use the same endpoint as web
+      const url = admin?.tenantId 
+        ? `/TaxiRankTrips?tenantId=${admin.tenantId}`
+        : '/TaxiRankTrips';
+      
+      const resp = await client.get(url);
+      const loadedTrips = resp.data || [];
+      
+      // Filter by taxi rank if selected
+      const filteredTrips = selectedTaxiRankId 
+        ? loadedTrips.filter(t => t.taxiRankId === selectedTaxiRankId)
+        : loadedTrips;
+      
+      setTrips(filteredTrips);
+      groupTripsByDate(filteredTrips);
     } catch (err) {
-      console.warn('Load schedules error:', err?.message);
+      console.warn('Load trips error:', err?.message);
     } finally {
       setLoadingSchedules(false);
     }
   }
 
-  async function loadScheduledTrips() {
+  // Load routes for taxi rank using dedicated Routes endpoint
+  async function loadRoutesForTaxiRank(taxiRankId) {
     try {
-      const userId = user?.id || user?.userId;
-      if (!userId) return;
-      
-      console.log('Loading scheduled trips for user:', userId);
-      
-      // Get admin profile first
-      const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`).catch(() => ({ data: null }));
-      const admin = adminResp.data;
-      
-      console.log('Admin profile:', admin);
-      
-      if (admin?.id) {
-        // Load scheduled trips for this admin's taxi rank
-        const startDate = filterDate;
-        const endDate = new Date(filterDate);
-        endDate.setDate(endDate.getDate() + 30); // Load 30 days worth of trips
-        
-        console.log('Fetching scheduled trips for admin:', admin.id, 'from', startDate, 'to', endDate);
-        
-        const resp = await client.get(`/ScheduledTrips/by-admin/${admin.id}`, {
-          params: { startDate: startDate.toISOString(), endDate: endDate.toISOString() }
-        });
-        
-        console.log('Scheduled trips response:', resp.data);
-        setScheduledTrips(resp.data || []);
+      if (!taxiRankId) {
+        console.warn('No taxiRankId provided for loading routes');
+        return;
       }
+      
+      console.log(`Loading routes for taxi rank: ${taxiRankId}`);
+      const resp = await client.get(`/Routes?taxiRankId=${taxiRankId}`);
+      const loadedRoutes = resp.data || [];
+      
+      console.log(`Loaded ${loadedRoutes.length} routes for taxi rank ${taxiRankId}`, loadedRoutes.map(r => r.routeName || r.name));
+      setRoutes(loadedRoutes);
     } catch (err) {
-      console.warn('Load scheduled trips error:', err?.message);
-      setScheduledTrips([]);
+      console.warn('Load routes error:', err?.response?.status, err?.response?.data || err?.message);
+      setRoutes([]);
     }
+  }
+
+  // Load vehicles for route - use vehicles embedded in route data from Routes API
+  function loadVehiclesForRoute(routeId) {
+    // First try to get vehicles from the route data (Routes API includes them)
+    const route = routes.find(r => r.id === routeId);
+    if (route?.vehicles && route.vehicles.length > 0) {
+      console.log(`Found ${route.vehicles.length} vehicles embedded in route`);
+      setDisplayVehicles(route.vehicles);
+      return;
+    }
+
+    // Fallback: check VehicleRouteAssignments
+    const assignedVehicles = vehicleRouteAssignments
+      .filter(assignment => assignment.routeId === routeId && assignment.isActive)
+      .map(assignment => assignment.vehicle)
+      .filter(vehicle => vehicle != null);
+    
+    if (assignedVehicles.length > 0) {
+      console.log(`Found ${assignedVehicles.length} vehicles from assignments`);
+      setDisplayVehicles(assignedVehicles);
+      return;
+    }
+
+    // Final fallback: load all vehicles from the /Vehicles endpoint
+    console.log('No route-specific vehicles found, loading all vehicles');
+    client.get('/Vehicles')
+      .then(resp => {
+        const allVehicles = resp.data || [];
+        console.log(`Loaded ${allVehicles.length} vehicles as fallback`);
+        setDisplayVehicles(allVehicles);
+      })
+      .catch(err => {
+        console.warn('Failed to load fallback vehicles:', err?.message);
+        setDisplayVehicles([]);
+      });
   }
 
   // ===== HELPERS =====
@@ -257,81 +297,41 @@ export default function CreateTripScheduleScreen({ navigation }) {
     
     // Fallback
     return String(time);
-  }
-
-  const groupedSchedules = useMemo(() => {
-    const groups = {};
-    schedules.forEach(schedule => {
-      // Use today's date since we're showing "Today's Schedules"
-      const today = new Date().toLocaleDateString();
-      if (!groups[today]) groups[today] = [];
-      groups[today].push(schedule);
-    });
-    return groups;
-  }, [schedules]);
-
-  // ===== SCHEDULE MANAGEMENT FUNCTIONS =====
-  const getFilteredSchedules = useMemo(() => {
-    return schedules.filter(schedule => {
-      // Filter by date if specified
-      if (filterDate && !showAllSchedules) {
-        const filterDateOnly = new Date(filterDate);
-        filterDateOnly.setHours(0, 0, 0, 0);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        // If not showing all schedules, only show today's schedules
-        if (filterDateOnly.getTime() !== today.getTime()) {
-          return false;
-        }
-      }
-      
-      // Filter by route if specified
-      if (filterRouteId && schedule.id !== filterRouteId) {
-        return false;
-      }
-      
-      return true;
-    }).sort((a, b) => {
-      // Sort by departure time
-      const timeA = formatDepartureTime(a.departureTime);
-      const timeB = formatDepartureTime(b.departureTime);
-      return timeA.localeCompare(timeB);
-    });
-  }, [schedules, filterDate, filterRouteId, showAllSchedules]);
+  };
 
   // Load scheduled trips when filter date changes
   useEffect(() => {
     if (admin) {
-      loadScheduledTrips();
+      loadTripsForRank();
     }
   }, [filterDate, admin]);
 
-  const confirmDeleteSchedule = (schedule) => {
-    console.log('Delete button clicked for schedule:', schedule);
-    console.log('Showing delete confirmation modal');
-    setScheduleToDelete(schedule);
+  // ===== DELETE FUNCTIONS - Aligned with Web =====
+  const confirmDeleteTrip = (trip) => {
+    console.log('Delete trip button clicked:', trip);
+    setTripToDelete(trip);
     setDeleteModalVisible(true);
   };
 
   const confirmDelete = async () => {
-    if (!scheduleToDelete || !admin?.id) return;
+    if (!tripToDelete) return;
     
-    console.log('User confirmed delete, calling deleteSchedule with ID:', scheduleToDelete.id);
+    console.log('User confirmed delete, calling delete with ID:', tripToDelete.id);
     try {
       setLoadingSchedules(true);
-      console.log('Making API call to delete schedule...');
-      await client.delete(`/TaxiRankAdmin/${admin.id}/delete-schedule/${scheduleToDelete.id}`);
+      // Use the same endpoint as web
+      await client.delete(`/TaxiRankTrips/${tripToDelete.id}`);
       console.log('API call successful');
       setDeleteModalVisible(false);
-      setScheduleToDelete(null);
-      Alert.alert('Success', 'Route deleted successfully');
-      loadSchedules(); // Refresh the schedules list
+      setTripToDelete(null);
+      Alert.alert('Success', 'Trip deleted successfully');
+      loadTripsForRank(); // Refresh using web-compatible function
     } catch (err) {
-      console.error('Delete schedule error:', err);
-      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete route';
+      console.error('Delete trip error:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete trip';
       Alert.alert('Error', errorMessage);
       setDeleteModalVisible(false);
-      setScheduleToDelete(null);
+      setTripToDelete(null);
     } finally {
       setLoadingSchedules(false);
     }
@@ -340,249 +340,123 @@ export default function CreateTripScheduleScreen({ navigation }) {
   const cancelDelete = () => {
     console.log('Delete cancelled');
     setDeleteModalVisible(false);
-    setScheduleToDelete(null);
-    setScheduledTripToDelete(null);
+    setTripToDelete(null);
   };
 
-  // Functions for scheduled trip management
-  const confirmDeleteScheduledTrip = (scheduledTrip) => {
-    console.log('Delete scheduled trip button clicked:', scheduledTrip);
-    setScheduledTripToDelete(scheduledTrip);
-    setDeleteModalVisible(true);
-  };
+  // ===== PASSENGER CAPTURE - Matches Web Functionality =====
+  const openPassengerCapture = async (trip) => {
+    setSelectedTripForPassengers(trip);
+    // Pre-fill with trip route info
+    setPassengerDepartureStation(trip.departureStation || '');
+    setPassengerArrivalStation(trip.destinationStation || trip.arrivalStation || '');
+    setPassengerName('');
+    setPassengerPhone('');
+    setPassengerAmount('');
+    setPassengerPaymentMethod('Cash');
+    setPassengerSeatNumber('');
+    setSelectedStop(null);
 
-  const confirmDeleteScheduledTripAction = async () => {
-    if (!scheduledTripToDelete) return;
-    
-    console.log('User confirmed delete scheduled trip, ID:', scheduledTripToDelete.id);
-    try {
-      setLoadingSchedules(true);
-      await client.delete(`/ScheduledTrips/${scheduledTripToDelete.id}`);
-      console.log('Scheduled trip delete API call successful');
-      setDeleteModalVisible(false);
-      setScheduledTripToDelete(null);
-      Alert.alert('Success', 'Scheduled trip deleted successfully');
-      loadScheduledTrips(); // Refresh the scheduled trips list
-    } catch (err) {
-      console.error('Delete scheduled trip error:', err);
-      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete scheduled trip';
-      Alert.alert('Error', errorMessage);
-      setDeleteModalVisible(false);
-      setScheduledTripToDelete(null);
-    } finally {
-      setLoadingSchedules(false);
-    }
-  };
+    // Find matching route stops for this trip
+    // First check loaded routes, then fetch from API if needed
+    let matchedStops = [];
+    const matchedRoute = routes.find(r =>
+      r.departureStation === trip.departureStation &&
+      r.destinationStation === trip.destinationStation
+    );
 
-  // Functions for scheduled trip editing
-  const confirmEditScheduledTrip = (scheduledTrip) => {
-    console.log('Edit scheduled trip button clicked:', scheduledTrip);
-    console.log('Available scheduled trips:', scheduledTrips);
-    setScheduledTripToEdit(scheduledTrip);
-    
-    // Pre-fill form with existing data
-    setEditTripDate(new Date(scheduledTrip.scheduledDate));
-    setEditTripTime(scheduledTrip.scheduledTime ? formatDepartureTime(scheduledTrip.scheduledTime) : '08:00');
-    setEditTripVehicleId(scheduledTrip.vehicleId || '');
-    setEditTripDriverId(scheduledTrip.driverId || '');
-    setEditTripMarshalId(scheduledTrip.marshalId || '');
-    setEditTripNotes(scheduledTrip.notes || '');
-    
-    console.log('Setting edit modal visible to true');
-    setEditTripModalVisible(true);
-  };
-
-  // Temporary test function to create a scheduled trip
-  const createTestScheduledTrip = async () => {
-    if (!schedules.length || !admin?.id) {
-      Alert.alert('Error', 'Please create a trip schedule first');
-      return;
+    if (matchedRoute?.stops?.length > 0) {
+      matchedStops = matchedRoute.stops;
+    } else if (trip.taxiRankId) {
+      // Fetch routes for this taxi rank to get stops
+      try {
+        const resp = await client.get(`/Routes?taxiRankId=${trip.taxiRankId}`);
+        const fetchedRoutes = resp.data || [];
+        const found = fetchedRoutes.find(r =>
+          r.departureStation === trip.departureStation &&
+          r.destinationStation === trip.destinationStation
+        );
+        if (found?.stops?.length > 0) {
+          matchedStops = found.stops;
+        }
+      } catch (err) {
+        console.warn('Could not fetch route stops:', err?.message);
+      }
     }
 
+    // Build stop list: origin + intermediate stops + final destination
+    const allStops = [];
+    // Add intermediate stops sorted by order
+    const sorted = [...matchedStops].sort((a, b) => a.stopOrder - b.stopOrder);
+    sorted.forEach(stop => {
+      allStops.push({
+        id: stop.stopName,
+        name: stop.stopName,
+        fare: stop.fareFromOrigin,
+        order: stop.stopOrder,
+        estimatedMinutes: stop.estimatedMinutesFromDeparture,
+      });
+    });
+    // Add final destination with standard fare
+    if (matchedRoute) {
+      allStops.push({
+        id: '__destination__',
+        name: trip.destinationStation || matchedRoute.destinationStation,
+        fare: matchedRoute.standardFare,
+        order: 999,
+        estimatedMinutes: matchedRoute.expectedDurationMinutes,
+      });
+    }
+
+    console.log(`Loaded ${allStops.length} stops for passenger capture`);
+    setTripStops(allStops);
+    setPassengerModalVisible(true);
+  };
+
+  const selectStop = (stop) => {
+    setSelectedStop(stop);
+    setPassengerArrivalStation(stop.name);
+    setPassengerAmount(stop.fare != null ? String(stop.fare) : '');
+    setStopModalVisible(false);
+  };
+
+  const closePassengerModal = () => {
+    setPassengerModalVisible(false);
+    setSelectedTripForPassengers(null);
+    setTripStops([]);
+    setSelectedStop(null);
+  };
+
+  const submitPassenger = async () => {
+    if (!selectedTripForPassengers) return;
+    if (!passengerName.trim()) return Alert.alert('Validation', 'Please enter passenger name');
+    if (!passengerPhone.trim()) return Alert.alert('Validation', 'Please enter passenger phone');
+    if (!passengerAmount.trim()) return Alert.alert('Validation', 'Please enter fare amount');
+
     try {
-      const firstSchedule = schedules[0];
-      const testData = {
-        tripScheduleId: firstSchedule.id,
-        scheduledDate: new Date().toISOString().split('T')[0],
-        scheduledTime: '09:00:00',
-        vehicleId: null,
-        driverId: null,
-        marshalId: null,
-        notes: 'Test scheduled trip'
+      const passengerData = {
+        passengerName: passengerName.trim(),
+        passengerPhone: passengerPhone.trim(),
+        departureStation: passengerDepartureStation.trim(),
+        arrivalStation: passengerArrivalStation.trim(),
+        amount: parseFloat(passengerAmount) || 0,
+        paymentMethod: passengerPaymentMethod,
+        seatNumber: passengerSeatNumber ? parseInt(passengerSeatNumber) : null,
+        notes: ''
       };
 
-      console.log('Creating test scheduled trip:', testData);
-      const response = await client.post('/ScheduledTrips', testData);
-      console.log('Test trip created:', response.data);
-      Alert.alert('Success', 'Test scheduled trip created');
-      loadScheduledTrips(); // Refresh the list
+      // Use the same endpoint as web
+      await client.post(`/TaxiRankTrips/${selectedTripForPassengers.id}/passengers`, passengerData);
+      
+      Alert.alert('Success', 'Passenger captured successfully!');
+      closePassengerModal();
+      loadTripsForRank(); // Refresh to update passenger count
     } catch (err) {
-      console.error('Create test trip error:', err);
-      Alert.alert('Error', 'Failed to create test trip');
+      console.error('Add passenger error:', err);
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to add passenger');
     }
   };
 
-  const confirmEditScheduledTripAction = async () => {
-    if (!scheduledTripToEdit) return;
-    
-    console.log('User confirmed edit scheduled trip, ID:', scheduledTripToEdit.id);
-    try {
-      setLoadingSchedules(true);
-      
-      // Parse time string to TimeSpan
-      const timeParts = editTripTime.split(':');
-      const hours = parseInt(timeParts[0]) || 0;
-      const minutes = parseInt(timeParts[1]) || 0;
-      
-      const updateData = {
-        scheduledDate: editTripDate.toISOString().split('T')[0],
-        scheduledTime: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`,
-        vehicleId: editTripVehicleId || null,
-        driverId: editTripDriverId || null,
-        marshalId: editTripMarshalId || null,
-        notes: editTripNotes
-      };
-      
-      await client.put(`/ScheduledTrips/${scheduledTripToEdit.id}`, updateData);
-      console.log('Scheduled trip edit API call successful');
-      setEditTripModalVisible(false);
-      setScheduledTripToEdit(null);
-      Alert.alert('Success', 'Scheduled trip updated successfully');
-      loadScheduledTrips(); // Refresh the scheduled trips list
-    } catch (err) {
-      console.error('Edit scheduled trip error:', err);
-      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to update scheduled trip';
-      Alert.alert('Error', errorMessage);
-      setEditTripModalVisible(false);
-      setScheduledTripToEdit(null);
-    } finally {
-      setLoadingSchedules(false);
-    }
-  };
-
-  const cancelEditTrip = () => {
-    console.log('Edit trip cancelled');
-    setEditTripModalVisible(false);
-    setScheduledTripToEdit(null);
-    // Reset form
-    setEditTripDate(new Date());
-    setEditTripTime('08:00');
-    setEditTripVehicleId('');
-    setEditTripDriverId('');
-    setEditTripMarshalId('');
-    setEditTripNotes('');
-  };
-
-  // Handle edit date change
-  const handleEditDateChange = (event, selectedDate) => {
-    if (event.type === 'set' && selectedDate) {
-      setEditTripDate(selectedDate);
-    }
-    setEditDatePickerVisible(false);
-  };
-
-  // Functions for schedule editing
-  const confirmEditSchedule = (schedule) => {
-    console.log('Edit schedule button clicked:', schedule);
-    setScheduleToEdit(schedule);
-    
-    // Pre-fill form with existing data
-    setEditRouteName(schedule.routeName || '');
-    setEditDepartureStation(schedule.departureStation || '');
-    setEditDestinationStation(schedule.destinationStation || '');
-    const timeString = formatDepartureTime(schedule.departureTime);
-    setEditDepartureTime(timeString);
-    
-    // Set time picker date
-    const [hours, minutes] = timeString.split(':').map(Number);
-    const timeDate = new Date();
-    timeDate.setHours(hours || 8, minutes || 0, 0, 0);
-    setEditTimePickerDate(timeDate);
-    
-    setEditFrequencyMinutes(schedule.frequencyMinutes || 60);
-    setEditDaysOfWeek(schedule.daysOfWeek || '1,2,3,4,5');
-    setEditStandardFare(schedule.standardFare || 0);
-    setEditExpectedDurationMinutes(schedule.expectedDurationMinutes || 30);
-    setEditMaxPassengers(schedule.maxPassengers || 16);
-    setEditScheduleNotes(schedule.notes || '');
-    setEditIsActive(schedule.isActive !== false);
-    
-    console.log('Setting edit schedule modal visible to true');
-    setEditScheduleModalVisible(true);
-  };
-
-  const confirmEditScheduleAction = async () => {
-    if (!scheduleToEdit || !admin?.id) return;
-    
-    console.log('User confirmed edit schedule, ID:', scheduleToEdit.id);
-    try {
-      setLoadingSchedules(true);
-      
-      // Parse time string to TimeSpan
-      const timeParts = editDepartureTime.split(':');
-      const hours = parseInt(timeParts[0]) || 0;
-      const minutes = parseInt(timeParts[1]) || 0;
-      
-      const updateData = {
-        routeName: editRouteName,
-        departureStation: editDepartureStation,
-        destinationStation: editDestinationStation,
-        departureTime: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`,
-        frequencyMinutes: editFrequencyMinutes,
-        daysOfWeek: editDaysOfWeek,
-        standardFare: editStandardFare,
-        expectedDurationMinutes: editExpectedDurationMinutes,
-        maxPassengers: editMaxPassengers,
-        notes: editScheduleNotes,
-        isActive: editIsActive
-      };
-      
-      await client.put(`/TaxiRankAdmin/${admin.id}/update-schedule/${scheduleToEdit.id}`, updateData);
-      console.log('Schedule edit API call successful');
-      setEditScheduleModalVisible(false);
-      setScheduleToEdit(null);
-      Alert.alert('Success', 'Trip schedule updated successfully');
-      loadSchedules(); // Refresh the schedules list
-    } catch (err) {
-      console.error('Edit schedule error:', err);
-      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to update trip schedule';
-      Alert.alert('Error', errorMessage);
-      setEditScheduleModalVisible(false);
-      setScheduleToEdit(null);
-    } finally {
-      setLoadingSchedules(false);
-    }
-  };
-
-  const cancelEditSchedule = () => {
-    console.log('Edit schedule cancelled');
-    setEditScheduleModalVisible(false);
-    setScheduleToEdit(null);
-    // Reset form
-    setEditRouteName('');
-    setEditDepartureStation('');
-    setEditDestinationStation('');
-    setEditDepartureTime('08:00');
-    setEditFrequencyMinutes(60);
-    setEditDaysOfWeek('1,2,3,4,5');
-    setEditStandardFare(0);
-    setEditExpectedDurationMinutes(30);
-    setEditMaxPassengers(16);
-    setEditScheduleNotes('');
-    setEditIsActive(true);
-  };
-
-  // Handle edit time picker change
-  const handleEditTimeChange = (event, selectedTime) => {
-    if (event.type === 'set' && selectedTime) {
-      const hours = selectedTime.getHours().toString().padStart(2, '0');
-      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
-      setEditDepartureTime(`${hours}:${minutes}`);
-    }
-    setEditTimePickerVisible(false);
-  };
-
-  // ===== FORM HANDLERS =====
+  // ===== FORM HANDLERS - Aligned with Web =====
   function selectTaxiRank(rank) {
     setSelectedTaxiRankId(rank.id);
     setSelectedRouteId('');
@@ -590,6 +464,8 @@ export default function CreateTripScheduleScreen({ navigation }) {
     setSelectedDriverId('');
     setSelectedMarshalId('');
     setTaxiRankModalVisible(false);
+    // Load routes for this taxi rank like web does
+    loadRoutesForTaxiRank(rank.id);
   }
 
   function selectRoute(route) {
@@ -597,6 +473,8 @@ export default function CreateTripScheduleScreen({ navigation }) {
     setSelectedVehicleId('');
     setSelectedDriverId('');
     setRouteModalVisible(false);
+    // Load vehicles for this route using VehicleRouteAssignments like web
+    loadVehiclesForRoute(route.id);
   }
 
   function selectVehicle(vehicle) {
@@ -635,38 +513,35 @@ export default function CreateTripScheduleScreen({ navigation }) {
 
     setSubmitting(true);
     try {
-      // Create schedule data
-      const [hours, minutes] = departureTime.split(':');
-      const scheduleData = {
-        taxiRankId: selectedTaxiRankId,
+      // Combine scheduled date and departure time into a DateTime like web
+      const scheduledDateTime = new Date(scheduledDate);
+      const [hours, minutes] = departureTime.split(':').map(Number);
+      scheduledDateTime.setHours(hours || 8, minutes || 0, 0, 0);
+
+      // Transform form data to match web's CreateTripDto
+      const tripData = {
         tenantId: admin.tenantId,
-        routeName: selectedRoute.routeName,
-        departureStation: selectedRoute.departureStation || '',
-        destinationStation: selectedRoute.destinationStation || '',
-        departureTime: `${hours}:${minutes}:00`, // HH:MM:SS format for TimeSpan
-        frequencyMinutes: 60, // Default hourly
-        daysOfWeek: '1,2,3,4,5', // Weekdays
-        standardFare: selectedRoute.standardFare || 100,
-        expectedDurationMinutes: 30,
-        maxPassengers: 16,
-        isActive: true,
-        notes: notes.trim() || `Schedule for ${selectedRoute.routeName}`,
+        vehicleId: selectedVehicleId,
+        driverId: selectedDriverId || null,
+        marshalId: selectedMarshalId || null,
+        taxiRankId: selectedTaxiRankId,
+        departureStation: selectedRoute.departureStation || selectedRoute.origin || '',
+        destinationStation: selectedRoute.destinationStation || selectedRoute.destination || '',
+        departureTime: scheduledDateTime.toISOString(),
+        notes: notes.trim() || `Trip scheduled for ${selectedRoute.routeName || selectedRoute.name}`
       };
 
-      console.log('Creating schedule with data:', scheduleData);
-      console.log('Admin ID:', admin.id);
+      console.log('Creating trip with data:', tripData);
       
-      const response = await client.post(`/TaxiRankAdmin/${admin.id}/create-schedule`, scheduleData);
-      console.log('Schedule created successfully:', response.data);
+      // Use the same endpoint as web
+      await client.post('/TaxiRankTrips', tripData);
       
-      Alert.alert('Success', 'Trip schedule created successfully!');
+      Alert.alert('Success', 'Trip scheduled successfully!');
       resetForm();
-      loadSchedules();
+      loadTripsForRank(); // Refresh using web-compatible function
     } catch (err) {
-      console.error('Create schedule error:', err);
-      console.error('Error response:', err?.response?.data);
-      console.error('Error status:', err?.response?.status);
-      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to create schedule');
+      console.error('Create trip error:', err);
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to create trip');
     } finally {
       setSubmitting(false);
     }
@@ -678,8 +553,16 @@ export default function CreateTripScheduleScreen({ navigation }) {
     setSelectedDriverId('');
     setSelectedMarshalId('');
     setScheduledDate(new Date());
+    setScheduleEndDate(() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return d;
+    });
     setDepartureTime('08:00');
     setEstimatedArrivalTime('');
+    setFrequencyMinutes(60);
+    setSelectedDays([1, 2, 3, 4, 5]);
+    setGenerateMultipleTrips(true);
     setNotes('');
   }
 
@@ -692,6 +575,30 @@ export default function CreateTripScheduleScreen({ navigation }) {
       setDepartureTime(`${hours}:${minutes}`);
     }
     setTimePickerVisible(false);
+  };
+
+  const handleArrivalTimeChange = (event, selectedDate) => {
+    if (event.type === 'set' && selectedDate) {
+      const hours = selectedDate.getHours().toString().padStart(2, '0');
+      const minutes = selectedDate.getMinutes().toString().padStart(2, '0');
+      setEstimatedArrivalTime(`${hours}:${minutes}`);
+    }
+    setArrivalTimePickerVisible(false);
+  };
+
+  const handleEndDateChange = (event, selectedDate) => {
+    if (event.type === 'set' && selectedDate) {
+      setScheduleEndDate(selectedDate);
+    }
+    setEndDatePickerVisible(false);
+  };
+
+  const toggleDay = (day) => {
+    setSelectedDays(prev => 
+      prev.includes(day) 
+        ? prev.filter(d => d !== day)
+        : [...prev, day].sort()
+    );
   };
 
   const handleDateChange = (event, selectedDate) => {
@@ -727,20 +634,17 @@ export default function CreateTripScheduleScreen({ navigation }) {
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         data={[
-          { type: 'header', title: 'Create New Schedule' },
-          { type: 'taxiRank' },
-          { type: 'route' },
-          { type: 'vehicle' },
-          { type: 'driver' },
-          { type: 'marshal' },
-          { type: 'datetime' },
-          { type: 'notes' },
-          { type: 'submit' },
+          { type: 'header', title: 'Create New Trip' },
           { type: 'scheduleManagementHeader' },
-          ...getFilteredSchedules.map(schedule => ({ type: 'schedule', data: schedule }))
+          // Flatten grouped trips by date
+          ...tripDates.flatMap(date => [
+            { type: 'dateHeader', date },
+            ...(groupedTrips[date] || []).map(trip => ({ type: 'trip', data: trip }))
+          ])
         ]}
         keyExtractor={(item, index) => {
-          if (item.type === 'schedule') return `schedule-${item.data.id}`;
+          if (item.type === 'trip') return `trip-${item.data.id}`;
+          if (item.type === 'dateHeader') return `date-${item.date}-${index}`;
           return `section-${item.type}-${index}`;
         }}
         renderItem={({ item }) => {
@@ -762,7 +666,7 @@ export default function CreateTripScheduleScreen({ navigation }) {
                 <TouchableOpacity style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => setRouteModalVisible(true)}>
                   <Ionicons name="git-branch-outline" size={18} color={GOLD} />
                   <Text style={[styles.pickerText, { color: selectedRouteId ? c.text : c.textMuted }]}>
-                    {selectedRouteId ? (routes.find(r => r.id === selectedRouteId)?.routeName || 'Selected') : 'Select route'}
+                    {selectedRouteId ? (routes.find(r => r.id === selectedRouteId)?.routeName || routes.find(r => r.id === selectedRouteId)?.name || 'Selected') : 'Select route'}
                   </Text>
                   <Ionicons name="chevron-down" size={16} color={c.textMuted} />
                 </TouchableOpacity>
@@ -792,7 +696,7 @@ export default function CreateTripScheduleScreen({ navigation }) {
                 <TouchableOpacity style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => setMarshalModalVisible(true)}>
                   <Ionicons name="shield-outline" size={18} color={GOLD} />
                   <Text style={[styles.pickerText, { color: selectedMarshalId ? c.text : c.textMuted }]}>
-                    {selectedMarshalId ? (marshals.find(m => m.id === selectedMarshalId)?.name || 'Selected') : 'Select marshal'}
+                    {selectedMarshalId ? (marshals.find(m => m.id === selectedMarshalId)?.fullName || 'Selected') : 'Select marshal'}
                   </Text>
                   <Ionicons name="chevron-down" size={16} color={c.textMuted} />
                 </TouchableOpacity>
@@ -822,6 +726,108 @@ export default function CreateTripScheduleScreen({ navigation }) {
                   </View>
                 </View>
 
+                {/* Estimated Arrival Time */}
+                <Text style={[styles.label, { color: c.textMuted }]}>Estimated Arrival Time</Text>
+                <TouchableOpacity style={[inp, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]} onPress={() => {
+                  const [hours, minutes] = (estimatedArrivalTime || '09:00').split(':').map(Number);
+                  const newDate = new Date();
+                  newDate.setHours(hours || 9, minutes || 0, 0, 0);
+                  setTimePickerDate(newDate);
+                  setArrivalTimePickerVisible(true);
+                }}>
+                  <Text style={{ color: estimatedArrivalTime ? c.text : c.textMuted }}>
+                    {estimatedArrivalTime || 'Select arrival time'}
+                  </Text>
+                  <Ionicons name="flag-outline" size={18} color={c.textMuted} />
+                </TouchableOpacity>
+
+                {/* Multi-Trip Generation Settings */}
+                <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Trip Generation Settings</Text>
+                
+                {/* Toggle for single vs multiple trips */}
+                <TouchableOpacity 
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}
+                  onPress={() => setGenerateMultipleTrips(!generateMultipleTrips)}
+                >
+                  <View style={{
+                    width: 48,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: generateMultipleTrips ? GOLD : c.border,
+                    justifyContent: 'center',
+                    paddingHorizontal: 2
+                  }}>
+                    <View style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      backgroundColor: '#fff',
+                      transform: [{ translateX: generateMultipleTrips ? 22 : 0 }]
+                    }} />
+                  </View>
+                  <Text style={{ color: c.text, fontSize: 14, fontWeight: '600' }}>
+                    Generate multiple trips
+                  </Text>
+                </TouchableOpacity>
+
+                {generateMultipleTrips && (
+                  <>
+                    {/* End Date */}
+                    <Text style={[styles.label, { color: c.textMuted }]}>End Date</Text>
+                    <TouchableOpacity style={[inp, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]} onPress={() => setEndDatePickerVisible(true)}>
+                      <Text style={{ color: c.text }}>{scheduleEndDate.toLocaleDateString()}</Text>
+                      <Ionicons name="calendar-outline" size={18} color={c.textMuted} />
+                    </TouchableOpacity>
+
+                    {/* Frequency */}
+                    <Text style={[styles.label, { color: c.textMuted }]}>Frequency (minutes)</Text>
+                    <View style={[inp, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+                      <TextInput
+                        value={String(frequencyMinutes)}
+                        onChangeText={(text) => setFrequencyMinutes(parseInt(text) || 60)}
+                        style={{ flex: 1, color: c.text, fontSize: 14 }}
+                        keyboardType="numeric"
+                      />
+                      <Text style={{ color: c.textMuted, fontSize: 12 }}>min</Text>
+                    </View>
+
+                    {/* Days of Week */}
+                    <Text style={[styles.label, { color: c.textMuted, marginTop: 8 }]}>Operating Days</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                      {[
+                        { key: 1, label: 'Mon' },
+                        { key: 2, label: 'Tue' },
+                        { key: 3, label: 'Wed' },
+                        { key: 4, label: 'Thu' },
+                        { key: 5, label: 'Fri' },
+                        { key: 6, label: 'Sat' },
+                        { key: 7, label: 'Sun' },
+                      ].map(day => (
+                        <TouchableOpacity
+                          key={day.key}
+                          onPress={() => toggleDay(day.key)}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            backgroundColor: selectedDays.includes(day.key) ? GOLD : c.surface,
+                            borderWidth: 1,
+                            borderColor: selectedDays.includes(day.key) ? GOLD : c.border
+                          }}
+                        >
+                          <Text style={{
+                            fontSize: 12,
+                            fontWeight: '600',
+                            color: selectedDays.includes(day.key) ? '#000' : c.textMuted
+                          }}>
+                            {day.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+
                 <Text style={[styles.label, { color: c.textMuted }]}>Notes</Text>
                 <TextInput value={notes} onChangeText={setNotes} style={[inp, { minHeight: 56 }]} placeholder="Optional notes" placeholderTextColor={c.textMuted} multiline />
 
@@ -841,7 +847,7 @@ export default function CreateTripScheduleScreen({ navigation }) {
             return (
               <View style={[styles.scheduleSection, { backgroundColor: c.surface, borderColor: c.border }]}>
                 <View style={styles.scheduleHeader}>
-                  <Text style={[styles.sectionTitle, { color: c.text }]}>Schedule Management</Text>
+                  <Text style={[styles.sectionTitle, { color: c.text }]}>All Trip Schedules</Text>
                   <View style={styles.scheduleActions}>
                     <TouchableOpacity
                       style={[styles.filterToggle, { backgroundColor: showFilters ? GOLD : c.background }]}
@@ -853,22 +859,12 @@ export default function CreateTripScheduleScreen({ navigation }) {
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.viewToggle, { backgroundColor: showAllSchedules ? GOLD : c.background }]}
-                      onPress={() => setShowAllSchedules(!showAllSchedules)}
+                      style={[styles.viewToggle, { backgroundColor: showAllTrips ? GOLD : c.background }]}
+                      onPress={() => setShowAllTrips(!showAllTrips)}
                     >
-                      <Ionicons name="calendar-outline" size={16} color={showAllSchedules ? '#000' : c.text} />
-                      <Text style={[styles.viewToggleText, { color: showAllSchedules ? '#000' : c.text }]}>
-                        {showAllSchedules ? 'All' : 'Today'}
-                      </Text>
-                    </TouchableOpacity>
-                    {/* Temporary test button */}
-                    <TouchableOpacity
-                      style={[styles.filterToggle, { backgroundColor: RED }]}
-                      onPress={createTestScheduledTrip}
-                    >
-                      <Ionicons name="add-outline" size={16} color="#fff" />
-                      <Text style={[styles.filterToggleText, { color: '#fff' }]}>
-                        Test Trip
+                      <Ionicons name="calendar-outline" size={16} color={showAllTrips ? '#000' : c.text} />
+                      <Text style={[styles.viewToggleText, { color: showAllTrips ? '#000' : c.text }]}>
+                        {showAllTrips ? 'All' : 'Today'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -887,221 +883,134 @@ export default function CreateTripScheduleScreen({ navigation }) {
                         </Text>
                         <Ionicons name="chevron-down" size={16} color={c.textMuted} />
                       </TouchableOpacity>
-                      
-                      <TouchableOpacity
-                        style={[styles.filterBtn, { backgroundColor: c.background, borderColor: c.border }]}
-                        onPress={() => setFilterRouteId('')}
-                      >
-                        <Ionicons name="git-branch-outline" size={16} color={GOLD} />
-                        <Text style={[styles.filterBtnText, { color: c.text }]}>
-                          {filterRouteId ? schedules.find(s => s.id === filterRouteId)?.routeName || 'Selected Route' : 'All Routes'}
-                        </Text>
-                        <Ionicons name="chevron-down" size={16} color={c.textMuted} />
-                      </TouchableOpacity>
                     </View>
+                  </View>
+                )}
+
+                {loadingSchedules && (
+                  <View style={[styles.center, { paddingVertical: 20 }]}>
+                    <ActivityIndicator size="small" color={GOLD} />
+                    <Text style={[styles.label, { color: c.textMuted, marginTop: 8 }]}>Loading trips...</Text>
+                  </View>
+                )}
+
+                {!loadingSchedules && tripDates.length === 0 && (
+                  <View style={styles.emptyWrap}>
+                    <Ionicons name="calendar-outline" size={48} color={c.textMuted} />
+                    <Text style={[styles.emptyTitle, { color: c.text }]}>No Trip Schedules Found</Text>
+                    <Text style={[styles.emptySubtitle, { color: c.textMuted }]}>
+                      Create your first trip schedule using the form above.
+                    </Text>
                   </View>
                 )}
               </View>
             );
           }
 
-          if (item.type === 'schedule') {
-            const schedule = item.data;
-            // Get scheduled trips for this schedule
-            const scheduleTrips = scheduledTrips.filter(trip => trip.tripScheduleId === schedule.id);
+          if (item.type === 'dateHeader') {
+            return (
+              <View style={{ marginTop: 16, marginBottom: 8 }}>
+                <Text style={[styles.dateHeader, { color: c.text }]}>{item.date}</Text>
+              </View>
+            );
+          }
+
+          if (item.type === 'trip') {
+            const trip = item.data;
+            const departureTime = trip.departureTime ? new Date(trip.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not set';
             
-            console.log('Rendering schedule:', schedule.routeName, 'with trips:', scheduleTrips.length);
+            // Status colors matching web
+            const getStatusColor = (status) => {
+              switch (status) {
+                case 'Departed': return { bg: '#fff3cd', text: '#856404' };
+                case 'InTransit': return { bg: '#cce5ff', text: '#004085' };
+                case 'Arrived': return { bg: '#d4edda', text: '#155724' };
+                case 'Completed': return { bg: '#d1ecf1', text: '#0c5460' };
+                default: return { bg: GREEN_LIGHT, text: GREEN };
+              }
+            };
+            const statusColors = getStatusColor(trip.status);
             
             return (
-              <View key={schedule.id} style={[styles.newScheduleCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                {/* Schedule Header */}
-                <View style={styles.scheduleHeader}>
+              <View key={trip.id} style={[styles.newScheduleCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                {/* Trip Header */}
+                <View style={styles.cardScheduleHeader}>
                   <View style={styles.scheduleHeaderLeft}>
                     <View style={styles.scheduleTimeContainer}>
                       <Ionicons name="time-outline" size={16} color={GOLD} />
                       <Text style={[styles.scheduleTime, { color: c.text }]}>
-                        {formatDepartureTime(schedule.departureTime)}
+                        {departureTime}
                       </Text>
                     </View>
                     <Text style={[styles.scheduleRouteName, { color: c.text }]}>
-                      {schedule.routeName}
+                      {trip.departureStation} → {trip.destinationStation}
                     </Text>
                   </View>
                   <View style={styles.scheduleHeaderRight}>
-                    <View style={[styles.statusBadge, { backgroundColor: schedule.isActive ? GREEN_LIGHT : '#ccc' }]}>
-                      <Text style={[styles.statusText, { color: schedule.isActive ? GREEN : '#666' }]}>
-                        {schedule.isActive ? 'Active' : 'Inactive'}
+                    <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
+                      <Text style={[styles.statusText, { color: statusColors.text }]}>
+                        {trip.status || 'Scheduled'}
                       </Text>
                     </View>
                   </View>
                 </View>
 
-                {/* Route Details */}
-                <View style={styles.routeDetails}>
-                  <View style={styles.routePath}>
-                    <Ionicons name="location-outline" size={14} color={c.textMuted} />
-                    <Text style={[styles.routeText, { color: c.text }]}>
-                      {schedule.departureStation} → {schedule.destinationStation}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Schedule Info */}
+                {/* Trip Info - Vehicle, Driver, Marshal, Passengers */}
                 <View style={styles.scheduleInfo}>
                   <View style={styles.infoRow}>
                     <View style={styles.infoItem}>
-                      <Ionicons name="cash-outline" size={14} color={c.textMuted} />
-                      <Text style={[styles.infoText, { color: c.text }]}>R{schedule.standardFare || 0}</Text>
-                    </View>
-                    <View style={styles.infoItem}>
-                      <Ionicons name="calendar-outline" size={14} color={c.textMuted} />
-                      <Text style={[styles.infoText, { color: c.text }]}>{schedule.daysOfWeek || 'Weekdays'}</Text>
-                    </View>
-                    <View style={styles.infoItem}>
-                      <Ionicons name="people-outline" size={14} color={c.textMuted} />
-                      <Text style={[styles.infoText, { color: c.text }]}>Max {schedule.maxPassengers || 16}</Text>
-                    </View>
-                  </View>
-                  {schedule.frequencyMinutes && (
-                    <View style={styles.infoItem}>
-                      <Ionicons name="repeat-outline" size={14} color={c.textMuted} />
-                      <Text style={[styles.infoText, { color: c.text }]}>Every {schedule.frequencyMinutes} min</Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Vehicle/Driver Assignment Info */}
-                <View style={styles.assignmentInfo}>
-                  <View style={styles.assignmentRow}>
-                    <View style={styles.assignmentItem}>
                       <Ionicons name="bus-outline" size={14} color={c.textMuted} />
-                      <Text style={[styles.assignmentText, { color: c.text }]}>
-                        {schedule.routeVehicles && schedule.routeVehicles.length > 0 
-                          ? `${schedule.routeVehicles.length} vehicle(s) assigned`
-                          : 'No vehicles assigned'
-                        }
+                      <Text style={[styles.infoText, { color: c.text }]}>
+                        {trip.vehicle?.registration || 'N/A'}
+                      </Text>
+                    </View>
+                    <View style={styles.infoItem}>
+                      <Ionicons name="person-outline" size={14} color={c.textMuted} />
+                      <Text style={[styles.infoText, { color: c.text }]}>
+                        {trip.driver?.name || 'N/A'}
                       </Text>
                     </View>
                   </View>
-                  {schedule.notes && (
-                    <View style={styles.notesRow}>
-                      <Ionicons name="document-text-outline" size={14} color={c.textMuted} />
-                      <Text style={[styles.notesText, { color: c.textMuted }]}>{schedule.notes}</Text>
+                  <View style={styles.infoRow}>
+                    <View style={styles.infoItem}>
+                      <Ionicons name="shield-outline" size={14} color={c.textMuted} />
+                      <Text style={[styles.infoText, { color: c.text }]}>
+                        {trip.marshal?.fullName || 'N/A'}
+                      </Text>
                     </View>
-                  )}
+                    <View style={styles.infoItem}>
+                      <Ionicons name="people-outline" size={14} color={c.textMuted} />
+                      <Text style={[styles.infoText, { color: c.text }]}>
+                        {trip.passengerCount || 0} passengers
+                      </Text>
+                    </View>
+                  </View>
                 </View>
 
-                {/* Action Buttons */}
+                {/* Action Buttons - Passenger Capture + Delete */}
                 <View style={styles.scheduleActions}>
                   <TouchableOpacity
                     style={[styles.editScheduleBtn, { backgroundColor: GOLD }]}
-                    onPress={() => confirmEditSchedule(schedule)}
+                    onPress={() => openPassengerCapture(trip)}
                   >
-                    <Ionicons name="create-outline" size={14} color="#000" />
-                    <Text style={[styles.editBtnText, { color: '#000' }]}>Edit</Text>
+                    <Ionicons name="people-outline" size={14} color="#000" />
+                    <Text style={[styles.editBtnText, { color: '#000' }]}>Capture Passenger</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.deleteBtn, { backgroundColor: RED }]}
-                    onPress={() => confirmDeleteSchedule(schedule)}
+                    onPress={() => confirmDeleteTrip(trip)}
                   >
                     <Ionicons name="trash-outline" size={14} color="#fff" />
                     <Text style={[styles.deleteBtnText, { color: '#fff' }]}>Delete</Text>
                   </TouchableOpacity>
                 </View>
-                
-                {/* Scheduled Trips Section */}
-                {scheduleTrips.length > 0 && (
-                  <View style={styles.scheduledTripsSection}>
-                    <View style={styles.scheduledTripsHeader}>
-                      <Ionicons name="calendar-check-outline" size={16} color={c.textMuted} />
-                      <Text style={[styles.scheduledTripsTitle, { color: c.textMuted }]}>
-                        Scheduled Trips ({scheduleTrips.length})
-                      </Text>
-                    </View>
-                    {scheduleTrips.map(trip => (
-                      <View key={trip.id} style={[styles.scheduledTripItem, { backgroundColor: c.background, borderColor: c.border }]}>
-                        <View style={styles.scheduledTripMain}>
-                          <View style={styles.tripDateTime}>
-                            <Text style={[styles.scheduledTripDate, { color: c.text }]}>
-                              {new Date(trip.scheduledDate).toLocaleDateString()}
-                            </Text>
-                            <Text style={[styles.scheduledTripTime, { color: c.textMuted }]}>
-                              {trip.scheduledTime ? formatDepartureTime(trip.scheduledTime) : 'Not set'}
-                            </Text>
-                          </View>
-                          <View style={styles.tripDetails}>
-                            {trip.vehicle && (
-                              <Text style={[styles.tripVehicle, { color: c.textMuted }]}>
-                                🚌 {trip.vehicle.registration}
-                              </Text>
-                            )}
-                            {trip.driver && (
-                              <Text style={[styles.tripDriver, { color: c.textMuted }]}>
-                                👤 {trip.driver.name}
-                              </Text>
-                            )}
-                          </View>
-                          <View style={[styles.statusBadge, { backgroundColor: trip.status === 'Scheduled' ? GREEN_LIGHT : trip.status === 'Cancelled' ? '#ffcccc' : GOLD_LIGHT }]}>
-                            <Text style={[styles.statusText, { color: trip.status === 'Scheduled' ? GREEN : trip.status === 'Cancelled' ? RED : GOLD }]}>
-                              {trip.status}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={styles.scheduledTripActions}>
-                          <TouchableOpacity
-                            style={[styles.editTripBtn, { backgroundColor: GOLD }]}
-                            onPress={() => confirmEditScheduledTrip(trip)}
-                          >
-                            <Ionicons name="create-outline" size={12} color="#000" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.deleteTripBtn, { backgroundColor: RED }]}
-                            onPress={() => confirmDeleteScheduledTrip(trip)}
-                          >
-                            <Ionicons name="trash-outline" size={12} color="#fff" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
               </View>
             );
           }
 
           return null;
         }}
-        ListHeaderComponent={() => {
-          if (loadingSchedules) {
-            return (
-              <View style={styles.center}>
-                <ActivityIndicator size="small" color={GOLD} />
-                <Text style={[styles.label, { color: c.textMuted, marginTop: 8 }]}>Loading schedules...</Text>
-              </View>
-            );
-          }
-          
-          if (getFilteredSchedules.length === 0) {
-            return (
-              <View style={styles.emptyWrap}>
-                <Ionicons name="calendar-outline" size={48} color={c.textMuted} />
-                <Text style={[styles.emptyTitle, { color: c.text }]}>No Trip Schedules Found</Text>
-                <Text style={[styles.emptySubtitle, { color: c.textMuted }]}>
-                  Create trip schedules in the Fleet Management screen first.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.createEmptyButton, { backgroundColor: GOLD }]}
-                  onPress={() => navigation.navigate('VehicleRouteAssignment')}
-                >
-                  <Ionicons name="add" size={16} color="#000" />
-                  <Text style={styles.createButtonText}>Go to Fleet Management</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          }
-          
-          return null;
-        }}
+        ListHeaderComponent={null}
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={loadData} colors={[GOLD]} tintColor={GOLD} />
         }
@@ -1258,12 +1167,14 @@ export default function CreateTripScheduleScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* ===== DELETE CONFIRMATION MODAL ===== */}
+      {/* ===== DELETE CONFIRMATION MODAL - Aligned with Web ===== */}
       <Modal visible={deleteModalVisible} animationType="fade" transparent onRequestClose={cancelDelete}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalSheet, { backgroundColor: c.background, margin: 20, borderRadius: 14 }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: c.text }]}>Delete Route</Text>
+              <Text style={[styles.modalTitle, { color: c.text }]}>
+                Delete Trip
+              </Text>
               <TouchableOpacity onPress={cancelDelete}>
                 <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
@@ -1271,8 +1182,10 @@ export default function CreateTripScheduleScreen({ navigation }) {
             
             <View style={styles.modalBody}>
               <Text style={[styles.deleteMessage, { color: c.text, marginBottom: 24 }]}>
-                Are you sure you want to delete the route "{scheduleToDelete?.routeName}"? 
-                {'\n\n'}This will permanently remove this route and all its scheduled trips. This action cannot be undone.
+                {tripToDelete
+                  ? `Are you sure you want to delete this trip from ${tripToDelete.departureStation} to ${tripToDelete.destinationStation} on ${new Date(tripToDelete.departureTime).toLocaleDateString()}?\n\nThis action cannot be undone.`
+                  : 'Are you sure you want to delete this trip?\n\nThis action cannot be undone.'
+                }
               </Text>
               
               <View style={styles.deleteActions}>
@@ -1295,252 +1208,206 @@ export default function CreateTripScheduleScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* ===== EDIT SCHEDULED TRIP MODAL ===== */}
-      <Modal visible={editTripModalVisible} animationType="fade" transparent onRequestClose={cancelEditTrip}>
+      {/* ===== PASSENGER CAPTURE MODAL - Matches Web Functionality ===== */}
+      <Modal visible={passengerModalVisible} animationType="slide" transparent onRequestClose={closePassengerModal}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: c.background, margin: 20, borderRadius: 14 }]}>
+          <View style={[styles.modalSheet, { backgroundColor: c.background, margin: 20, borderRadius: 14, maxHeight: '80%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: c.text }]}>Edit Scheduled Trip</Text>
-              <TouchableOpacity onPress={cancelEditTrip}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>
+                Capture Passenger
+              </Text>
+              <TouchableOpacity onPress={closePassengerModal}>
                 <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
             
-            <View style={styles.modalBody}>
-              <Text style={[styles.label, { color: c.textMuted }]}>Scheduled Date</Text>
-              <TouchableOpacity 
-                style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]} 
-                onPress={() => setEditDatePickerVisible(true)}
-              >
-                <Text style={{ color: c.text }}>{editTripDate.toLocaleDateString()}</Text>
-                <Ionicons name="calendar-outline" size={18} color={c.textMuted} />
-              </TouchableOpacity>
-
-              <Text style={[styles.label, { color: c.textMuted }]}>Scheduled Time</Text>
+            <ScrollView style={{ padding: 16 }}>
+              <Text style={[styles.label, { color: c.textMuted }]}>Passenger Name *</Text>
               <TextInput
-                value={editTripTime}
-                onChangeText={setEditTripTime}
+                value={passengerName}
+                onChangeText={setPassengerName}
                 style={[styles.input, { color: c.text }]}
-                placeholder="HH:MM (24-hour format)"
+                placeholder="Enter passenger name"
                 placeholderTextColor={c.textMuted}
               />
 
-              <Text style={[styles.label, { color: c.textMuted }]}>Vehicle</Text>
-              <TouchableOpacity
-                style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                onPress={() => setVehicleModalVisible(true)}
-              >
-                <Text style={{ color: c.text }}>
-                  {editTripVehicleId ? vehicles.find(v => v.id === editTripVehicleId)?.registration || 'Selected Vehicle' : 'Select Vehicle (Optional)'}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color={c.textMuted} />
-              </TouchableOpacity>
-
-              <Text style={[styles.label, { color: c.textMuted }]}>Driver</Text>
-              <TouchableOpacity
-                style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                onPress={() => setDriverModalVisible(true)}
-              >
-                <Text style={{ color: c.text }}>
-                  {editTripDriverId ? drivers.find(d => d.id === editTripDriverId)?.name || 'Selected Driver' : 'Select Driver (Optional)'}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color={c.textMuted} />
-              </TouchableOpacity>
-
-              <Text style={[styles.label, { color: c.textMuted }]}>Marshal</Text>
-              <TouchableOpacity
-                style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                onPress={() => setMarshalModalVisible(true)}
-              >
-                <Text style={{ color: c.text }}>
-                  {editTripMarshalId ? marshals.find(m => m.id === editTripMarshalId)?.fullName || 'Selected Marshal' : 'Select Marshal (Optional)'}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color={c.textMuted} />
-              </TouchableOpacity>
-
-              <Text style={[styles.label, { color: c.textMuted }]}>Notes</Text>
+              <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>Phone Number *</Text>
               <TextInput
-                value={editTripNotes}
-                onChangeText={setEditTripNotes}
-                style={[styles.input, { minHeight: 56 }]}
-                placeholder="Optional notes"
+                value={passengerPhone}
+                onChangeText={setPassengerPhone}
+                style={[styles.input, { color: c.text }]}
+                placeholder="Enter phone number"
                 placeholderTextColor={c.textMuted}
-                multiline
+                keyboardType="phone-pad"
               />
 
-              <View style={styles.editTripActions}>
+              <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>Departure Station</Text>
+              <TextInput
+                value={passengerDepartureStation}
+                onChangeText={setPassengerDepartureStation}
+                style={[styles.input, { color: c.text }]}
+                placeholder="From"
+                placeholderTextColor={c.textMuted}
+              />
+
+              <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>Alighting Stop *</Text>
+              {tripStops.length > 0 ? (
                 <TouchableOpacity 
-                  style={[styles.editTripCancelBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
-                  onPress={cancelEditTrip}
+                  style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: selectedStop ? GOLD : c.border }]} 
+                  onPress={() => setStopModalVisible(true)}
                 >
-                  <Text style={[styles.editTripCancelText, { color: c.text }]}>Cancel</Text>
+                  <Ionicons name="flag-outline" size={18} color={GOLD} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.pickerText, { color: selectedStop ? c.text : c.textMuted }]}>
+                      {selectedStop ? selectedStop.name : 'Select alighting stop'}
+                    </Text>
+                    {selectedStop && (
+                      <Text style={{ color: GOLD, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                        Fare: R{Number(selectedStop.fare).toFixed(2)}
+                        {selectedStop.estimatedMinutes ? ` · ~${selectedStop.estimatedMinutes} min` : ''}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+                </TouchableOpacity>
+              ) : (
+                <TextInput
+                  value={passengerArrivalStation}
+                  onChangeText={setPassengerArrivalStation}
+                  style={[styles.input, { color: c.text }]}
+                  placeholder="To"
+                  placeholderTextColor={c.textMuted}
+                />
+              )}
+
+              <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>Fare Amount (R) *</Text>
+              <TextInput
+                value={passengerAmount}
+                onChangeText={setPassengerAmount}
+                style={[styles.input, { color: c.text, backgroundColor: selectedStop ? GOLD_LIGHT : c.surface }]}
+                placeholder="0.00"
+                placeholderTextColor={c.textMuted}
+                keyboardType="decimal-pad"
+              />
+              {selectedStop && (
+                <Text style={{ color: c.textMuted, fontSize: 11, marginTop: 4 }}>
+                  Auto-filled from stop fare. You can adjust if needed.
+                </Text>
+              )}
+
+              <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>Payment Method</Text>
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                {['Cash', 'Card'].map(method => (
+                  <TouchableOpacity
+                    key={method}
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: passengerPaymentMethod === method ? GOLD : c.border,
+                      backgroundColor: passengerPaymentMethod === method ? GOLD_LIGHT : c.surface,
+                      alignItems: 'center'
+                    }}
+                    onPress={() => setPassengerPaymentMethod(method)}
+                  >
+                    <Ionicons 
+                      name={method === 'Cash' ? 'cash-outline' : 'card-outline'} 
+                      size={20} 
+                      color={passengerPaymentMethod === method ? GOLD : c.textMuted} 
+                    />
+                    <Text style={{ 
+                      color: passengerPaymentMethod === method ? c.text : c.textMuted,
+                      fontWeight: passengerPaymentMethod === method ? '600' : '400',
+                      marginTop: 4
+                    }}>
+                      {method}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>Seat Number (Optional)</Text>
+              <TextInput
+                value={passengerSeatNumber}
+                onChangeText={setPassengerSeatNumber}
+                style={[styles.input, { color: c.text }]}
+                placeholder="e.g., 5"
+                placeholderTextColor={c.textMuted}
+                keyboardType="numeric"
+              />
+
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 24, marginBottom: 32 }}>
+                <TouchableOpacity 
+                  style={[styles.deleteCancelBtn, { backgroundColor: c.surface, borderColor: c.border, flex: 1 }]} 
+                  onPress={closePassengerModal}
+                >
+                  <Text style={[styles.deleteCancelText, { color: c.text }]}>Cancel</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
-                  style={[styles.editTripSaveBtn, { backgroundColor: GOLD }]} 
-                  onPress={confirmEditScheduledTripAction}
+                  style={[styles.deleteConfirmBtn, { backgroundColor: GOLD, flex: 1 }]} 
+                  onPress={submitPassenger}
                 >
-                  <Text style={[styles.editTripSaveText]}>Save Changes</Text>
+                  <Text style={[styles.deleteConfirmText, { color: '#000' }]}>Add Passenger</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* ===== EDIT SCHEDULE MODAL ===== */}
-      <Modal visible={editScheduleModalVisible} animationType="fade" transparent onRequestClose={cancelEditSchedule}>
+      {/* ===== STOP PICKER MODAL ===== */}
+      <Modal visible={stopModalVisible} animationType="slide" transparent onRequestClose={() => setStopModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.editScheduleModalSheet, { backgroundColor: c.background, margin: 20, borderRadius: 14 }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: c.text }]}>Edit Trip Schedule</Text>
-              <TouchableOpacity onPress={cancelEditSchedule}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.editScheduleScroll} contentContainerStyle={styles.editScheduleScrollContent}>
-              <View style={styles.formRow}>
-                <View style={styles.formHalf}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Route Name *</Text>
-                  <TextInput
-                    value={editRouteName}
-                    onChangeText={setEditRouteName}
-                    style={[styles.input, { color: c.text }]}
-                    placeholder="e.g., JHB to PTA"
-                    placeholderTextColor={c.textMuted}
-                  />
-                </View>
-                <View style={styles.formHalf}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Departure Time *</Text>
-                  <TouchableOpacity
-                    style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                    onPress={() => setEditTimePickerVisible(true)}
-                  >
-                    <Text style={{ color: c.text }}>{editDepartureTime}</Text>
-                    <Ionicons name="time-outline" size={18} color={c.textMuted} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={styles.formHalf}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Departure Station *</Text>
-                  <TextInput
-                    value={editDepartureStation}
-                    onChangeText={setEditDepartureStation}
-                    style={[styles.input, { color: c.text }]}
-                    placeholder="e.g., Park Station"
-                    placeholderTextColor={c.textMuted}
-                  />
-                </View>
-                <View style={styles.formHalf}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Destination Station *</Text>
-                  <TextInput
-                    value={editDestinationStation}
-                    onChangeText={setEditDestinationStation}
-                    style={[styles.input, { color: c.text }]}
-                    placeholder="e.g., Pretoria Station"
-                    placeholderTextColor={c.textMuted}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={styles.formHalf}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Frequency (min)</Text>
-                  <TextInput
-                    value={editFrequencyMinutes.toString()}
-                    onChangeText={(text) => setEditFrequencyMinutes(parseInt(text) || 60)}
-                    style={[styles.input, { color: c.text }]}
-                    placeholder="60"
-                    placeholderTextColor={c.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View style={styles.formHalf}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Standard Fare (R)</Text>
-                  <TextInput
-                    value={editStandardFare.toString()}
-                    onChangeText={(text) => setEditStandardFare(parseFloat(text) || 0)}
-                    style={[styles.input, { color: c.text }]}
-                    placeholder="150"
-                    placeholderTextColor={c.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={styles.formHalf}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Duration (min)</Text>
-                  <TextInput
-                    value={editExpectedDurationMinutes.toString()}
-                    onChangeText={(text) => setEditExpectedDurationMinutes(parseInt(text) || 30)}
-                    style={[styles.input, { color: c.text }]}
-                    placeholder="30"
-                    placeholderTextColor={c.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View style={styles.formHalf}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Max Passengers</Text>
-                  <TextInput
-                    value={editMaxPassengers.toString()}
-                    onChangeText={(text) => setEditMaxPassengers(parseInt(text) || 16)}
-                    style={[styles.input, { color: c.text }]}
-                    placeholder="16"
-                    placeholderTextColor={c.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              <Text style={[styles.label, { color: c.textMuted }]}>Days of Week</Text>
-              <TextInput
-                value={editDaysOfWeek}
-                onChangeText={setEditDaysOfWeek}
-                style={[styles.input, { color: c.text }]}
-                placeholder="1,2,3,4,5 (Mon-Fri)"
-                placeholderTextColor={c.textMuted}
-              />
-
-              <Text style={[styles.label, { color: c.textMuted }]}>Notes</Text>
-              <TextInput
-                value={editScheduleNotes}
-                onChangeText={setEditScheduleNotes}
-                style={[styles.input, { color: c.text, minHeight: 60 }]}
-                placeholder="Optional notes"
-                placeholderTextColor={c.textMuted}
-                multiline
-              />
-
-              <View style={styles.switchRow}>
-                <Text style={[styles.label, { color: c.text, marginBottom: 0 }]}>Active Schedule</Text>
+          <View style={[styles.modalSheet, { backgroundColor: c.background }]}>
+            <ModalHeader title="Select Alighting Stop" onClose={() => setStopModalVisible(false)} c={c} />
+            <FlatList
+              data={tripStops}
+              keyExtractor={item => item.id}
+              contentContainerStyle={{ padding: 16 }}
+              renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={[styles.switch, { backgroundColor: editIsActive ? GOLD : c.border }]}
-                  onPress={() => setEditIsActive(!editIsActive)}
+                  style={[
+                    styles.listItem,
+                    { 
+                      backgroundColor: selectedStop?.id === item.id ? GOLD_LIGHT : c.surface, 
+                      borderColor: selectedStop?.id === item.id ? GOLD : c.border 
+                    }
+                  ]}
+                  onPress={() => selectStop(item)}
                 >
-                  <View style={[styles.switchThumb, { backgroundColor: editIsActive ? '#000' : c.textMuted }]} />
+                  <View style={{ 
+                    width: 28, height: 28, borderRadius: 14, 
+                    backgroundColor: item.id === '__destination__' ? GREEN : GOLD_LIGHT,
+                    alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <Text style={{ 
+                      fontSize: 12, fontWeight: '700', 
+                      color: item.id === '__destination__' ? '#fff' : GOLD 
+                    }}>
+                      {item.id === '__destination__' ? '★' : item.order}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.listItemTitle, { color: c.text }]}>
+                      {item.name}
+                      {item.id === '__destination__' ? ' (Final)' : ''}
+                    </Text>
+                    <Text style={{ color: GOLD, fontSize: 13, fontWeight: '600' }}>
+                      R{Number(item.fare).toFixed(2)}
+                      {item.estimatedMinutes ? ` · ~${item.estimatedMinutes} min from departure` : ''}
+                    </Text>
+                  </View>
+                  {selectedStop?.id === item.id && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
                 </TouchableOpacity>
-              </View>
-
-              <View style={styles.editTripActions}>
-                <TouchableOpacity 
-                  style={[styles.editTripCancelBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
-                  onPress={cancelEditSchedule}
-                >
-                  <Text style={[styles.editTripCancelText, { color: c.text }]}>Cancel</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.editTripSaveBtn, { backgroundColor: GOLD }]} 
-                  onPress={confirmEditScheduleAction}
-                >
-                  <Text style={[styles.editTripSaveText]}>Save Changes</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+              )}
+              ListEmptyComponent={
+                <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center' }]}>
+                  No stops available for this route
+                </Text>
+              }
+            />
           </View>
         </View>
       </Modal>
@@ -1567,25 +1434,25 @@ export default function CreateTripScheduleScreen({ navigation }) {
         />
       )}
 
-      {/* ===== EDIT TRIP DATE PICKER ===== */}
-      {editDatePickerVisible && (
+      {/* ===== ARRIVAL TIME PICKER ===== */}
+      {arrivalTimePickerVisible && (
         <DateTimePicker
-          value={editTripDate}
-          mode="date"
-          display="default"
-          minimumDate={new Date()}
-          onChange={handleEditDateChange}
-        />
-      )}
-
-      {/* ===== EDIT SCHEDULE TIME PICKER ===== */}
-      {editTimePickerVisible && (
-        <DateTimePicker
-          value={editTimePickerDate}
+          value={timePickerDate}
           mode="time"
           is24Hour={true}
           display="default"
-          onChange={handleEditTimeChange}
+          onChange={handleArrivalTimeChange}
+        />
+      )}
+
+      {/* ===== END DATE PICKER ===== */}
+      {endDatePickerVisible && (
+        <DateTimePicker
+          value={scheduleEndDate}
+          mode="date"
+          display="default"
+          minimumDate={scheduledDate}
+          onChange={handleEndDateChange}
         />
       )}
     </View>
@@ -1654,7 +1521,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  scheduleHeader: { 
+  cardScheduleHeader: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'flex-start', 
@@ -1678,9 +1545,49 @@ const styles = StyleSheet.create({
   scheduleHeaderRight: { alignItems: 'flex-end' },
   routeDetails: { 
     paddingHorizontal: 16, 
-    paddingBottom: 12,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  routeHighlight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  stationBadge: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 10,
+    padding: 10,
+  },
+  stationDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  stationLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  stationName: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  routeArrowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  routeArrowLine: {
+    width: 6,
+    height: 2,
+    borderRadius: 1,
   },
   routePath: { 
     flexDirection: 'row', 
@@ -1733,6 +1640,49 @@ const styles = StyleSheet.create({
     fontSize: 13, 
     fontWeight: '500',
     color: '#666'
+  },
+  vehicleSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  vehicleSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  vehicleChipContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vehicleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  vehicleChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  noVehicleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  noVehicleText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   notesRow: { 
     flexDirection: 'row', 

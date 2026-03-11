@@ -78,34 +78,25 @@ export default function AdminTripDetailsScreen({ navigation }) {
       const userId = user?.userId || user?.id;
       if (!userId) { setLoading(false); return; }
 
-      // Check if user is Rank Admin or Rank Manager (both have same permissions)
+      // Check if user is Rank Admin, Rank Manager, or Marshal
       const isAdmin = user?.role === 'TaxiRankAdmin';
       const isManager = user?.role === 'TaxiRankManager';
-      const hasPermission = isAdmin || isManager;
+      const isMarshal = user?.role === 'TaxiMarshal';
+      const hasPermission = isAdmin || isManager || isMarshal;
 
       if (hasPermission) {
-        // For admins, fetch admin profile
-        const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`).catch(() => ({ data: null }));
-        const admin = adminResp.data;
+        // Only fetch admin profile for non-marshal roles
+        let admin = null;
+        const isMarshal = (user.role || '').toLowerCase() === 'taximarshal';
+        if (!isMarshal) {
+          try {
+            const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`);
+            admin = adminResp.data;
+          } catch (_) {}
+        }
 
-        // If admin profile doesn't exist but user has admin/manager role, create a mock profile
-        if (!admin && (user?.role === 'TaxiRankAdmin' || user?.role === 'TaxiRankManager')) {
-          console.warn('Admin/Manager profile not found, creating mock profile for user with admin/manager role');
-          const mockAdminProfile = {
-            id: user.id,
-            userId: user.userId || user.id,
-            tenantId: user.tenantId,
-            role: user.role,
-            fullName: user.fullName || 'Admin User',
-            email: user.email,
-            // Mock taxi rank info - this might need to be updated based on your business logic
-            taxiRankId: null,
-            adminCode: user?.role === 'TaxiRankAdmin' ? 'ADMIN' : 'MANAGER',
-            status: 'Active'
-          };
-          setAdminProfile(mockAdminProfile);
-          
-          // Load basic data including schedules for mock admin
+        if (admin?.id) {
+          setAdminProfile(admin);
           const promises = [
             client.get('/Vehicles').catch(() => ({ data: [] })),
             client.get('/Drivers').catch(() => ({ data: [] })),
@@ -114,7 +105,7 @@ export default function AdminTripDetailsScreen({ navigation }) {
 
           const [vehResp, driverResp, schedResp] = await Promise.all(promises);
           setVehicles(vehResp.data || []);
-          setRoutes(schedResp?.data || []); // Use schedules as routes
+          setRoutes(schedResp?.data || []);
           setSchedules(schedResp?.data || []);
           const mappedDrivers = (driverResp.data || []).map(d => ({
             id: d.id,
@@ -124,47 +115,41 @@ export default function AdminTripDetailsScreen({ navigation }) {
             assignedVehicleId: d.assignedVehicleId || null,
           }));
           setDrivers(mappedDrivers);
-        } else if (admin?.id) {
-          setAdminProfile(admin);
-
-          if (admin?.id) {
-            const promises = [
-              client.get('/Vehicles').catch(() => ({ data: [] })),
-              client.get('/Drivers').catch(() => ({ data: [] })),
-              client.get(`/TaxiRankAdmin/user/${userId}/schedules`)
-                .catch(err => {
-                  console.warn('Schedules API error:', err?.response?.status, err?.response?.statusText);
-                  return { data: [] }; // Return empty data as fallback
-                })
-            ];
-
-            const [vehResp, driverResp, schedResp] = await Promise.all(promises);
-            setVehicles(vehResp.data || []);
-            setRoutes(schedResp?.data || []); // Use schedules as routes
-            setSchedules(schedResp?.data || []);
-            const mappedDrivers = (driverResp.data || []).map(d => ({
-              id: d.id,
-              firstName: d.user?.firstName || d.name?.split(' ')[0] || d.firstName || 'Unknown',
-              lastName: d.user?.lastName || d.name?.split(' ').slice(1).join(' ') || d.lastName || '',
-              userCode: d.user?.userCode || d.idNumber || '',
-              assignedVehicleId: d.assignedVehicleId || null,
-            }));
-            setDrivers(mappedDrivers);
-          } else {
-            setVehicles([]);
-            setRoutes([]);
-            setSchedules([]);
-            setDrivers([]);
-          }
         } else {
-          setAdminProfile(null);
-          setVehicles([]);
-          setRoutes([]);
-          setSchedules([]);
-          setDrivers([]);
+          // Marshal or admin without profile — use JWT-based endpoints
+          const mockProfile = {
+            id: user.id,
+            userId: user.userId || user.id,
+            tenantId: user.tenantId,
+            role: user.role,
+            fullName: user.fullName || 'User',
+            email: user.email,
+            taxiRankId: null,
+            status: 'Active'
+          };
+          setAdminProfile(mockProfile);
+
+          const promises = [
+            client.get('/Vehicles').catch(() => ({ data: [] })),
+            client.get('/Drivers').catch(() => ({ data: [] })),
+            client.get('/TripSchedules').catch(() => ({ data: [] }))
+          ];
+
+          const [vehResp, driverResp, schedResp] = await Promise.all(promises);
+          setVehicles(vehResp.data || []);
+          setRoutes(schedResp?.data || []);
+          setSchedules(schedResp?.data || []);
+          const mappedDrivers = (driverResp.data || []).map(d => ({
+            id: d.id,
+            firstName: d.user?.firstName || d.name?.split(' ')[0] || d.firstName || 'Unknown',
+            lastName: d.user?.lastName || d.name?.split(' ').slice(1).join(' ') || d.lastName || '',
+            userCode: d.user?.userCode || d.idNumber || '',
+            assignedVehicleId: d.assignedVehicleId || null,
+          }));
+          setDrivers(mappedDrivers);
         }
       } else {
-        console.warn('User does not have permission to manage routes. Role:', user?.role);
+        console.warn('User does not have permission. Role:', user?.role);
         setAdminProfile(null);
         setVehicles([]);
         setRoutes([]);
@@ -1442,7 +1427,7 @@ const styles = StyleSheet.create({
 
   barRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 6, gap: 8 },
   barLabel: { width: 80, fontSize: 11, fontWeight: '700' },
-  barTrack: { flex: 1, height: 8, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 4, overflow: 'hidden' },
+  barTrack: { flex: 1, height: 8, backgroundColor: 'rgba(128,128,128,0.2)', borderRadius: 4, overflow: 'hidden' },
   barFill: { height: '100%', backgroundColor: GOLD, borderRadius: 4 },
   barVal: { width: 60, textAlign: 'right', fontSize: 12, fontWeight: '800' },
 
@@ -1454,7 +1439,7 @@ const styles = StyleSheet.create({
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalSheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '85%', minHeight: '50%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.1)' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(128,128,128,0.2)' },
   modalTitle: { fontSize: 17, fontWeight: '900' },
   modalBody: { padding: 16, paddingBottom: 40 },
 
@@ -1481,7 +1466,7 @@ const styles = StyleSheet.create({
   listItemTitle: { fontSize: 14, fontWeight: '700' },
   listItemSub: { fontSize: 11, marginTop: 2 },
 
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(128,128,128,0.15)' },
   detailLabel: { fontSize: 13, fontWeight: '600' },
   detailValue: { fontSize: 13, fontWeight: '700', maxWidth: '60%', textAlign: 'right' },
 });

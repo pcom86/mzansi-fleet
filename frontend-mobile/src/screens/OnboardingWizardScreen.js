@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { createTenant, createUser, createOwnerProfile } from '../api/identity';
-import { createTaxiRank, registerTaxiRankUser } from '../api/taxiRanks';
+import { createTaxiRank, registerTaxiRankUser, fetchAllTaxiRanks, fetchTaxiRankAssociations } from '../api/taxiRanks';
 import { Colors, useAppTheme } from '../theme';
 import { useAuth } from '../context/AuthContext';
 
+const GOLD = '#D4AF37';
+const isTaxiRankAdmin = (r) => r === 'TaxiRankAdmin';
 const isTaxiRankRole = (r) => r === 'TaxiMarshal' || r === 'TaxiRankAdmin';
 
 function generateRankCode(name) {
@@ -64,8 +67,78 @@ export default function OnboardingWizardScreen({ route, navigation }) {
   const [trPassword, setTrPassword] = useState('');
   const [trAddress, setTrAddress] = useState('');
 
+  // Marshal-specific state
+  const [allRanks, setAllRanks] = useState([]);
+  const [rankAssociations, setRankAssociations] = useState([]);
+  const [selectedRankId, setSelectedRankId] = useState(null);
+  const [selectedAssociationId, setSelectedAssociationId] = useState(null);
+  const [loadingRanks, setLoadingRanks] = useState(false);
+  const [loadingAssociations, setLoadingAssociations] = useState(false);
+  const [rankModalVisible, setRankModalVisible] = useState(false);
+  const [assocModalVisible, setAssocModalVisible] = useState(false);
+
+  // Load all taxi ranks on mount for marshal flow
+  useEffect(() => {
+    if (role === 'TaxiMarshal') {
+      loadRanks();
+    }
+  }, [role]);
+
+  async function loadRanks() {
+    setLoadingRanks(true);
+    try {
+      const resp = await fetchAllTaxiRanks();
+      setAllRanks(resp.data || resp || []);
+    } catch (e) {
+      console.error('Failed to load ranks:', e);
+    } finally {
+      setLoadingRanks(false);
+    }
+  }
+
+  async function loadAssociationsForRank(rankId) {
+    setLoadingAssociations(true);
+    try {
+      const resp = await fetchTaxiRankAssociations(rankId);
+      const data = resp.data || resp || [];
+      const mapped = Array.isArray(data) ? data.map(a => ({
+        id: a.tenantId || a.tenant?.id,
+        name: a.tenant?.name || 'Unknown Association',
+        code: a.tenant?.code,
+      })) : [];
+      setRankAssociations(mapped);
+    } catch (e) {
+      console.error('Failed to load associations:', e);
+      setRankAssociations([]);
+    } finally {
+      setLoadingAssociations(false);
+    }
+  }
+
+  function handleRankSelect(rankId) {
+    setSelectedRankId(rankId);
+    setSelectedAssociationId(null);
+    setRankModalVisible(false);
+    loadAssociationsForRank(rankId);
+  }
+
+  function handleAssociationSelect(assocId) {
+    setSelectedAssociationId(assocId);
+    setAssocModalVisible(false);
+  }
+
+  const getSelectedRankName = () => {
+    const r = allRanks.find(x => x.id === selectedRankId);
+    return r ? r.name : 'Select Taxi Rank';
+  };
+
+  const getSelectedAssocName = () => {
+    const a = rankAssociations.find(x => x.id === selectedAssociationId);
+    return a ? a.name : 'Select Association';
+  };
+
   // Determine total steps and button label
-  const totalSteps = role === 'Owner' ? 3 : isTaxiRankRole(role) ? 3 : 1;
+  const totalSteps = role === 'Owner' ? 3 : isTaxiRankAdmin(role) ? 3 : role === 'TaxiMarshal' ? 2 : 1;
   const isLastStep = step >= totalSteps - 1;
 
   async function next() {
@@ -123,8 +196,44 @@ export default function OnboardingWizardScreen({ route, navigation }) {
           navigation.replace('OwnerDashboard');
         }
 
-      } else if (isTaxiRankRole(role)) {
-        // --- Taxi Rank User flow ---
+      } else if (role === 'TaxiMarshal') {
+        // --- Marshal flow: Select rank + association, then register ---
+        if (step === 0) {
+          if (!selectedRankId) {
+            return Alert.alert('Validation', 'Please select a taxi rank');
+          }
+          if (!selectedAssociationId) {
+            return Alert.alert('Validation', 'Please select an association for this taxi rank');
+          }
+          setStep(1);
+          return;
+        }
+        if (step === 1) {
+          if (!trFullName || !trPhone || !trUserCode || !trEmail || !trPassword) {
+            return Alert.alert('Validation', 'Full name, phone, marshal code, email and password are required');
+          }
+          const regResp = await registerTaxiRankUser({
+            tenantId: selectedAssociationId,
+            taxiRankId: selectedRankId,
+            role: 'TaxiMarshal',
+            userCode: trUserCode,
+            fullName: trFullName,
+            phoneNumber: trPhone,
+            email: trEmail,
+            password: trPassword,
+            idNumber: trIdNumber || null,
+            address: trAddress || null,
+          });
+          if (regResp?.success === false) {
+            return Alert.alert('Error', regResp?.message || 'Registration failed');
+          }
+          await signIn(trEmail, trPassword);
+          Alert.alert('Success', `Marshal profile created!\n\nTaxi Rank: ${getSelectedRankName()}\nAssociation: ${getSelectedAssocName()}`);
+          navigation.replace('MarshalDashboard');
+        }
+
+      } else if (isTaxiRankAdmin(role)) {
+        // --- Admin flow: Create org, rank, then register ---
         if (step === 0) {
           if (!tenantName || !tenantEmail || !tenantPhone) {
             return Alert.alert('Validation', 'Organization name, email and phone are required');
@@ -241,8 +350,67 @@ export default function OnboardingWizardScreen({ route, navigation }) {
         </>
       )}
 
-      {/* ===== Taxi Rank Step 0: Create Organization ===== */}
-      {isTaxiRankRole(role) && step === 0 && (
+      {/* ===== Marshal Step 0: Select Taxi Rank & Association ===== */}
+      {role === 'TaxiMarshal' && step === 0 && (
+        <>
+          <Text style={[styles.title, { color: c.text }]}>Select Your Taxi Rank</Text>
+          <Text style={[styles.subtitle, { color: c.textMuted }]}>Choose the taxi rank and association you belong to</Text>
+
+          <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Taxi Rank *</Text>
+          <TouchableOpacity
+            style={[styles.dropdown, { backgroundColor: c.surface, borderColor: c.border }]}
+            onPress={() => setRankModalVisible(true)}
+            disabled={loadingRanks}
+          >
+            {loadingRanks ? (
+              <ActivityIndicator size="small" color={GOLD} />
+            ) : (
+              <Ionicons name="location-outline" size={20} color={c.textMuted} />
+            )}
+            <Text style={[styles.dropdownText, { color: selectedRankId ? c.text : c.textMuted, flex: 1 }]}>
+              {loadingRanks ? 'Loading taxi ranks...' : getSelectedRankName()}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={c.textMuted} />
+          </TouchableOpacity>
+
+          <Text style={[styles.fieldLabel, { color: c.textMuted, marginTop: 16 }]}>Association *</Text>
+          <TouchableOpacity
+            style={[styles.dropdown, { backgroundColor: c.surface, borderColor: c.border, opacity: selectedRankId ? 1 : 0.5 }]}
+            onPress={() => selectedRankId && setAssocModalVisible(true)}
+            disabled={!selectedRankId || loadingAssociations}
+          >
+            {loadingAssociations ? (
+              <ActivityIndicator size="small" color={GOLD} />
+            ) : (
+              <Ionicons name="business-outline" size={20} color={c.textMuted} />
+            )}
+            <Text style={[styles.dropdownText, { color: selectedAssociationId ? c.text : c.textMuted, flex: 1 }]}>
+              {!selectedRankId ? 'Select a taxi rank first' :
+               loadingAssociations ? 'Loading associations...' :
+               getSelectedAssocName()}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={c.textMuted} />
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* ===== Marshal Step 1: Personal & Login Details ===== */}
+      {role === 'TaxiMarshal' && step === 1 && (
+        <>
+          <Text style={[styles.title, { color: c.text }]}>Marshal Details</Text>
+          <Text style={[styles.subtitle, { color: c.textMuted }]}>Enter your personal and login details</Text>
+          <TextInput placeholder="Full name" placeholderTextColor={c.textMuted} value={trFullName} onChangeText={(val) => { setTrFullName(val); setTrUserCode(generateUserCode(val)); }} style={inp} />
+          <TextInput placeholder="Phone number" placeholderTextColor={c.textMuted} value={trPhone} onChangeText={setTrPhone} style={inp} keyboardType="phone-pad" />
+          <TextInput placeholder="ID number (optional)" placeholderTextColor={c.textMuted} value={trIdNumber} onChangeText={setTrIdNumber} style={inp} />
+          <TextInput placeholder="Marshal code (unique ID)" placeholderTextColor={c.textMuted} value={trUserCode} onChangeText={setTrUserCode} style={inp} autoCapitalize="characters" />
+          <TextInput placeholder="Address (optional)" placeholderTextColor={c.textMuted} value={trAddress} onChangeText={setTrAddress} style={inp} />
+          <TextInput placeholder="Email" placeholderTextColor={c.textMuted} value={trEmail} onChangeText={setTrEmail} style={inp} autoCapitalize="none" keyboardType="email-address" />
+          <TextInput placeholder="Password" placeholderTextColor={c.textMuted} value={trPassword} onChangeText={setTrPassword} secureTextEntry style={inp} />
+        </>
+      )}
+
+      {/* ===== Admin Step 0: Create Organization ===== */}
+      {isTaxiRankAdmin(role) && step === 0 && (
         <>
           <Text style={[styles.title, { color: c.text }]}>Create Organization</Text>
           <Text style={[styles.subtitle, { color: c.textMuted }]}>Set up your taxi association or organization</Text>
@@ -252,8 +420,8 @@ export default function OnboardingWizardScreen({ route, navigation }) {
         </>
       )}
 
-      {/* ===== Taxi Rank Step 1: Create Taxi Rank ===== */}
-      {isTaxiRankRole(role) && step === 1 && (
+      {/* ===== Admin Step 1: Create Taxi Rank ===== */}
+      {isTaxiRankAdmin(role) && step === 1 && (
         <>
           <Text style={[styles.title, { color: c.text }]}>Create Taxi Rank</Text>
           <Text style={[styles.subtitle, { color: c.textMuted }]}>Enter the details of the taxi rank you manage</Text>
@@ -265,17 +433,15 @@ export default function OnboardingWizardScreen({ route, navigation }) {
         </>
       )}
 
-      {/* ===== Taxi Rank Step 2: Personal Details ===== */}
-      {isTaxiRankRole(role) && step === 2 && (
+      {/* ===== Admin Step 2: Personal Details ===== */}
+      {isTaxiRankAdmin(role) && step === 2 && (
         <>
-          <Text style={[styles.title, { color: c.text }]}>
-            {role === 'TaxiRankAdmin' ? 'Admin Details' : 'Marshal Details'}
-          </Text>
+          <Text style={[styles.title, { color: c.text }]}>Admin Details</Text>
           <Text style={[styles.subtitle, { color: c.textMuted }]}>Enter your personal and login details</Text>
           <TextInput placeholder="Full name" placeholderTextColor={c.textMuted} value={trFullName} onChangeText={(val) => { setTrFullName(val); setTrUserCode(generateUserCode(val)); }} style={inp} />
           <TextInput placeholder="Phone number" placeholderTextColor={c.textMuted} value={trPhone} onChangeText={setTrPhone} style={inp} keyboardType="phone-pad" />
           <TextInput placeholder="ID number (optional)" placeholderTextColor={c.textMuted} value={trIdNumber} onChangeText={setTrIdNumber} style={inp} />
-          <TextInput placeholder={role === 'TaxiRankAdmin' ? 'Admin code (unique ID)' : 'Marshal code (unique ID)'} placeholderTextColor={c.textMuted} value={trUserCode} onChangeText={setTrUserCode} style={inp} autoCapitalize="characters" />
+          <TextInput placeholder="Admin code (unique ID)" placeholderTextColor={c.textMuted} value={trUserCode} onChangeText={setTrUserCode} style={inp} autoCapitalize="characters" />
           <TextInput placeholder="Address (optional)" placeholderTextColor={c.textMuted} value={trAddress} onChangeText={setTrAddress} style={inp} />
           <TextInput placeholder="Email" placeholderTextColor={c.textMuted} value={trEmail} onChangeText={setTrEmail} style={inp} autoCapitalize="none" keyboardType="email-address" />
           <TextInput placeholder="Password" placeholderTextColor={c.textMuted} value={trPassword} onChangeText={setTrPassword} secureTextEntry style={inp} />
@@ -300,6 +466,115 @@ export default function OnboardingWizardScreen({ route, navigation }) {
           <Button color={c.textMuted} title="Back" onPress={() => setStep(s => s - 1)} disabled={loading} />
         </View>
       )}
+
+      {/* ===== Taxi Rank Selection Modal (Marshal) ===== */}
+      <Modal visible={rankModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: c.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Select Taxi Rank</Text>
+              <TouchableOpacity onPress={() => setRankModalVisible(false)}>
+                <Ionicons name="close" size={24} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              {loadingRanks ? (
+                <View style={styles.modalCenter}>
+                  <ActivityIndicator size="large" color={GOLD} />
+                  <Text style={{ color: c.textMuted, marginTop: 8 }}>Loading taxi ranks...</Text>
+                </View>
+              ) : allRanks.length === 0 ? (
+                <View style={styles.modalCenter}>
+                  <Ionicons name="location-outline" size={48} color={c.textMuted} />
+                  <Text style={{ color: c.textMuted, marginTop: 8 }}>No taxi ranks available</Text>
+                  <TouchableOpacity onPress={loadRanks} style={[styles.retryBtn, { backgroundColor: GOLD }]}>
+                    <Text style={{ color: '#000', fontWeight: '700' }}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                allRanks.map((rank) => (
+                  <TouchableOpacity
+                    key={rank.id}
+                    style={[
+                      styles.optionItem,
+                      { backgroundColor: c.surface, borderColor: c.border },
+                      selectedRankId === rank.id && { borderColor: GOLD, backgroundColor: 'rgba(212,175,55,0.08)' }
+                    ]}
+                    onPress={() => handleRankSelect(rank.id)}
+                  >
+                    <View style={styles.optionRow}>
+                      <View style={[styles.optionIcon, { backgroundColor: 'rgba(212,175,55,0.12)' }]}>
+                        <Ionicons name="location" size={20} color={GOLD} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.optionName, { color: c.text }]}>{rank.name}</Text>
+                        <Text style={{ color: c.textMuted, fontSize: 12 }}>
+                          {[rank.code, rank.city, rank.province].filter(Boolean).join(' · ')}
+                        </Text>
+                        {rank.address ? <Text style={{ color: c.textMuted, fontSize: 11 }} numberOfLines={1}>{rank.address}</Text> : null}
+                      </View>
+                      {selectedRankId === rank.id && <Ionicons name="checkmark-circle" size={22} color={GOLD} />}
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ===== Association Selection Modal (Marshal) ===== */}
+      <Modal visible={assocModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: c.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Select Association</Text>
+              <TouchableOpacity onPress={() => setAssocModalVisible(false)}>
+                <Ionicons name="close" size={24} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              {loadingAssociations ? (
+                <View style={styles.modalCenter}>
+                  <ActivityIndicator size="large" color={GOLD} />
+                  <Text style={{ color: c.textMuted, marginTop: 8 }}>Loading associations...</Text>
+                </View>
+              ) : rankAssociations.length === 0 ? (
+                <View style={styles.modalCenter}>
+                  <Ionicons name="business-outline" size={48} color={c.textMuted} />
+                  <Text style={{ color: c.textMuted, marginTop: 8, textAlign: 'center' }}>No associations linked to this taxi rank</Text>
+                  <TouchableOpacity onPress={() => loadAssociationsForRank(selectedRankId)} style={[styles.retryBtn, { backgroundColor: GOLD }]}>
+                    <Text style={{ color: '#000', fontWeight: '700' }}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                rankAssociations.map((assoc) => (
+                  <TouchableOpacity
+                    key={assoc.id}
+                    style={[
+                      styles.optionItem,
+                      { backgroundColor: c.surface, borderColor: c.border },
+                      selectedAssociationId === assoc.id && { borderColor: GOLD, backgroundColor: 'rgba(212,175,55,0.08)' }
+                    ]}
+                    onPress={() => handleAssociationSelect(assoc.id)}
+                  >
+                    <View style={styles.optionRow}>
+                      <View style={[styles.optionIcon, { backgroundColor: 'rgba(212,175,55,0.12)' }]}>
+                        <Ionicons name="business" size={20} color={GOLD} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.optionName, { color: c.text }]}>{assoc.name}</Text>
+                        {assoc.code ? <Text style={{ color: c.textMuted, fontSize: 12 }}>{assoc.code}</Text> : null}
+                      </View>
+                      {selectedAssociationId === assoc.id && <Ionicons name="checkmark-circle" size={22} color={GOLD} />}
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -311,4 +586,18 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#ccc', padding: 10, marginBottom: 12, borderRadius: 8, fontSize: 15 },
   stepRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 20, marginTop: 8 },
   stepDot: { width: 10, height: 10, borderRadius: 5 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  dropdown: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, padding: 12, gap: 10, marginBottom: 4 },
+  dropdownText: { fontSize: 15 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  modalTitle: { fontSize: 18, fontWeight: '800' },
+  modalScroll: { maxHeight: 400 },
+  modalCenter: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
+  optionItem: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 8 },
+  optionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  optionIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  optionName: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  retryBtn: { marginTop: 12, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
 });

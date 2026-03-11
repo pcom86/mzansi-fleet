@@ -30,7 +30,9 @@ export default function LoginScreen({ navigation }) {
         navigation.replace('DriverDashboard');
       } else if (role === 'serviceprovider' || role === 'service_provider' || role === 'service provider') {
         navigation.replace('ServiceProviderDashboard');
-      } else if (role === 'taxirankadmin' || role === 'taximarshal' || role === 'user') {
+      } else if (role === 'taximarshal') {
+        navigation.replace('MarshalDashboard');
+      } else if (role === 'taxirankadmin' || role === 'user') {
         navigation.replace('TaxiRankDashboard');
       } else {
         navigation.replace('OwnerDashboard');

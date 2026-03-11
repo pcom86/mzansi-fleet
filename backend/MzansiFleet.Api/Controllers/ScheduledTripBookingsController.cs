@@ -15,12 +15,12 @@ namespace MzansiFleet.Api.Controllers
     public class ScheduledTripBookingsController : ControllerBase
     {
         private readonly IScheduledTripBookingRepository _bookingRepository;
-        private readonly ITripScheduleRepository _scheduleRepository;
+        private readonly IRouteRepository _scheduleRepository;
         private readonly MzansiFleetDbContext _context;
 
         public ScheduledTripBookingsController(
             IScheduledTripBookingRepository bookingRepository,
-            ITripScheduleRepository scheduleRepository,
+            IRouteRepository scheduleRepository,
             MzansiFleetDbContext context)
         {
             _bookingRepository = bookingRepository;
@@ -35,7 +35,7 @@ namespace MzansiFleet.Api.Controllers
         {
             try
             {
-                IEnumerable<TripSchedule> schedules;
+                IEnumerable<Route> schedules;
                 if (taxiRankId.HasValue)
                 {
                     schedules = await _scheduleRepository.GetActiveByTaxiRankIdAsync(taxiRankId.Value);
@@ -86,7 +86,7 @@ namespace MzansiFleet.Api.Controllers
         {
             try
             {
-                var schedule = await _scheduleRepository.GetByIdAsync(dto.TripScheduleId);
+                var schedule = await _scheduleRepository.GetByIdAsync(dto.RouteId);
                 if (schedule == null)
                     return NotFound(new { message = "Schedule not found" });
 
@@ -102,23 +102,35 @@ namespace MzansiFleet.Api.Controllers
                 if (dto.Passengers.Count != dto.SeatsBooked)
                     return BadRequest(new { message = "Number of passengers must match seats booked" });
 
-                // Check seat availability if MaxPassengers is set
+                // Check seat availability including specific seat numbers
                 if (schedule.MaxPassengers.HasValue)
                 {
-                    var existingBookings = await _bookingRepository.GetByScheduleAndDateAsync(dto.TripScheduleId, dto.TravelDate);
+                    var existingBookings = await _bookingRepository.GetByRouteAndDateAsync(dto.RouteId, dto.TravelDate);
                     var bookedSeats = existingBookings.Sum(b => b.SeatsBooked);
+                    
+                    // Check if requested seats are available
                     if (bookedSeats + dto.SeatsBooked > schedule.MaxPassengers.Value)
                         return BadRequest(new { message = $"Only {schedule.MaxPassengers.Value - bookedSeats} seat(s) available" });
+                    
+                    // Check if specific seat numbers are already booked
+                    if (dto.SeatNumbers?.Count > 0)
+                    {
+                        var allBookedSeatNumbers = existingBookings.SelectMany(b => b.SeatNumbers ?? new List<int>()).ToList();
+                        var conflictingSeats = dto.SeatNumbers.Where(s => allBookedSeatNumbers.Contains(s)).ToList();
+                        if (conflictingSeats.Any())
+                            return BadRequest(new { message = $"Seat(s) {string.Join(", ", conflictingSeats)} are already booked" });
+                    }
                 }
 
                 var booking = new ScheduledTripBooking
                 {
                     Id = Guid.NewGuid(),
                     UserId = dto.UserId,
-                    TripScheduleId = dto.TripScheduleId,
+                    RouteId = dto.RouteId,
                     TaxiRankId = schedule.TaxiRankId,
                     TravelDate = dto.TravelDate,
                     SeatsBooked = dto.SeatsBooked,
+                    SeatNumbers = dto.SeatNumbers ?? new List<int>(),
                     TotalFare = dto.TotalFare,
                     PaymentMethod = dto.PaymentMethod,
                     PaymentStatus = "Pending",
@@ -157,7 +169,7 @@ namespace MzansiFleet.Api.Controllers
             }
         }
 
-        private async Task SendBookingNotifications(ScheduledTripBooking booking, TripSchedule schedule)
+        private async Task SendBookingNotifications(ScheduledTripBooking booking, Route schedule)
         {
             try
             {
@@ -279,12 +291,14 @@ Passengers:
     public class CreateBookingDto
     {
         public Guid UserId { get; set; }
-        public Guid TripScheduleId { get; set; }
+        public Guid RouteId { get; set; }
+        public Guid? ScheduledTripId { get; set; } // Optional: specific trip instance
         public DateTime TravelDate { get; set; }
         public int SeatsBooked { get; set; } = 1;
+        public List<int> SeatNumbers { get; set; } = new(); // Specific seat numbers selected
         public decimal TotalFare { get; set; }
         public List<BookingPassengerDto> Passengers { get; set; } = new();
-        public string PaymentMethod { get; set; } = string.Empty; // ozow, wallet, cash
+        public string PaymentMethod { get; set; } = string.Empty; // eft, card, cash, wallet
         public string? Notes { get; set; }
     }
 
@@ -303,3 +317,4 @@ Passengers:
         public string? Reason { get; set; }
     }
 }
+

@@ -136,18 +136,17 @@ export default function TaxiRankDashboardScreen({ navigation }) {
   const todayRevenue = todayTrips.reduce((sum, t) => sum + (t.totalFare || t.fare || t.revenue || 0), 0);
   const activeTrips = trips.filter(t => t.status === 'InProgress' || t.status === 'Active');
 
-  // Calculate current month revenue
-  const currentMonthRevenue = trips.reduce((sum, t) => {
+  // Calculate current month trips and revenue
+  const monthTrips = trips.filter(t => {
     if (t.tripDate || t.date) {
       const tripDate = new Date(t.tripDate || t.date);
-      const currentDate = new Date();
-      if (tripDate.getMonth() === currentDate.getMonth() && 
-          tripDate.getFullYear() === currentDate.getFullYear()) {
-        return sum + (t.totalFare || t.fare || t.revenue || 0);
-      }
+      const now = new Date();
+      return tripDate.getMonth() === now.getMonth() && tripDate.getFullYear() === now.getFullYear();
     }
-    return sum;
-  }, 0);
+    return false;
+  });
+
+  const currentMonthRevenue = monthTrips.reduce((sum, t) => sum + (t.totalFare || t.fare || t.revenue || 0), 0);
 
   const roleLabel = user?.role === 'TaxiRankAdmin' ? 'Rank Manager' : 'Taxi Marshal';
 
@@ -218,22 +217,22 @@ export default function TaxiRankDashboardScreen({ navigation }) {
         contentContainerStyle={styles.bodyContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} colors={[GOLD]} />}
       >
-        {/* Stats row */}
+        {/* ====== STATS OVERVIEW ====== */}
         <View style={styles.statsRow}>
           <StatCard icon="navigate-outline" label="Today's Trips" value={todayTrips.length} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
           <StatCard icon="people-outline" label="Passengers" value={totalPassengers} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
-          <StatCard icon="cash-outline" label="Today's Revenue" value={`R${todayRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
-          <StatCard icon="calendar-outline" label="Monthly Revenue" value={`R${currentMonthRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
+          <StatCard icon="cash-outline" label="Today Rev." value={`R${todayRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
+          <StatCard icon="trending-up-outline" label="Month Rev." value={`R${currentMonthRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
         </View>
 
-        {/* Monthly Revenue Summary */}
+        {/* ====== MONTHLY PERFORMANCE ====== */}
         <View style={[styles.monthlyRevenueCard, { backgroundColor: c.surface, borderColor: c.border }]}>
           <View style={styles.monthlyRevenueHeader}>
             <View style={styles.monthlyRevenueIcon}>
               <Ionicons name="analytics-outline" size={24} color={GOLD} />
             </View>
             <View style={styles.monthlyRevenueText}>
-              <Text style={[styles.monthlyRevenueTitle, { color: c.text }]}>Current Month Performance</Text>
+              <Text style={[styles.monthlyRevenueTitle, { color: c.text }]}>Monthly Performance</Text>
               <Text style={[styles.monthlyRevenueSubtitle, { color: c.textMuted }]}>
                 {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </Text>
@@ -242,119 +241,34 @@ export default function TaxiRankDashboardScreen({ navigation }) {
           <View style={styles.monthlyRevenueStats}>
             <View style={styles.monthlyRevenueStat}>
               <Text style={[styles.monthlyRevenueValue, { color: c.text }]}>R{currentMonthRevenue.toFixed(2)}</Text>
-              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Total Revenue</Text>
+              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Revenue</Text>
+            </View>
+            <View style={styles.monthlyRevenueStat}>
+              <Text style={[styles.monthlyRevenueValue, { color: c.text }]}>{monthTrips.length}</Text>
+              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Trips</Text>
             </View>
             <View style={styles.monthlyRevenueStat}>
               <Text style={[styles.monthlyRevenueValue, { color: c.text }]}>
-                {todayTrips.filter(t => {
-                  if (t.tripDate || t.date) {
-                    const tripDate = new Date(t.tripDate || t.date);
-                    const currentDate = new Date();
-                    return tripDate.getMonth() === currentDate.getMonth() && 
-                           tripDate.getFullYear() === currentDate.getFullYear();
-                  }
-                  return false;
-                }).length}
+                R{monthTrips.length > 0 ? (currentMonthRevenue / monthTrips.length).toFixed(0) : '0'}
               </Text>
-              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Total Trips</Text>
-            </View>
-            <View style={styles.monthlyRevenueStat}>
-              <Text style={[styles.monthlyRevenueValue, { color: c.text }]}>
-                R{currentMonthRevenue > 0 ? (currentMonthRevenue / todayTrips.filter(t => {
-                  if (t.tripDate || t.date) {
-                    const tripDate = new Date(t.tripDate || t.date);
-                    const currentDate = new Date();
-                    return tripDate.getMonth() === currentDate.getMonth() && 
-                           tripDate.getFullYear() === currentDate.getFullYear();
-                  }
-                  return false;
-                }).length).toFixed(2) : '0.00'}
-              </Text>
-              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Avg per Trip</Text>
+              <Text style={[styles.monthlyRevenueLabel, { color: c.textMuted }]}>Avg / Trip</Text>
             </View>
           </View>
         </View>
 
-        {/* Action cards grid */}
-        <Text style={[styles.sectionTitle, { color: c.text }]}>Operations</Text>
-        <View style={styles.cardGrid}>
-          <ActionCard
-            icon="git-branch-outline" title="Manage Routes"
-            desc="Create, edit and link routes to this rank"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('TaxiRankRoutes', { rank: activeRank })}
-          />
-          <ActionCard
-            icon="calendar-outline" title="Create Trip Schedule"
-            desc="Plan daily trip rosters and assign vehicles"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('CreateTripSchedule')}
-          />
-          <ActionCard
-            icon="car-outline" title="Fleet Management"
-            desc="Assign vehicles to routes and approve vehicle requests"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('VehicleRouteAssignment')}
-          />
-          <ActionCard
-            icon="shield-outline" title="Marshal Management"
-            desc="Create and manage queue marshal profiles"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('MarshalManagement', { admin })}
-          />
-          <ActionCard
-            icon="document-text-outline" title="Capture Trip Details"
-            desc="Capture trips, view history & revenue analytics"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('AdminTripDetails')}
-          />
-          <ActionCard
-            icon="calendar-outline" title="Today's Schedule"
-            desc="Your shift and scheduled tasks for today"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('TaxiRankRoutes', { rank: activeRank })}
-          />
-          <ActionCard
-            icon="people-circle-outline" title="Passenger Management"
-            desc="Manage passenger queues and boarding"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => {}}
-          />
-          <ActionCard
-            icon="alert-circle-outline" title="Incidents"
-            desc="Report and track incidents at your rank"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => {}}
-          />
-          <ActionCard
-            icon="link-outline" title="Link Taxi Rank"
-            desc="Link another taxi rank to your association"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={handleOpenLinkModal}
-          />
-        </View>
-
-        {/* Booking section */}
-        <Text style={[styles.sectionTitle, { color: c.text }]}>Trip Bookings</Text>
-        <View style={styles.cardGrid}>
-          <ActionCard
-            icon="ticket-outline" title="Book a Trip"
-            desc="Browse scheduled routes and book seats in advance"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('BookTrip')}
-          />
-          <ActionCard
-            icon="receipt-outline" title="My Bookings"
-            desc="View and manage your upcoming and past bookings"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('MyBookings')}
-          />
-        </View>
-
-        {/* Taxi Ranks list */}
-        {taxiRanks.length > 1 && (
+        {/* ====== YOUR TAXI RANKS ====== */}
+        <SectionHeader icon="location-outline" title="Your Taxi Ranks" color={c.text} />
+        {taxiRanks.length === 0 ? (
+          <View style={[styles.emptySection, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Ionicons name="location-outline" size={32} color={c.textMuted} />
+            <Text style={[styles.emptySectionText, { color: c.textMuted }]}>No taxi ranks linked yet</Text>
+            <TouchableOpacity style={styles.emptyActionBtn} onPress={handleOpenLinkModal}>
+              <Ionicons name="add-circle" size={18} color={GOLD} />
+              <Text style={styles.emptyActionText}>Link a Taxi Rank</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
           <>
-            <Text style={[styles.sectionTitle, { color: c.text }]}>Your Taxi Ranks</Text>
             {taxiRanks.map((rank) => (
               <TouchableOpacity
                 key={rank.id}
@@ -373,23 +287,99 @@ export default function TaxiRankDashboardScreen({ navigation }) {
                 <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.linkRankBtn, { borderColor: c.border }]}
+              onPress={handleOpenLinkModal}
+            >
+              <Ionicons name="add-circle-outline" size={18} color={GOLD} />
+              <Text style={[styles.linkRankText, { color: GOLD }]}>Link Another Rank</Text>
+            </TouchableOpacity>
           </>
         )}
 
-        {/* Marshals preview */}
+        {/* ====== RANK OPERATIONS ====== */}
+        <SectionHeader icon="settings-outline" title="Rank Operations" color={c.text} />
+        <View style={styles.cardGrid}>
+          <ActionCard
+            icon="git-branch-outline" title="Manage Routes"
+            desc="Create and manage routes for your ranks"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('TaxiRankRoutes', { rank: activeRank })}
+          />
+          <ActionCard
+            icon="calendar-outline" title="Trip Schedules"
+            desc="Plan daily rosters and assign vehicles"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('CreateTripSchedule')}
+          />
+          <ActionCard
+            icon="car-outline" title="Fleet Management"
+            desc="Assign vehicles to routes and ranks"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('VehicleRouteAssignment')}
+          />
+          <ActionCard
+            icon="document-text-outline" title="Trip Capture"
+            desc="Record trips, view history & analytics"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('AdminTripDetails')}
+          />
+        </View>
+
+        {/* ====== PEOPLE MANAGEMENT ====== */}
+        <SectionHeader icon="people-outline" title="People Management" color={c.text} />
+        <View style={styles.cardGrid}>
+          <ActionCard
+            icon="shield-outline" title="Marshal Management"
+            desc="Create and manage queue marshals"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('MarshalManagement', { adminId: user?.userId })}
+          />
+          <ActionCard
+            icon="people-circle-outline" title="Passengers"
+            desc="View passenger queues and boarding"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('BookTrip')}
+          />
+        </View>
+
+        {/* Marshals on duty */}
         {marshals.length > 0 && (
-          <>
-            <Text style={[styles.sectionTitle, { color: c.text }]}>Marshals on Duty</Text>
+          <View style={[styles.marshalSection, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <View style={styles.marshalSectionHeader}>
+              <Ionicons name="shield-checkmark-outline" size={18} color={GOLD} />
+              <Text style={[styles.marshalSectionTitle, { color: c.text }]}>Marshals on Duty ({marshals.length})</Text>
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
               {marshals.slice(0, 8).map((m, i) => (
-                <View key={m.id || i} style={[styles.marshalChip, { backgroundColor: c.surface, borderColor: c.border }]}>
-                  <Ionicons name="shield-outline" size={16} color={GOLD} />
+                <View key={m.id || i} style={[styles.marshalChip, { backgroundColor: c.background, borderColor: c.border }]}>
+                  <View style={[styles.marshalAvatar, { backgroundColor: GOLD_LIGHT }]}>
+                    <Ionicons name="person" size={14} color={GOLD} />
+                  </View>
                   <Text style={[styles.marshalName, { color: c.text }]} numberOfLines={1}>{m.fullName || 'Marshal'}</Text>
+                  <View style={[styles.marshalStatus, { backgroundColor: '#28a745' }]} />
                 </View>
               ))}
             </ScrollView>
-          </>
+          </View>
         )}
+
+        {/* ====== TRIP BOOKINGS ====== */}
+        <SectionHeader icon="ticket-outline" title="Trip Bookings" color={c.text} />
+        <View style={styles.cardGrid}>
+          <ActionCard
+            icon="ticket-outline" title="Book a Trip"
+            desc="Browse routes and book seats"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('BookTrip')}
+          />
+          <ActionCard
+            icon="receipt-outline" title="My Bookings"
+            desc="View upcoming and past bookings"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('MyBookings')}
+          />
+        </View>
       </ScrollView>
 
       {/* ====== LINK TAXI RANK MODAL ====== */}
@@ -480,7 +470,8 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       {/* ====== BOTTOM BAR ====== */}
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <BottomTab icon="grid-outline" label="Dashboard" active onPress={() => {}} textColor={c.text} muted={c.textMuted} />
-        <BottomTab icon="add-circle-outline" label="Capture" onPress={() => navigation.navigate('TaxiRankDetails', { rank: activeRank, tab: 'capture' })} textColor={c.text} muted={c.textMuted} />
+        <BottomTab icon="add-circle-outline" label="Capture" onPress={() => navigation.navigate('AdminTripDetails')} textColor={c.text} muted={c.textMuted} />
+        <BottomTab icon="shield-outline" label="Marshals" onPress={() => navigation.navigate('MarshalManagement', { adminId: user?.userId })} textColor={c.text} muted={c.textMuted} />
         <BottomTab icon="chatbubble-outline" label="Messages" onPress={() => {}} textColor={c.text} muted={c.textMuted} />
         <BottomTab icon="log-out-outline" label="Logout" onPress={() => { signOut(); navigation.reset({ index: 0, routes: [{ name: 'Login' }] }); }} textColor={c.text} muted={c.textMuted} />
       </View>
@@ -531,6 +522,15 @@ function BottomTab({ icon, label, active, onPress, textColor, muted }) {
   );
 }
 
+function SectionHeader({ icon, title, color }) {
+  return (
+    <View style={styles.sectionHeaderRow}>
+      <Ionicons name={icon} size={18} color={GOLD} />
+      <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
+    </View>
+  );
+}
+
 /* ===== Styles ===== */
 
 const CARD_GAP = 10;
@@ -565,7 +565,8 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, fontWeight: '600' },
 
   /* Section */
-  sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 10, marginTop: 6 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 6 },
+  sectionTitle: { fontSize: 16, fontWeight: '800' },
 
   /* Action cards */
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, marginBottom: 18 },
@@ -581,8 +582,23 @@ const styles = StyleSheet.create({
   rankMeta: { fontSize: 11, marginTop: 2 },
 
   /* Marshals */
+  marshalSection: { borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 18 },
+  marshalSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  marshalSectionTitle: { fontSize: 14, fontWeight: '700' },
   marshalChip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12, gap: 6 },
+  marshalAvatar: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   marshalName: { fontSize: 12, fontWeight: '600', maxWidth: 100 },
+  marshalStatus: { width: 8, height: 8, borderRadius: 4 },
+
+  /* Empty section */
+  emptySection: { borderWidth: 1, borderRadius: 14, padding: 24, alignItems: 'center', gap: 8, marginBottom: 18 },
+  emptySectionText: { fontSize: 13, fontWeight: '600' },
+  emptyActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: GOLD_LIGHT },
+  emptyActionText: { fontSize: 13, fontWeight: '700', color: GOLD },
+
+  /* Link rank button */
+  linkRankBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderStyle: 'dashed', borderRadius: 14, padding: 12, marginBottom: 18 },
+  linkRankText: { fontSize: 13, fontWeight: '700' },
 
   /* Monthly Revenue Card */
   monthlyRevenueCard: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 18 },

@@ -396,3 +396,4 @@ namespace MzansiFleet.Api.Controllers
         public Guid? ParentMessageId { get; set; }
     }
 }
+

@@ -26,7 +26,7 @@ namespace MzansiFleet.Api.Controllers
         {
             return await _context.TripCaptures
                 .Include(tc => tc.Marshal)
-                .Include(tc => tc.Schedule)
+                .Include(tc => tc.Route)
                 .Include(tc => tc.Vehicle)
                 .OrderByDescending(tc => tc.CapturedAt)
                 .ToListAsync();
@@ -38,7 +38,7 @@ namespace MzansiFleet.Api.Controllers
         {
             var tripCapture = await _context.TripCaptures
                 .Include(tc => tc.Marshal)
-                .Include(tc => tc.Schedule)
+                .Include(tc => tc.Route)
                 .Include(tc => tc.Vehicle)
                 .FirstOrDefaultAsync(tc => tc.Id == id);
 
@@ -60,7 +60,7 @@ namespace MzansiFleet.Api.Controllers
 
             var captures = await _context.TripCaptures
                 .Where(tc => tc.MarshalId == marshalId && tc.CapturedAt >= startDate && tc.CapturedAt <= endDate)
-                .Include(tc => tc.Schedule)
+                .Include(tc => tc.Route)
                 .Include(tc => tc.Vehicle)
                 .OrderByDescending(tc => tc.CapturedAt)
                 .ToListAsync();
@@ -79,7 +79,7 @@ namespace MzansiFleet.Api.Controllers
             var captures = await _context.TripCaptures
                 .Where(tc => tc.TaxiRankId == taxiRankId && tc.CapturedAt >= startDate && tc.CapturedAt <= endDate)
                 .Include(tc => tc.Marshal)
-                .Include(tc => tc.Schedule)
+                .Include(tc => tc.Route)
                 .Include(tc => tc.Vehicle)
                 .OrderByDescending(tc => tc.CapturedAt)
                 .ToListAsync();
@@ -104,7 +104,7 @@ namespace MzansiFleet.Api.Controllers
             }
 
             // Validate schedule exists and is active
-            var schedule = await _context.TripSchedules.FindAsync(dto.ScheduleId);
+            var schedule = await _context.Routes.FindAsync(dto.RouteId);
             if (schedule == null || !schedule.IsActive)
             {
                 return BadRequest(new { message = "Invalid or inactive schedule" });
@@ -121,7 +121,7 @@ namespace MzansiFleet.Api.Controllers
             {
                 Id = Guid.NewGuid(),
                 MarshalId = dto.MarshalId,
-                ScheduleId = dto.ScheduleId,
+                RouteId = dto.RouteId,
                 VehicleId = dto.VehicleId,
                 TaxiRankId = marshal.TaxiRankId,
                 PassengerCount = dto.PassengerCount,
@@ -139,7 +139,7 @@ namespace MzansiFleet.Api.Controllers
             // Reload with related entities
             var created = await _context.TripCaptures
                 .Include(tc => tc.Marshal)
-                .Include(tc => tc.Schedule)
+                .Include(tc => tc.Route)
                 .Include(tc => tc.Vehicle)
                 .FirstOrDefaultAsync(tc => tc.Id == tripCapture.Id);
 
@@ -165,7 +165,7 @@ namespace MzansiFleet.Api.Controllers
             // Reload with related entities
             var updated = await _context.TripCaptures
                 .Include(tc => tc.Marshal)
-                .Include(tc => tc.Schedule)
+                .Include(tc => tc.Route)
                 .Include(tc => tc.Vehicle)
                 .FirstOrDefaultAsync(tc => tc.Id == id);
 
@@ -226,7 +226,7 @@ namespace MzansiFleet.Api.Controllers
     public class CreateTripCaptureDto
     {
         public Guid MarshalId { get; set; }
-        public Guid ScheduleId { get; set; }
+        public Guid RouteId { get; set; }
         public Guid VehicleId { get; set; }
         public int PassengerCount { get; set; }
         public decimal FareCollected { get; set; }
@@ -243,3 +243,4 @@ namespace MzansiFleet.Api.Controllers
         public string Status { get; set; }
     }
 }
+

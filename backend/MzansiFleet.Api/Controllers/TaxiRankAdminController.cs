@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.Interfaces.IRepositories;
 using MzansiFleet.Domain.Constants;
@@ -9,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BCrypt.Net;
+using Microsoft.Extensions.Logging;
 
 namespace MzansiFleet.Api.Controllers
 {
@@ -21,8 +23,9 @@ namespace MzansiFleet.Api.Controllers
         private readonly ITaxiRankRepository _taxiRankRepository;
         private readonly ITaxiMarshalRepository _marshalRepository;
         private readonly IVehicleTaxiRankRepository _vehicleRankRepository;
-        private readonly ITripScheduleRepository _scheduleRepository;
+        private readonly IRouteRepository _scheduleRepository;
         private readonly MzansiFleetDbContext _context;
+        private readonly ILogger<TaxiRankAdminController> _logger;
 
         public TaxiRankAdminController(
             ITaxiRankAdminRepository adminRepository,
@@ -30,8 +33,9 @@ namespace MzansiFleet.Api.Controllers
             ITaxiRankRepository taxiRankRepository,
             ITaxiMarshalRepository marshalRepository,
             IVehicleTaxiRankRepository vehicleRankRepository,
-            ITripScheduleRepository scheduleRepository,
-            MzansiFleetDbContext context)
+            IRouteRepository scheduleRepository,
+            MzansiFleetDbContext context,
+            ILogger<TaxiRankAdminController> logger)
         {
             _adminRepository = adminRepository;
             _userRepository = userRepository;
@@ -40,6 +44,7 @@ namespace MzansiFleet.Api.Controllers
             _vehicleRankRepository = vehicleRankRepository;
             _scheduleRepository = scheduleRepository;
             _context = context;
+            _logger = logger;
         }
 
         // GET: api/TaxiRankAdmin
@@ -192,64 +197,203 @@ namespace MzansiFleet.Api.Controllers
             return Ok(assignment);
         }
 
-        // POST: api/TaxiRankAdmin/{adminId}/create-schedule
-        [HttpPost("{adminId}/create-schedule")]
-        public async Task<ActionResult<TripSchedule>> CreateTripSchedule([FromRoute] Guid adminId, [FromBody] CreateScheduleDto dto)
+        // POST: api/TaxiRankAdmin/manager/test
+        [HttpPost("manager/test")]
+        [AllowAnonymous]
+        public async Task<ActionResult> TestEndpoint()
         {
-            var admin = await _adminRepository.GetByIdAsync(adminId);
-            if (admin == null)
-                return NotFound(new { message = "Admin not found" });
-
-            if (!admin.CanManageSchedules)
-                return Forbid("Admin does not have permission to manage schedules");
-
-            var schedule = new TripSchedule
+            try
             {
-                Id = Guid.NewGuid(),
-                TaxiRankId = admin.TaxiRankId,
-                TenantId = admin.TenantId,
-                RouteName = dto.RouteName,
-                DepartureStation = dto.DepartureStation,
-                DestinationStation = dto.DestinationStation,
-                DepartureTime = dto.DepartureTime,
-                FrequencyMinutes = dto.FrequencyMinutes,
-                DaysOfWeek = dto.DaysOfWeek,
-                StandardFare = dto.StandardFare,
-                ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
-                MaxPassengers = dto.MaxPassengers,
-                IsActive = true,
-                Notes = dto.Notes
-            };
-
-            await _scheduleRepository.AddAsync(schedule);
-
-            // Save stops
-            if (dto.Stops != null && dto.Stops.Count > 0)
+                _logger.LogInformation("Test endpoint called");
+                return Ok(new { message = "Test successful", timestamp = DateTime.UtcNow });
+            }
+            catch (Exception ex)
             {
-                var stops = dto.Stops.Select((s, i) => new RouteStop
+                _logger.LogError(ex, "Test endpoint failed");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        // POST: api/TaxiRankAdmin/manager/create-schedule
+        [HttpPost("manager/create-schedule")]
+        [AllowAnonymous] // For testing - remove in production
+        public async Task<ActionResult<Route>> CreateRouteForManager([FromBody] CreateScheduleDto dto)
+        {
+            try
+            {
+                // For testing, use a hardcoded user ID
+                var userId = "test-manager-user";
+                _logger.LogInformation("CreateRouteForManager called for userId: {UserId}, dto: {@Dto}", userId, dto);
+                
+                // For managers, create a route with minimal required fields
+                // Try to find existing TaxiRank and Tenant, otherwise use defaults
+                var existingTaxiRank = await _context.TaxiRanks.FirstOrDefaultAsync();
+                var existingTenant = await _context.Tenants.FirstOrDefaultAsync();
+                
+                var taxiRankId = existingTaxiRank?.Id ?? Guid.Parse("00000000-0000-0000-0000-000000000001");
+                var tenantId = existingTenant?.Id ?? Guid.Parse("00000000-0000-0000-0000-000000000001");
+                
+                _logger.LogInformation("Using TaxiRankId: {TaxiRankId}, TenantId: {TenantId}", taxiRankId, tenantId);
+                
+                var schedule = new Route
                 {
                     Id = Guid.NewGuid(),
-                    TripScheduleId = schedule.Id,
-                    StopName = s.StopName,
-                    StopOrder = s.StopOrder > 0 ? s.StopOrder : i + 1,
-                    FareFromOrigin = s.FareFromOrigin,
-                    EstimatedMinutesFromDeparture = s.EstimatedMinutesFromDeparture,
-                    StopNotes = s.StopNotes
-                }).ToList();
-                _context.RouteStops.AddRange(stops);
-                await _context.SaveChangesAsync();
-            }
+                    TaxiRankId = taxiRankId,
+                    TenantId = tenantId,
+                    RouteName = dto.RouteName,
+                    DepartureStation = dto.DepartureStation,
+                    DestinationStation = dto.DestinationStation,
+                    DepartureTime = dto.DepartureTime,
+                    FrequencyMinutes = dto.FrequencyMinutes,
+                    DaysOfWeek = dto.DaysOfWeek,
+                    StandardFare = dto.StandardFare,
+                    ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
+                    MaxPassengers = dto.MaxPassengers,
+                    IsActive = true,
+                    Notes = $"Created by manager: {userId}"
+                };
 
-            // Return with stops loaded
-            var result = await _context.TripSchedules
-                .Include(s => s.Stops)
-                .FirstOrDefaultAsync(s => s.Id == schedule.Id);
-            return Ok(result);
+                // Try to save the route
+                try
+                {
+                    await _scheduleRepository.AddAsync(schedule);
+                    _logger.LogInformation("Route created successfully for manager: {RouteId}", schedule.Id);
+
+                    // Save stops if provided
+                    if (dto.Stops != null && dto.Stops.Count > 0)
+                    {
+                        var stops = dto.Stops.Select((s, i) => new RouteStop
+                        {
+                            Id = Guid.NewGuid(),
+                            RouteId = schedule.Id,
+                            StopName = s.StopName,
+                            StopOrder = s.StopOrder > 0 ? s.StopOrder : i + 1,
+                            FareFromOrigin = s.FareFromOrigin,
+                            EstimatedMinutesFromDeparture = s.EstimatedMinutesFromDeparture,
+                            StopNotes = s.StopNotes
+                        }).ToList();
+                        
+                        _context.RouteStops.AddRange(stops);
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation("Added {StopCount} stops to route {RouteId}", stops.Count, schedule.Id);
+                    }
+
+                    // Return the created route
+                    return Ok(new { 
+                        message = "Route created successfully",
+                        routeId = schedule.Id,
+                        route = schedule,
+                        stops = dto.Stops
+                    });
+                }
+                catch (Exception dbEx)
+                {
+                    var innerMsg = dbEx.InnerException?.Message ?? "No inner exception";
+                    var innerInnerMsg = dbEx.InnerException?.InnerException?.Message ?? "No inner-inner exception";
+                    _logger.LogError(dbEx, "Database error while creating route. Inner: {Inner}. InnerInner: {InnerInner}", innerMsg, innerInnerMsg);
+                    return StatusCode(500, new { 
+                        error = "Database save failed",
+                        message = dbEx.Message,
+                        innerException = innerMsg,
+                        innerInnerException = innerInnerMsg
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating route for manager: {Error}", ex.Message);
+                return StatusCode(500, new { 
+                    error = "Internal server error", 
+                    message = ex.Message,
+                    dto = dto
+                });
+            }
+        }
+
+        // POST: api/TaxiRankAdmin/{adminId}/create-schedule
+        [HttpPost("{adminId}/create-schedule")]
+        public async Task<ActionResult<Route>> CreateRoute([FromRoute] Guid adminId, [FromBody] CreateScheduleDto dto)
+        {
+            try
+            {
+                _logger.LogInformation("CreateRoute called with adminId: {AdminId}, dto: {@Dto}", adminId, dto);
+                
+                var admin = await _adminRepository.GetByIdAsync(adminId);
+                if (admin == null)
+                {
+                    _logger.LogWarning("Admin not found with ID: {AdminId}", adminId);
+                    return NotFound(new { message = "Admin not found", adminId });
+                }
+
+                if (!admin.CanManageSchedules)
+                {
+                    _logger.LogWarning("Admin {AdminId} does not have permission to manage schedules", adminId);
+                    return Forbid("Admin does not have permission to manage schedules");
+                }
+
+                var schedule = new Route
+                {
+                    Id = Guid.NewGuid(),
+                    TaxiRankId = admin.TaxiRankId,
+                    TenantId = admin.TenantId,
+                    RouteName = dto.RouteName,
+                    DepartureStation = dto.DepartureStation,
+                    DestinationStation = dto.DestinationStation,
+                    DepartureTime = dto.DepartureTime,
+                    FrequencyMinutes = dto.FrequencyMinutes,
+                    DaysOfWeek = dto.DaysOfWeek,
+                    StandardFare = dto.StandardFare,
+                    ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
+                    MaxPassengers = dto.MaxPassengers,
+                    IsActive = true,
+                    Notes = dto.Notes
+                };
+
+                await _scheduleRepository.AddAsync(schedule);
+                _logger.LogInformation("Route created successfully: {RouteId}", schedule.Id);
+
+                // Save stops
+                if (dto.Stops != null && dto.Stops.Count > 0)
+                {
+                    var stops = dto.Stops.Select((s, i) => new RouteStop
+                    {
+                        Id = Guid.NewGuid(),
+                        RouteId = schedule.Id,
+                        StopName = s.StopName,
+                        StopOrder = s.StopOrder > 0 ? s.StopOrder : i + 1,
+                        FareFromOrigin = s.FareFromOrigin,
+                        EstimatedMinutesFromDeparture = s.EstimatedMinutesFromDeparture,
+                        StopNotes = s.StopNotes
+                    }).ToList();
+                    _context.RouteStops.AddRange(stops);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Added {StopCount} stops to route {RouteId}", stops.Count, schedule.Id);
+                }
+
+                // Return with stops loaded
+                var result = await _context.Routes
+                    .Include(s => s.Stops)
+                    .FirstOrDefaultAsync(s => s.Id == schedule.Id);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                var innerMsg = ex.InnerException?.Message ?? "No inner exception";
+                var innerInnerMsg = ex.InnerException?.InnerException?.Message ?? "No inner-inner exception";
+                _logger.LogError(ex, "Error creating route for admin {AdminId}: {Error}. Inner: {Inner}. InnerInner: {InnerInner}", adminId, ex.Message, innerMsg, innerInnerMsg);
+                return StatusCode(500, new { 
+                    error = "Internal server error", 
+                    message = ex.Message,
+                    innerException = innerMsg,
+                    innerInnerException = innerInnerMsg,
+                    adminId = adminId
+                });
+            }
         }
 
         // GET: api/TaxiRankAdmin/user/{userId}/schedules
         [HttpGet("user/{userId}/schedules")]
-        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetAdminSchedules(Guid userId)
+        public async Task<ActionResult<IEnumerable<Route>>> GetAdminSchedules(Guid userId)
         {
             var admin = await _context.TaxiRankAdmins
                 .Include(a => a.TaxiRank)
@@ -259,7 +403,7 @@ namespace MzansiFleet.Api.Controllers
                 return NotFound(new { message = "Admin not found for this user" });
 
             // First try to get schedules for this admin's taxi rank
-            var schedules = await _context.TripSchedules
+            var schedules = await _context.Routes
                 .Include(s => s.Stops)
                 .Include(s => s.RouteVehicles.Where(rv => rv.IsActive))
                     .ThenInclude(rv => rv.Vehicle)
@@ -270,7 +414,7 @@ namespace MzansiFleet.Api.Controllers
             // If no schedules found for this rank, return all active schedules
             if (schedules.Count == 0)
             {
-                schedules = await _context.TripSchedules
+                schedules = await _context.Routes
                     .Include(s => s.Stops)
                     .Include(s => s.RouteVehicles.Where(rv => rv.IsActive))
                         .ThenInclude(rv => rv.Vehicle)
@@ -308,7 +452,7 @@ namespace MzansiFleet.Api.Controllers
 
         // PUT: api/TaxiRankAdmin/{adminId}/update-schedule/{scheduleId}
         [HttpPut("{adminId}/update-schedule/{scheduleId}")]
-        public async Task<ActionResult<TripSchedule>> UpdateTripSchedule(Guid adminId, Guid scheduleId, [FromBody] CreateScheduleDto dto)
+        public async Task<ActionResult<Route>> UpdateRoute(Guid adminId, Guid scheduleId, [FromBody] CreateScheduleDto dto)
         {
             var admin = await _adminRepository.GetByIdAsync(adminId);
             if (admin == null)
@@ -338,14 +482,14 @@ namespace MzansiFleet.Api.Controllers
             // Replace stops if provided
             if (dto.Stops != null)
             {
-                var existing = _context.RouteStops.Where(s => s.TripScheduleId == scheduleId);
+                var existing = _context.RouteStops.Where(s => s.RouteId == scheduleId);
                 _context.RouteStops.RemoveRange(existing);
                 if (dto.Stops.Count > 0)
                 {
                     var newStops = dto.Stops.Select((s, i) => new RouteStop
                     {
                         Id = Guid.NewGuid(),
-                        TripScheduleId = scheduleId,
+                        RouteId = scheduleId,
                         StopName = s.StopName,
                         StopOrder = s.StopOrder > 0 ? s.StopOrder : i + 1,
                         FareFromOrigin = s.FareFromOrigin,
@@ -357,7 +501,7 @@ namespace MzansiFleet.Api.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            var result = await _context.TripSchedules
+            var result = await _context.Routes
                 .Include(s => s.Stops)
                 .FirstOrDefaultAsync(s => s.Id == scheduleId);
             return Ok(result);
@@ -365,7 +509,7 @@ namespace MzansiFleet.Api.Controllers
 
         // DELETE: api/TaxiRankAdmin/{adminId}/delete-schedule/{scheduleId}
         [HttpDelete("{adminId}/delete-schedule/{scheduleId}")]
-        public async Task<ActionResult> DeleteTripSchedule(Guid adminId, Guid scheduleId)
+        public async Task<ActionResult> DeleteRoute(Guid adminId, Guid scheduleId)
         {
             var admin = await _adminRepository.GetByIdAsync(adminId);
             if (admin == null)
@@ -401,13 +545,13 @@ namespace MzansiFleet.Api.Controllers
             if (!admin.CanManageSchedules)
                 return Forbid("Admin does not have permission to manage schedules");
 
-            var schedule = await _context.TripSchedules.FindAsync(scheduleId);
+            var schedule = await _context.Routes.FindAsync(scheduleId);
             if (schedule == null)
                 return NotFound(new { message = "Schedule not found" });
 
             // Check if vehicle is already assigned
             var existing = await _context.RouteVehicles
-                .FirstOrDefaultAsync(rv => rv.TripScheduleId == scheduleId && rv.VehicleId == dto.VehicleId && rv.IsActive);
+                .FirstOrDefaultAsync(rv => rv.RouteId == scheduleId && rv.VehicleId == dto.VehicleId && rv.IsActive);
             
             if (existing != null)
                 return BadRequest(new { message = "Vehicle is already assigned to this route" });
@@ -415,7 +559,7 @@ namespace MzansiFleet.Api.Controllers
             var routeVehicle = new RouteVehicle
             {
                 Id = Guid.NewGuid(),
-                TripScheduleId = scheduleId,
+                RouteId = scheduleId,
                 VehicleId = dto.VehicleId,
                 AssignedAt = DateTime.UtcNow,
                 IsActive = true,
@@ -440,7 +584,7 @@ namespace MzansiFleet.Api.Controllers
                 return Forbid("Admin does not have permission to manage schedules");
 
             var routeVehicle = await _context.RouteVehicles
-                .FirstOrDefaultAsync(rv => rv.TripScheduleId == scheduleId && rv.VehicleId == vehicleId && rv.IsActive);
+                .FirstOrDefaultAsync(rv => rv.RouteId == scheduleId && rv.VehicleId == vehicleId && rv.IsActive);
 
             if (routeVehicle == null)
                 return NotFound(new { message = "Vehicle assignment not found" });
@@ -518,3 +662,4 @@ namespace MzansiFleet.Api.Controllers
         public List<RouteStopDto>? Stops { get; set; }
     }
 }
+

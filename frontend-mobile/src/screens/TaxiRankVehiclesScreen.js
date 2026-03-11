@@ -48,27 +48,37 @@ export default function TaxiRankVehiclesScreen({ navigation, route }) {
     try {
       if (!silent) setLoading(true);
 
-      // Get admin profile
-      const adminResp = await fetchAdminByUserId(user.userId || user.id);
-      const admin = adminResp.data || adminResp;
+      // Only fetch admin profile for non-marshal roles
+      let admin = null;
+      const isMarshal = (user?.role || '').toLowerCase() === 'taximarshal';
+      if (!isMarshal) {
+        try {
+          const adminResp = await fetchAdminByUserId(user.userId || user.id);
+          admin = adminResp.data || adminResp;
+        } catch (_) {}
+      }
       setAdminProfile(admin);
 
       if (admin?.taxiRankId && admin?.tenantId) {
-        // Get vehicles assigned to this taxi rank
+        // Admin path: get vehicles assigned to this taxi rank
         const assignedResp = await getVehiclesByTaxiRank(admin.taxiRankId);
         setAssignedVehicles(assignedResp.data || assignedResp || []);
 
-        // Get all vehicles for the tenant
         const allVehiclesResp = await getVehiclesByTenantId(admin.tenantId);
         const allVehicles = allVehiclesResp.data || allVehiclesResp || [];
-        
-        // Filter out vehicles already assigned to this taxi rank
         const available = allVehicles.filter(v => v.taxiRankId !== admin.taxiRankId);
         setAvailableVehicles(available);
 
-        // Get pending link requests
-        const requestsResp = await getRequestsByTaxiRank(admin.taxiRankId, 'Pending');
+        const requestsResp = await getRequestsByTaxiRank(admin.taxiRankId, 'Pending').catch(() => []);
         setPendingRequests(requestsResp || []);
+      } else if (user?.tenantId) {
+        // Marshal path: load vehicles by tenant
+        try {
+          const allVehiclesResp = await getVehiclesByTenantId(user.tenantId);
+          setAssignedVehicles(allVehiclesResp.data || allVehiclesResp || []);
+        } catch (_) {
+          setAssignedVehicles([]);
+        }
       }
     } catch (err) {
       console.error('Error loading vehicles:', err);

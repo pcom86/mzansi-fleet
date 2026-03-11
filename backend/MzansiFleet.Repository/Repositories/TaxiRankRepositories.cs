@@ -280,76 +280,76 @@ namespace MzansiFleet.Repository.Repositories
         }
     }
 
-    public class TripScheduleRepository : ITripScheduleRepository
+    public class RouteRepository : IRouteRepository
     {
         private readonly MzansiFleetDbContext _context;
 
-        public TripScheduleRepository(MzansiFleetDbContext context)
+        public RouteRepository(MzansiFleetDbContext context)
         {
             _context = context;
         }
 
-        public async Task<TripSchedule?> GetByIdAsync(Guid id)
+        public async Task<Route?> GetByIdAsync(Guid id)
         {
-            return await _context.TripSchedules
+            return await _context.Routes
                 .Include(s => s.TaxiRank)
                 .FirstOrDefaultAsync(s => s.Id == id);
         }
 
-        public async Task<IEnumerable<TripSchedule>> GetAllAsync()
+        public async Task<IEnumerable<Route>> GetAllAsync()
         {
-            return await _context.TripSchedules
+            return await _context.Routes
                 .Include(s => s.TaxiRank)
                 .OrderBy(s => s.RouteName)
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<TripSchedule>> GetByTaxiRankIdAsync(Guid taxiRankId)
+        public async Task<IEnumerable<Route>> GetByTaxiRankIdAsync(Guid taxiRankId)
         {
-            return await _context.TripSchedules
+            return await _context.Routes
                 .Where(s => s.TaxiRankId == taxiRankId)
                 .OrderBy(s => s.DepartureTime)
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<TripSchedule>> GetByTenantIdAsync(Guid tenantId)
+        public async Task<IEnumerable<Route>> GetByTenantIdAsync(Guid tenantId)
         {
-            return await _context.TripSchedules
+            return await _context.Routes
                 .Where(s => s.TenantId == tenantId)
                 .Include(s => s.TaxiRank)
                 .OrderBy(s => s.RouteName)
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<TripSchedule>> GetActiveByTaxiRankIdAsync(Guid taxiRankId)
+        public async Task<IEnumerable<Route>> GetActiveByTaxiRankIdAsync(Guid taxiRankId)
         {
-            return await _context.TripSchedules
+            return await _context.Routes
                 .Where(s => s.TaxiRankId == taxiRankId && s.IsActive)
                 .OrderBy(s => s.DepartureTime)
                 .ToListAsync();
         }
 
-        public async Task<TripSchedule> AddAsync(TripSchedule schedule)
+        public async Task<Route> AddAsync(Route route)
         {
-            _context.TripSchedules.Add(schedule);
+            _context.Routes.Add(route);
             await _context.SaveChangesAsync();
-            return schedule;
+            return route;
         }
 
-        public async Task<TripSchedule> UpdateAsync(TripSchedule schedule)
+        public async Task<Route> UpdateAsync(Route route)
         {
-            schedule.UpdatedAt = DateTime.UtcNow;
-            _context.TripSchedules.Update(schedule);
+            route.UpdatedAt = DateTime.UtcNow;
+            _context.Routes.Update(route);
             await _context.SaveChangesAsync();
-            return schedule;
+            return route;
         }
 
         public async Task DeleteAsync(Guid id)
         {
-            var schedule = await _context.TripSchedules.FindAsync(id);
-            if (schedule != null)
+            var route = await _context.Routes.FindAsync(id);
+            if (route != null)
             {
-                _context.TripSchedules.Remove(schedule);
+                _context.Routes.Remove(route);
                 await _context.SaveChangesAsync();
             }
         }
@@ -690,13 +690,13 @@ namespace MzansiFleet.Repository.Repositories
 
         public async Task<ScheduledTripBooking?> GetByIdAsync(Guid id)
             => await _context.ScheduledTripBookings
-                .Include(b => b.TripSchedule)
+                .Include(b => b.Route)
                 .Include(b => b.TaxiRank)
                 .FirstOrDefaultAsync(b => b.Id == id);
 
         public async Task<IEnumerable<ScheduledTripBooking>> GetByUserIdAsync(Guid userId)
             => await _context.ScheduledTripBookings
-                .Include(b => b.TripSchedule)
+                .Include(b => b.Route)
                 .Include(b => b.TaxiRank)
                 .Where(b => b.UserId == userId)
                 .OrderByDescending(b => b.TravelDate)
@@ -704,20 +704,20 @@ namespace MzansiFleet.Repository.Repositories
 
         public async Task<IEnumerable<ScheduledTripBooking>> GetByTaxiRankIdAsync(Guid taxiRankId)
             => await _context.ScheduledTripBookings
-                .Include(b => b.TripSchedule)
+                .Include(b => b.Route)
                 .Where(b => b.TaxiRankId == taxiRankId)
                 .OrderByDescending(b => b.TravelDate)
                 .ToListAsync();
 
-        public async Task<IEnumerable<ScheduledTripBooking>> GetByScheduleIdAsync(Guid scheduleId)
+        public async Task<IEnumerable<ScheduledTripBooking>> GetByRouteIdAsync(Guid routeId)
             => await _context.ScheduledTripBookings
-                .Where(b => b.TripScheduleId == scheduleId)
+                .Where(b => b.RouteId == routeId)
                 .OrderByDescending(b => b.TravelDate)
                 .ToListAsync();
 
-        public async Task<IEnumerable<ScheduledTripBooking>> GetByScheduleAndDateAsync(Guid scheduleId, DateTime travelDate)
+        public async Task<IEnumerable<ScheduledTripBooking>> GetByRouteAndDateAsync(Guid routeId, DateTime travelDate)
             => await _context.ScheduledTripBookings
-                .Where(b => b.TripScheduleId == scheduleId && b.TravelDate.Date == travelDate.Date && b.Status != "Cancelled")
+                .Where(b => b.RouteId == routeId && b.TravelDate.Date == travelDate.Date && b.Status != "Cancelled")
                 .ToListAsync();
 
         public async Task<ScheduledTripBooking> AddAsync(ScheduledTripBooking booking)
@@ -746,3 +746,4 @@ namespace MzansiFleet.Repository.Repositories
         }
     }
 }
+

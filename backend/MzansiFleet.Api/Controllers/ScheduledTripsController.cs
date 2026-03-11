@@ -22,16 +22,103 @@ namespace MzansiFleet.Api.Controllers
             _context = context;
         }
 
+        // GET: api/ScheduledTrips/by-rank?taxiRankId={id}&date={date}
+        // Public endpoint for riders to browse available trips
+        [HttpGet("by-rank")]
+        [AllowAnonymous]
+        public async Task<ActionResult<IEnumerable<object>>> GetByRank([FromQuery] Guid taxiRankId, [FromQuery] DateTime? date = null)
+        {
+            if (taxiRankId == Guid.Empty)
+                return BadRequest(new { message = "TaxiRankId is required" });
+
+            var targetDate = date ?? DateTime.UtcNow.Date;
+            
+            var query = _context.ScheduledTrips
+                .Include(st => st.Route)
+                .Include(st => st.Vehicle)
+                .Include(st => st.Driver)
+                .Include(st => st.Marshal)
+                .Where(st => st.TaxiRankId == taxiRankId 
+                    && st.ScheduledDate.Date == targetDate.Date
+                    && st.Status != "Cancelled");
+
+            var scheduledTrips = await query
+                .OrderBy(st => st.ScheduledTime)
+                .ToListAsync();
+
+            // Get bookings for these trips to calculate available seats
+            var tripIds = scheduledTrips.Select(st => st.Id).ToList();
+            var bookings = await _context.ScheduledTripBookings
+                .Where(b => tripIds.Contains(b.RouteId) && b.Status != "Cancelled")
+                .ToListAsync();
+
+            var result = scheduledTrips.Select(st => {
+                var tripBookings = bookings.Where(b => b.RouteId == st.Id).ToList();
+                var bookedSeats = tripBookings.Sum(b => b.SeatsBooked);
+                var maxPassengers = st.Route?.MaxPassengers ?? 16;
+                var seatNumbers = Enumerable.Range(1, maxPassengers).ToList();
+                var bookedSeatNumbers = tripBookings.SelectMany(b => b.SeatNumbers ?? new List<int>()).ToList();
+
+                return new
+                {
+                    st.Id,
+                    st.RouteId,
+                    st.TaxiRankId,
+                    st.TenantId,
+                    st.ScheduledDate,
+                    st.ScheduledTime,
+                    st.VehicleId,
+                    st.DriverId,
+                    st.MarshalId,
+                    st.Status,
+                    st.Notes,
+                    st.CreatedAt,
+                    st.UpdatedAt,
+                    Route = st.Route == null ? null : new
+                    {
+                        st.Route.Id,
+                        st.Route.RouteName,
+                        st.Route.DepartureStation,
+                        st.Route.DestinationStation,
+                        st.Route.StandardFare,
+                        st.Route.MaxPassengers,
+                        st.Route.ExpectedDurationMinutes
+                    },
+                    Vehicle = st.Vehicle == null ? null : new
+                    {
+                        st.Vehicle.Id,
+                        st.Vehicle.Registration,
+                        st.Vehicle.Make,
+                        st.Vehicle.Model
+                    },
+                    Driver = st.Driver == null ? null : new
+                    {
+                        st.Driver.Id,
+                        Name = st.Driver.Name ?? "Unknown Driver"
+                    },
+                    Marshal = st.Marshal == null ? null : new
+                    {
+                        st.Marshal.Id,
+                        st.Marshal.FullName
+                    },
+                    AvailableSeats = maxPassengers - bookedSeats,
+                    BookedSeats = bookedSeatNumbers
+                };
+            });
+
+            return Ok(result);
+        }
+
         // GET: api/ScheduledTrips/by-schedule/{scheduleId}
         [HttpGet("by-schedule/{scheduleId}")]
         public async Task<ActionResult<IEnumerable<ScheduledTrip>>> GetBySchedule(Guid scheduleId, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
         {
             var query = _context.ScheduledTrips
-                .Include(st => st.TripSchedule)
+                .Include(st => st.Route)
                 .Include(st => st.Vehicle)
                 .Include(st => st.Driver)
                 .Include(st => st.Marshal)
-                .Where(st => st.TripScheduleId == scheduleId);
+                .Where(st => st.RouteId == scheduleId);
 
             if (startDate.HasValue)
             {
@@ -60,7 +147,7 @@ namespace MzansiFleet.Api.Controllers
                 return NotFound(new { message = "Admin not found" });
 
             var query = _context.ScheduledTrips
-                .Include(st => st.TripSchedule)
+                .Include(st => st.Route)
                 .Include(st => st.Vehicle)
                 .Include(st => st.Driver)
                 .Include(st => st.Marshal)
@@ -88,14 +175,14 @@ namespace MzansiFleet.Api.Controllers
         [HttpPost]
         public async Task<ActionResult<ScheduledTrip>> CreateScheduledTrip([FromBody] CreateScheduledTripDto dto)
         {
-            var schedule = await _context.TripSchedules.FindAsync(dto.TripScheduleId);
+            var schedule = await _context.Routes.FindAsync(dto.RouteId);
             if (schedule == null)
                 return NotFound(new { message = "Trip schedule not found" });
 
             var scheduledTrip = new ScheduledTrip
             {
                 Id = Guid.NewGuid(),
-                TripScheduleId = dto.TripScheduleId,
+                RouteId = dto.RouteId,
                 TaxiRankId = schedule.TaxiRankId,
                 TenantId = schedule.TenantId,
                 ScheduledDate = dto.ScheduledDate,
@@ -112,7 +199,7 @@ namespace MzansiFleet.Api.Controllers
 
             // Reload with related entities
             var created = await _context.ScheduledTrips
-                .Include(st => st.TripSchedule)
+                .Include(st => st.Route)
                 .Include(st => st.Vehicle)
                 .Include(st => st.Driver)
                 .Include(st => st.Marshal)
@@ -142,7 +229,7 @@ namespace MzansiFleet.Api.Controllers
 
             // Reload with related entities
             var updated = await _context.ScheduledTrips
-                .Include(st => st.TripSchedule)
+                .Include(st => st.Route)
                 .Include(st => st.Vehicle)
                 .Include(st => st.Driver)
                 .Include(st => st.Marshal)
@@ -196,7 +283,7 @@ namespace MzansiFleet.Api.Controllers
 
     public class CreateScheduledTripDto
     {
-        public Guid TripScheduleId { get; set; }
+        public Guid RouteId { get; set; }
         public DateTime ScheduledDate { get; set; }
         public TimeSpan ScheduledTime { get; set; }
         public Guid? VehicleId { get; set; }
@@ -221,3 +308,4 @@ namespace MzansiFleet.Api.Controllers
         public string? Notes { get; set; }
     }
 }
+

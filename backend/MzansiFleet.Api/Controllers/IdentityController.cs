@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.DTOs;
 using MzansiFleet.Application.Commands;
@@ -719,3 +719,4 @@ namespace MzansiFleet.Api.Controllers
         public string NewPassword { get; set; }
     }
 }
+

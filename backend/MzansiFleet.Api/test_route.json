@@ -1,0 +1,26 @@
+{
+  "routeName": "Test Route",
+  "departureStation": "Test Departure",
+  "destinationStation": "Test Destination",
+  "departureTime": "00:00:00",
+  "frequencyMinutes": 0,
+  "daysOfWeek": "Monday,Tuesday",
+  "standardFare": 25.50,
+  "expectedDurationMinutes": 30,
+  "maxPassengers": 15,
+  "notes": "Test route creation",
+  "stops": [
+    {
+      "stopName": "Stop 1",
+      "stopOrder": 1,
+      "fareFromOrigin": 10.00,
+      "estimatedMinutesFromDeparture": 5
+    },
+    {
+      "stopName": "Stop 2", 
+      "stopOrder": 2,
+      "fareFromOrigin": 20.00,
+      "estimatedMinutesFromDeparture": 15
+    }
+  ]
+}

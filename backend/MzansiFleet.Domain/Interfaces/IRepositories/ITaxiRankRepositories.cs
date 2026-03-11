@@ -44,15 +44,15 @@ namespace MzansiFleet.Domain.Interfaces.IRepositories
         Task DeleteAsync(Guid id);
     }
 
-    public interface ITripScheduleRepository
+    public interface IRouteRepository
     {
-        Task<TripSchedule?> GetByIdAsync(Guid id);
-        Task<IEnumerable<TripSchedule>> GetAllAsync();
-        Task<IEnumerable<TripSchedule>> GetByTaxiRankIdAsync(Guid taxiRankId);
-        Task<IEnumerable<TripSchedule>> GetByTenantIdAsync(Guid tenantId);
-        Task<IEnumerable<TripSchedule>> GetActiveByTaxiRankIdAsync(Guid taxiRankId);
-        Task<TripSchedule> AddAsync(TripSchedule schedule);
-        Task<TripSchedule> UpdateAsync(TripSchedule schedule);
+        Task<Route?> GetByIdAsync(Guid id);
+        Task<IEnumerable<Route>> GetAllAsync();
+        Task<IEnumerable<Route>> GetByTaxiRankIdAsync(Guid taxiRankId);
+        Task<IEnumerable<Route>> GetByTenantIdAsync(Guid tenantId);
+        Task<IEnumerable<Route>> GetActiveByTaxiRankIdAsync(Guid taxiRankId);
+        Task<Route> AddAsync(Route route);
+        Task<Route> UpdateAsync(Route route);
         Task DeleteAsync(Guid id);
     }
     public interface ITaxiRankTripRepository
@@ -93,8 +93,8 @@ namespace MzansiFleet.Domain.Interfaces.IRepositories
         Task<ScheduledTripBooking?> GetByIdAsync(Guid id);
         Task<IEnumerable<ScheduledTripBooking>> GetByUserIdAsync(Guid userId);
         Task<IEnumerable<ScheduledTripBooking>> GetByTaxiRankIdAsync(Guid taxiRankId);
-        Task<IEnumerable<ScheduledTripBooking>> GetByScheduleIdAsync(Guid scheduleId);
-        Task<IEnumerable<ScheduledTripBooking>> GetByScheduleAndDateAsync(Guid scheduleId, DateTime travelDate);
+        Task<IEnumerable<ScheduledTripBooking>> GetByRouteIdAsync(Guid routeId);
+        Task<IEnumerable<ScheduledTripBooking>> GetByRouteAndDateAsync(Guid routeId, DateTime travelDate);
         Task<ScheduledTripBooking> AddAsync(ScheduledTripBooking booking);
         Task<ScheduledTripBooking> UpdateAsync(ScheduledTripBooking booking);
         Task DeleteAsync(Guid id);

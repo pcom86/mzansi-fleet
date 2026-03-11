@@ -6,8 +6,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
-import { fetchAdminByUserId, fetchSchedules, createSchedule, updateSchedule, deleteSchedule, assignVehicleToRoute, unassignVehicleFromRoute } from '../api/taxiRanks';
+import { fetchAdminByUserId, fetchSchedules, createSchedule, createScheduleForManager, updateSchedule, deleteSchedule, assignVehicleToRoute, unassignVehicleFromRoute } from '../api/taxiRanks';
 import { fetchVehiclesByTenant } from '../api/vehicles';
+import client from '../api/client';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -49,88 +50,93 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     if (!user?.userId && !user?.id) return;
     if (!silent) setLoading(true);
     try {
-      // Check if user is Rank Admin or Rank Manager (both have same permissions)
+      // Check if user is Rank Admin, Rank Manager, or Marshal
       const isAdmin = user?.role === 'TaxiRankAdmin';
       const isManager = user?.role === 'TaxiRankManager';
-      const hasPermission = isAdmin || isManager;
+      const isMarshal = (user?.role || '').toLowerCase() === 'taximarshal';
+      const hasPermission = isAdmin || isManager || isMarshal;
+      
+      console.log('User data:', { role: user?.role, isAdmin, isManager, isMarshal, hasPermission });
       
       if (hasPermission) {
-        // For admins, fetch admin profile
-        const adminResp = await fetchAdminByUserId(user.userId || user.id);
-        const admin = adminResp.data || adminResp;
-        
-        // If admin profile doesn't exist but user has admin/manager role, create a mock profile
-        if (!admin && (user?.role === 'TaxiRankAdmin' || user?.role === 'TaxiRankManager')) {
-          console.warn('Admin/Manager profile not found, creating mock profile for user with admin/manager role');
-          const mockAdminProfile = {
+        // Fetch admin profile for Admin and Manager roles (not Marshal)
+        let admin = null;
+        if (!isMarshal) {
+          try {
+            const adminResp = await fetchAdminByUserId(user.userId || user.id);
+            admin = adminResp.data || adminResp;
+          } catch (_) {}
+        }
+
+        if (admin?.id) {
+          setAdminProfile(admin);
+          const schedResp = await fetchSchedules(user.userId || user.id).catch(() => ({ data: [] }));
+          setRoutes(Array.isArray(schedResp) ? schedResp : (schedResp?.data || []));
+          try {
+            const vehResp = await fetchVehiclesByTenant(admin.tenantId);
+            setVehicles(vehResp || []);
+          } catch (vehicleErr) {
+            setVehicles([]);
+          }
+        } else if (isManager) {
+          // For Rank Managers without admin profile, create one using user data
+          const managerProfile = {
             id: user.id,
             userId: user.userId || user.id,
             tenantId: user.tenantId,
             role: user.role,
-            fullName: user.fullName || 'Admin User',
+            fullName: user.fullName || 'Manager',
             email: user.email,
+            adminCode: null, // Not a mock, real manager
             taxiRankId: null,
-            adminCode: user?.role === 'TaxiRankAdmin' ? 'ADMIN' : 'MANAGER',
+            canManageSchedules: true,
             status: 'Active'
           };
-          setAdminProfile(mockAdminProfile);
+          setAdminProfile(managerProfile);
           
-          // Load schedules for mock admin
-          const schedResp = await fetchSchedules(user.userId || user.id);
-          setRoutes(Array.isArray(schedResp) ? schedResp : (schedResp?.data || []));
-            // Load vehicles for the taxi rank
-            try {
-              const vehResp = await fetchVehiclesByTenant(mockAdminProfile.tenantId);
-              setVehicles(vehResp || []);
-            } catch (vehicleErr) {
-              console.error('Failed to load vehicles:', vehicleErr?.message, vehicleErr?.response?.data);
-              setVehicles([]);
-            }
-        } else {
-          setAdminProfile(admin);
-
-          if (admin?.id) {
-            const schedResp = await fetchSchedules(user.userId || user.id);
-            setRoutes(Array.isArray(schedResp) ? schedResp : (schedResp?.data || []));
-            // Load vehicles for the taxi rank
-            try {
-              const vehResp = await fetchVehiclesByTenant(admin.tenantId);
-              setVehicles(vehResp || []);
-            } catch (vehicleErr) {
-              console.error('Failed to load vehicles:', vehicleErr?.message, vehicleErr?.response?.data);
-              setVehicles([]);
-            }
-          } else {
-            console.warn('No tenantId found for admin:', admin);
+          try {
+            const schedResp = await client.get('/TripSchedules');
+            setRoutes(schedResp.data || []);
+          } catch (_) {
+            setRoutes([]);
           }
-        }
-      } else if (isManager && user?.tenantId) {
-        // For managers, create a mock admin profile with tenant info
-        const mockAdminProfile = {
-          id: user.id,
-          tenantId: user.tenantId,
-          role: user.role,
-          userId: user.userId || user.id
-        };
-        setAdminProfile(mockAdminProfile);
-
-        // Load routes for the tenant
-        try {
-          const schedResp = await fetchSchedules(user.tenantId);
-          setRoutes(Array.isArray(schedResp) ? schedResp : (schedResp?.data || []));
-        } catch (routeErr) {
-          console.warn('Failed to load routes for manager:', routeErr?.message);
-          setRoutes([]);
-        }
-
-        // Load vehicles for the tenant
-        try {
-          const vehiclesResp = await fetchVehiclesByTenant(user.tenantId);
-          const vehiclesList = vehiclesResp.data || vehiclesResp || [];
-          setVehicles(vehiclesList);
-        } catch (vehicleErr) {
-          console.error('Failed to load vehicles for manager:', vehicleErr?.message);
-          setVehicles([]);
+          try {
+            const vehResp = user?.tenantId
+              ? await fetchVehiclesByTenant(user.tenantId)
+              : await client.get('/Vehicles');
+            setVehicles(vehResp?.data || vehResp || []);
+          } catch (_) {
+            setVehicles([]);
+          }
+        } else {
+          // Marshal or admin without profile — create a mock profile for UI purposes only
+          const mockProfile = {
+            id: user.id,
+            userId: user.userId || user.id,
+            tenantId: user.tenantId,
+            role: user.role,
+            fullName: user.fullName || 'User',
+            email: user.email,
+            adminCode: 'ADMIN', // Mark as mock to prevent actual operations
+            taxiRankId: null,
+            status: 'Active'
+          };
+          setAdminProfile(mockProfile);
+          
+          try {
+            const schedResp = await client.get('/TripSchedules');
+            setRoutes(schedResp.data || []);
+          } catch (_) {
+            setRoutes([]);
+          }
+          try {
+            const vehResp = user?.tenantId
+              ? await fetchVehiclesByTenant(user.tenantId)
+              : await client.get('/Vehicles');
+            setVehicles(vehResp?.data || vehResp || []);
+          } catch (_) {
+            setVehicles([]);
+          }
         }
       } else {
         console.warn('User does not have permission to manage routes. Role:', user?.role);
@@ -216,6 +222,12 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     if (!fare.trim() || isNaN(Number(fare))) return Alert.alert('Validation', 'Valid fare is required');
     if (selectedDays.length === 0) return Alert.alert('Validation', 'Select at least one day');
     if (!adminProfile?.id) return Alert.alert('Error', 'User profile not found. Only rank admins and managers can manage routes.');
+    
+    // Check if using mock profile (marshal or admin without real profile)
+    if (adminProfile.adminCode === 'ADMIN') {
+      Alert.alert('Cannot Save', 'Cannot create or edit routes when using a temporary profile. Please contact your system administrator to create a proper profile.');
+      return;
+    }
 
     // Validate stops
     for (const s of stops) {
@@ -227,7 +239,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
       routeName: routeName.trim(),
       departureStation: departure.trim(),
       destinationStation: destination.trim(),
-      departureTime: '00:00:00',
+      departureTime: `00:00:00`, // TimeSpan format HH:mm:ss
       frequencyMinutes: 0,
       daysOfWeek: selectedDays.join(','),
       standardFare: parseFloat(fare),
@@ -243,12 +255,29 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
 
     setSaving(true);
     try {
+      console.log('Save attempt - adminProfile:', adminProfile);
+      
       // Check if we're using a mock admin profile (no real admin profile exists)
-      if (adminProfile.id === user.id && adminProfile.adminCode === 'ADMIN') {
-        Alert.alert('Cannot Save', 'Cannot create or edit routes when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+      if (adminProfile.adminCode === 'ADMIN') {
+        console.log('Detected mock profile, blocking save');
+        Alert.alert('Cannot Save', 'Cannot create or edit routes when using a temporary profile. Please contact your system administrator to create a proper profile.');
         setSaving(false);
         return;
       }
+      
+      // For Rank Managers without admin profile, use the dedicated manager endpoint
+      if (adminProfile.role === 'TaxiRankManager' && !adminProfile.adminCode) {
+        console.log('Using manager endpoint for Rank Manager');
+        await createScheduleForManager(body);
+        Alert.alert('Success', 'Route created');
+        setModalVisible(false);
+        resetForm();
+        loadData(true);
+        setSaving(false);
+        return;
+      }
+      
+      console.log('Proceeding with save, adminId:', adminProfile.id);
       
       if (editing) {
         await updateSchedule(adminProfile.id, editing.id, body);
@@ -274,10 +303,14 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     }
     
     // Check if we're using a mock admin profile (no real admin profile exists)
-    const isMockProfile = adminProfile.id === user.id && adminProfile.adminCode === 'ADMIN';
+    if (adminProfile.adminCode === 'ADMIN') {
+      Alert.alert('Cannot Delete', 'Cannot delete routes when using a temporary profile. Please contact your system administrator to create a proper profile.');
+      return;
+    }
     
-    if (isMockProfile) {
-      Alert.alert('Cannot Delete', 'Cannot delete routes when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+    // For Rank Managers without admin profile
+    if (adminProfile.role === 'TaxiRankManager' && !adminProfile.adminCode) {
+      Alert.alert('Cannot Delete', 'Rank Managers need an admin profile to manage routes. Please contact your system administrator to create an admin profile for you.');
       return;
     }
     
@@ -334,8 +367,14 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     }
     
     // Check if we're using a mock admin profile (no real admin profile exists)
-    if (adminProfile.id === user.id && adminProfile.adminCode === 'ADMIN') {
-      Alert.alert('Cannot Assign', 'Cannot assign vehicles when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+    if (adminProfile.adminCode === 'ADMIN') {
+      Alert.alert('Cannot Assign', 'Cannot assign vehicles when using a temporary profile. Please contact your system administrator to create a proper profile.');
+      return;
+    }
+    
+    // For Rank Managers without admin profile
+    if (adminProfile.role === 'TaxiRankManager' && !adminProfile.adminCode) {
+      Alert.alert('Cannot Assign', 'Rank Managers need an admin profile to manage routes. Please contact your system administrator to create an admin profile for you.');
       return;
     }
     
@@ -353,8 +392,14 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     if (!adminProfile?.id || !selectedRoute?.id) return;
     
     // Check if we're using a mock admin profile (no real admin profile exists)
-    if (adminProfile.id === user.id && adminProfile.adminCode === 'ADMIN') {
-      Alert.alert('Cannot Unassign', 'Cannot unassign vehicles when using a temporary admin profile. Please contact your system administrator to create a proper admin profile.');
+    if (adminProfile.adminCode === 'ADMIN') {
+      Alert.alert('Cannot Unassign', 'Cannot unassign vehicles when using a temporary profile. Please contact your system administrator to create a proper profile.');
+      return;
+    }
+    
+    // For Rank Managers without admin profile
+    if (adminProfile.role === 'TaxiRankManager' && !adminProfile.adminCode) {
+      Alert.alert('Cannot Unassign', 'Rank Managers need an admin profile to manage routes. Please contact your system administrator to create an admin profile for you.');
       return;
     }
     

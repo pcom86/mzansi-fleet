@@ -220,3 +220,4 @@ namespace MzansiFleet.Api.Controllers
         public string Notes { get; set; } = string.Empty;
     }
 }
+

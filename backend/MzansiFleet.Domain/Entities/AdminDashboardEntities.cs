@@ -3,24 +3,6 @@ using System.Collections.Generic;
 
 namespace MzansiFleet.Domain.Entities
 {
-    public class Route
-    {
-        public Guid Id { get; set; }
-        public Guid TenantId { get; set; }
-        public Guid? TaxiRankId { get; set; }
-        public string Code { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string Origin { get; set; } = string.Empty;
-        public string Destination { get; set; } = string.Empty;
-        public List<string> Stops { get; set; } = new List<string>();
-        public decimal Distance { get; set; }
-        public int EstimatedDuration { get; set; } // in minutes
-        public decimal FareAmount { get; set; }
-        public string Status { get; set; } = "Active";
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public DateTime? UpdatedAt { get; set; }
-    }
-
     public class OwnerAssignment
     {
         public Guid Id { get; set; }

@@ -61,66 +61,26 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
       const userId = user?.userId || user?.id;
       if (!userId) return;
 
-      // Check if user is Rank Admin or Rank Manager (both have same permissions)
+      // Check if user is Rank Admin, Rank Manager, or Marshal
       const isAdmin = user?.role === 'TaxiRankAdmin';
       const isManager = user?.role === 'TaxiRankManager';
-      const hasPermission = isAdmin || isManager;
+      const isMarshal = (user?.role || '').toLowerCase() === 'taximarshal';
+      const hasPermission = isAdmin || isManager || isMarshal;
       
       if (hasPermission) {
-        // For admins, fetch admin profile
-        const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`).catch(() => ({ data: null }));
-        const admin = adminResp.data;
-        
-        // If admin profile doesn't exist but user has admin/manager role, create a mock profile
-        if (!admin && (user?.role === 'TaxiRankAdmin' || user?.role === 'TaxiRankManager')) {
-          console.warn('Admin/Manager profile not found, creating mock profile for user with admin/manager role');
-          const mockAdminProfile = {
-            id: user.id,
-            userId: user.userId || user.id,
-            tenantId: user.tenantId,
-            role: user.role,
-            fullName: user.fullName || 'Admin User',
-            email: user.email,
-            taxiRankId: null,
-            adminCode: user?.role === 'TaxiRankAdmin' ? 'ADMIN' : 'MANAGER',
-            status: 'Active'
-          };
-          setAdminProfile(mockAdminProfile);
+        // Only fetch admin profile for non-marshal roles
+        let admin = null;
+        if (!isMarshal) {
+          const adminResp = await client.get(`/TaxiRankAdmin/user/${userId}`).catch(() => ({ data: null }));
+          admin = adminResp.data;
+        }
 
-          // Load basic data including schedules for mock admin
-          try {
-            const [schedulesResp, vehiclesResp] = await Promise.all([
-              client.get(`/TaxiRankAdmin/user/${userId}/schedules`).catch(() => ({ data: [] })),
-              client.get('/Vehicles')
-            ]);
-
-            setSchedules(Array.isArray(schedulesResp) ? schedulesResp : (schedulesResp?.data || []));
-            setVehicles(vehiclesResp.data || []);
-            
-            // Load all vehicles for vehicle management (show all vehicles regardless of tenant)
-            try {
-              // Use the working /Vehicles API and show all vehicles
-              const allVehiclesResp = await client.get('/Vehicles');
-              // Show all vehicles (no tenant filtering)
-              const allVehicles = allVehiclesResp.data || [];
-              setAllTenantVehicles(allVehicles);
-            } catch (err) {
-              console.error('Mock admin - Failed to load all vehicles:', err);
-              setAllTenantVehicles([]);
-            }
-            setPendingRequests([]);
-          } catch (err) {
-            console.error('Mock admin data load error:', err);
-            setSchedules([]);
-            setVehicles([]);
-            setPendingRequests([]);
-          }
-        } else if (admin?.id) {
+        if (admin?.id) {
           setAdminProfile(admin);
 
           const [schedulesResp, vehiclesResp] = await Promise.all([
-            client.get(`/TaxiRankAdmin/user/${userId}/schedules`),
-            client.get('/Vehicles')
+            client.get(`/TaxiRankAdmin/user/${userId}/schedules`).catch(() => ({ data: [] })),
+            client.get('/Vehicles').catch(() => ({ data: [] }))
           ]);
 
           setSchedules(schedulesResp.data || []);
@@ -152,8 +112,14 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
             }
           }
         } else {
-          setSchedules([]);
-          setVehicles([]);
+          // Marshal or admin without profile — use JWT-based endpoints
+          const [schedulesResp, vehiclesResp] = await Promise.all([
+            client.get('/TripSchedules').catch(() => ({ data: [] })),
+            client.get('/Vehicles').catch(() => ({ data: [] }))
+          ]);
+          setSchedules(schedulesResp.data || []);
+          setVehicles(vehiclesResp.data || []);
+          setAllTenantVehicles(vehiclesResp.data || []);
           setPendingRequests([]);
         }
       } else {
@@ -200,7 +166,7 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
     
     // Pre-select vehicles already assigned to this route
     const assignedVehicleIds = assignments
-      .filter(a => a.tripScheduleId === schedule.id && a.isActive)
+      .filter(a => a.routeId === schedule.id && a.isActive)
       .map(a => a.vehicleId);
     
     setSelectedVehicles(assignedVehicleIds);
@@ -221,7 +187,7 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
     try {
       const userId = user?.userId || user?.id;
       await client.post(`/RouteVehicle/assign/${userId}`, {
-        tripScheduleId: selectedSchedule.id,
+        routeId: selectedSchedule.id,
         vehicleIds: selectedVehicles
       });
 
@@ -350,9 +316,9 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
 
   // Render functions
   const renderScheduleItem = ({ item }) => {
-    const assignedCount = assignments.filter(a => a.tripScheduleId === item.id && a.isActive).length;
+    const assignedCount = assignments.filter(a => a.routeId === item.id && a.isActive).length;
     const assignedVehicles = assignments
-      .filter(a => a.tripScheduleId === item.id && a.isActive)
+      .filter(a => a.routeId === item.id && a.isActive)
       .map(a => vehicles.find(v => v.id === a.vehicleId))
       .filter(Boolean);
 
@@ -389,7 +355,7 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
                     style={styles.removeChip}
                     onPress={() => {
                       const assignment = assignments.find(
-                        a => a.tripScheduleId === item.id && a.vehicleId === vehicle.id && a.isActive
+                        a => a.routeId === item.id && a.vehicleId === vehicle.id && a.isActive
                       );
                       if (assignment) {
                         Alert.alert(
@@ -421,7 +387,7 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
   const renderVehicleItem = ({ item }) => {
     const isSelected = selectedVehicles.includes(item.id);
     const isCurrentlyAssigned = assignments.some(
-      a => a.tripScheduleId === selectedSchedule?.id && a.vehicleId === item.id && a.isActive
+      a => a.routeId === selectedSchedule?.id && a.vehicleId === item.id && a.isActive
     );
 
     return (

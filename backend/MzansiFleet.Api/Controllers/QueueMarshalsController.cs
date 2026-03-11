@@ -93,7 +93,7 @@ namespace MzansiFleet.Api.Controllers
                 .CountAsync();
 
             // Get active schedules for marshal's taxi rank
-            var activeSchedules = await _context.TripSchedules
+            var activeSchedules = await _context.Routes
                 .Where(ts => ts.TaxiRankId == marshal.TaxiRankId && ts.IsActive)
                 .CountAsync();
 
@@ -243,3 +243,4 @@ namespace MzansiFleet.Api.Controllers
         public string Status { get; set; }
     }
 }
+

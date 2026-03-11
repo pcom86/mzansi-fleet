@@ -70,9 +70,23 @@ export function fetchSchedules(userId) {
   return client.get(`/TaxiRankAdmin/user/${userId}/schedules`);
 }
 
+// Fetch trip schedules via JWT auth (works for TaxiMarshal and TaxiRankAdmin)
+export function fetchTripSchedules(rankId, tenantId) {
+  const params = new URLSearchParams();
+  if (rankId) params.append('rankId', rankId);
+  if (tenantId) params.append('tenantId', tenantId);
+  return client.get(`/TripSchedules?${params.toString()}`);
+}
+
 // Create a route/schedule
 export async function createSchedule(adminId, body) {
   const resp = await client.post(`/TaxiRankAdmin/${adminId}/create-schedule`, body);
+  return resp.data;
+}
+
+// Create a route/schedule for managers (without admin profile)
+export async function createScheduleForManager(body) {
+  const resp = await client.post('/TaxiRankAdmin/manager/create-schedule', body);
   return resp.data;
 }
 
@@ -176,6 +190,11 @@ export function fetchTripsByRank(taxiRankId) {
 // Fetch vehicles assigned to a rank (via admin)
 export function fetchRankVehicles(adminId) {
   return client.get(`/TaxiRankAdmin/${adminId}/vehicles`);
+}
+
+// Fetch vehicles assigned to a rank by rank ID (no admin profile needed)
+export function fetchVehiclesByRankId(taxiRankId) {
+  return client.get(`/Vehicles/taxirank/${taxiRankId}`);
 }
 
 // === Taxi Rank Association (linking ranks to associations/tenants) ===

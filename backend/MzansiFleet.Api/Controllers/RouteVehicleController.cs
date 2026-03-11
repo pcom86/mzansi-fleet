@@ -32,7 +32,7 @@ namespace MzansiFleet.Api.Controllers
                 return NotFound(new { message = "Admin not found for this user" });
 
             // Get all schedules for this admin's taxi rank
-            var scheduleIds = await _context.TripSchedules
+            var scheduleIds = await _context.Routes
                 .Where(s => s.TaxiRankId == admin.TaxiRankId)
                 .Select(s => s.Id)
                 .ToListAsync();
@@ -40,9 +40,9 @@ namespace MzansiFleet.Api.Controllers
             // Get all route vehicle assignments for these schedules
             var assignments = await _context.RouteVehicles
                 .Include(rv => rv.Vehicle)
-                .Include(rv => rv.TripSchedule)
-                .Where(rv => scheduleIds.Contains(rv.TripScheduleId))
-                .OrderBy(rv => rv.TripSchedule.RouteName)
+                .Include(rv => rv.Route)
+                .Where(rv => scheduleIds.Contains(rv.RouteId))
+                .OrderBy(rv => rv.Route.RouteName)
                 .ThenBy(rv => rv.Vehicle.Registration)
                 .ToListAsync();
 
@@ -53,55 +53,69 @@ namespace MzansiFleet.Api.Controllers
         [HttpPost("assign/{userId}")]
         public async Task<ActionResult> AssignVehicles(Guid userId, [FromBody] AssignVehiclesRequest request)
         {
-            // Get admin by userId to find their taxi rank
-            var admin = await _context.TaxiRankAdmins
-                .FirstOrDefaultAsync(a => a.UserId == userId);
-
-            if (admin == null)
-                return NotFound(new { message = "Admin not found for this user" });
-
-            // Verify the schedule belongs to this admin's taxi rank
-            var schedule = await _context.TripSchedules
-                .FirstOrDefaultAsync(s => s.Id == request.TripScheduleId && s.TaxiRankId == admin.TaxiRankId);
-
-            if (schedule == null)
-                return NotFound(new { message = "Route not found or not accessible" });
-
-            // Get existing assignments for this schedule
-            var existingAssignments = await _context.RouteVehicles
-                .Where(rv => rv.TripScheduleId == request.TripScheduleId && rv.IsActive)
-                .ToListAsync();
-
-            // Deactivate all existing assignments
-            foreach (var assignment in existingAssignments)
+            try
             {
-                assignment.IsActive = false;
-            }
+                // Get admin by userId to find their taxi rank
+                var admin = await _context.TaxiRankAdmins
+                    .FirstOrDefaultAsync(a => a.UserId == userId);
 
-            // Create new assignments for selected vehicles
-            if (request.VehicleIds != null && request.VehicleIds.Count > 0)
-            {
-                // Verify all vehicles exist
-                var vehicleIds = await _context.Vehicles
-                    .Where(v => request.VehicleIds.Contains(v.Id))
-                    .Select(v => v.Id)
+                if (admin == null)
+                    return NotFound(new { message = "Admin not found for this user" });
+
+                // Verify the schedule belongs to this admin's taxi rank
+                var schedule = await _context.Routes
+                    .FirstOrDefaultAsync(s => s.Id == request.RouteId && s.TaxiRankId == admin.TaxiRankId);
+
+                if (schedule == null)
+                    return NotFound(new { message = "Route not found or not accessible", routeId = request.RouteId, taxiRankId = admin.TaxiRankId });
+
+                // Get existing assignments for this schedule
+                var existingAssignments = await _context.RouteVehicles
+                    .Where(rv => rv.RouteId == request.RouteId && rv.IsActive)
                     .ToListAsync();
 
-                var newAssignments = vehicleIds.Select(vehicleId => new RouteVehicle
+                // Deactivate all existing assignments
+                foreach (var assignment in existingAssignments)
                 {
-                    Id = Guid.NewGuid(),
-                    TripScheduleId = request.TripScheduleId,
-                    VehicleId = vehicleId,
-                    AssignedAt = DateTime.UtcNow,
-                    IsActive = true
-                }).ToList();
+                    assignment.IsActive = false;
+                }
 
-                _context.RouteVehicles.AddRange(newAssignments);
+                // Create new assignments for selected vehicles
+                if (request.VehicleIds != null && request.VehicleIds.Count > 0)
+                {
+                    // Verify all vehicles exist
+                    var vehicleIds = await _context.Vehicles
+                        .Where(v => request.VehicleIds.Contains(v.Id))
+                        .Select(v => v.Id)
+                        .ToListAsync();
+
+                    var newAssignments = vehicleIds.Select(vehicleId => new RouteVehicle
+                    {
+                        Id = Guid.NewGuid(),
+                        RouteId = request.RouteId,
+                        VehicleId = vehicleId,
+                        AssignedAt = DateTime.UtcNow,
+                        IsActive = true
+                    }).ToList();
+
+                    _context.RouteVehicles.AddRange(newAssignments);
+                }
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Vehicle assignments updated successfully" });
             }
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Vehicle assignments updated successfully" });
+            catch (Exception ex)
+            {
+                var innerMsg = ex.InnerException?.Message ?? "No inner exception";
+                var innerInnerMsg = ex.InnerException?.InnerException?.Message ?? "No inner-inner exception";
+                return StatusCode(500, new { 
+                    error = "Failed to save assignments",
+                    message = ex.Message,
+                    innerException = innerMsg,
+                    innerInnerException = innerInnerMsg
+                });
+            }
         }
 
         // DELETE: api/RouteVehicle/{assignmentId}
@@ -127,7 +141,7 @@ namespace MzansiFleet.Api.Controllers
         {
             var vehicles = await _context.RouteVehicles
                 .Include(rv => rv.Vehicle)
-                .Where(rv => rv.TripScheduleId == routeId && rv.IsActive)
+                .Where(rv => rv.RouteId == routeId && rv.IsActive)
                 .Select(rv => rv.Vehicle)
                 .ToListAsync();
 
@@ -136,12 +150,12 @@ namespace MzansiFleet.Api.Controllers
 
         // GET: api/RouteVehicle/vehicle/{vehicleId}/routes
         [HttpGet("vehicle/{vehicleId}/routes")]
-        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetRoutesForVehicle(Guid vehicleId)
+        public async Task<ActionResult<IEnumerable<Route>>> GetRoutesForVehicle(Guid vehicleId)
         {
             var routes = await _context.RouteVehicles
-                .Include(rv => rv.TripSchedule)
+                .Include(rv => rv.Route)
                 .Where(rv => rv.VehicleId == vehicleId && rv.IsActive)
-                .Select(rv => rv.TripSchedule)
+                .Select(rv => rv.Route)
                 .ToListAsync();
 
             return Ok(routes);
@@ -150,7 +164,8 @@ namespace MzansiFleet.Api.Controllers
 
     public class AssignVehiclesRequest
     {
-        public Guid TripScheduleId { get; set; }
+        public Guid RouteId { get; set; }
         public List<Guid> VehicleIds { get; set; } = new List<Guid>();
     }
 }
+

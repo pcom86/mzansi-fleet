@@ -17,100 +17,6 @@ namespace MzansiFleet.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class RoutesController : ControllerBase
-    {
-        private readonly MzansiFleetDbContext _context;
-
-        public RoutesController(MzansiFleetDbContext context)
-        {
-            _context = context;
-        }
-
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetAll([FromQuery] Guid? taxiRankId = null, [FromQuery] Guid? tenantId = null)
-        {
-            IQueryable<TripSchedule> query = _context.TripSchedules;
-
-            if (taxiRankId.HasValue)
-            {
-                query = query.Where(r => r.TaxiRankId == taxiRankId.Value);
-            }
-
-            if (tenantId.HasValue)
-            {
-                query = query.Where(r => r.TenantId == tenantId.Value);
-            }
-
-            var routes = await query.ToListAsync();
-            return Ok(routes);
-        }
-
-        [HttpGet("{id}")]
-        public async Task<ActionResult<TripSchedule>> GetById(Guid id)
-        {
-            var route = await _context.TripSchedules.FindAsync(id);
-            if (route == null)
-                return NotFound();
-
-            return Ok(route);
-        }
-
-        [HttpPost]
-        public async Task<ActionResult<TripSchedule>> Create([FromBody] CreateRouteDto dto)
-        {
-            var route = new TripSchedule
-            {
-                Id = Guid.NewGuid(),
-                TenantId = dto.TenantId,
-                RouteName = dto.Name,
-                DepartureStation = dto.Origin,
-                DestinationStation = dto.Destination,
-                StandardFare = dto.FareAmount,
-                ExpectedDurationMinutes = dto.EstimatedDuration,
-                IsActive = dto.Status == "Active"
-            };
-            
-            _context.TripSchedules.Add(route);
-            await _context.SaveChangesAsync();
-            
-            return CreatedAtAction(nameof(GetById), new { id = route.Id }, route);
-        }
-
-        [HttpPut("{id}")]
-        public async Task<ActionResult> Update(Guid id, [FromBody] UpdateRouteDto dto)
-        {
-            var route = await _context.TripSchedules.FindAsync(id);
-            if (route == null)
-                return NotFound();
-
-            if (dto.TenantId.HasValue)
-                route.TenantId = dto.TenantId.Value;
-            route.RouteName = dto.Name ?? route.RouteName;
-            route.DepartureStation = dto.Origin ?? route.DepartureStation;
-            route.DestinationStation = dto.Destination ?? route.DestinationStation;
-            route.StandardFare = dto.FareAmount ?? route.StandardFare;
-            route.ExpectedDurationMinutes = dto.EstimatedDuration ?? route.ExpectedDurationMinutes;
-            route.IsActive = dto.Status == "Active" || dto.Status == "true";
-
-            await _context.SaveChangesAsync();
-            return NoContent();
-        }
-
-        [HttpDelete("{id}")]
-        public async Task<ActionResult> Delete(Guid id)
-        {
-            var route = await _context.TripSchedules.FindAsync(id);
-            if (route == null)
-                return NotFound();
-
-            _context.TripSchedules.Remove(route);
-            await _context.SaveChangesAsync();
-            return NoContent();
-        }
-    }
-
-    [ApiController]
-    [Route("api/[controller]")]
     public class OwnerAssignmentsController : ControllerBase
     {
         private readonly MzansiFleetDbContext _context;
@@ -189,7 +95,7 @@ namespace MzansiFleet.Api.Controllers
         {
             var assignments = await _context.RouteVehicles
                 .Include(a => a.Vehicle)
-                .Include(a => a.TripSchedule)
+                .Include(a => a.Route)
                 .ToListAsync();
             
             return Ok(assignments);
@@ -202,7 +108,7 @@ namespace MzansiFleet.Api.Controllers
             {
                 Id = Guid.NewGuid(),
                 VehicleId = dto.VehicleId,
-                TripScheduleId = dto.RouteId,
+                RouteId = dto.RouteId,
                 AssignedAt = DateTime.UtcNow,
                 IsActive = true
             };
@@ -213,7 +119,7 @@ namespace MzansiFleet.Api.Controllers
             // Reload with related entities
             var created = await _context.RouteVehicles
                 .Include(a => a.Vehicle)
-                .Include(a => a.TripSchedule)
+                .Include(a => a.Route)
                 .FirstOrDefaultAsync(a => a.Id == assignment.Id);
             
             return Ok(created);
@@ -235,285 +141,7 @@ namespace MzansiFleet.Api.Controllers
         }
     }
 
-    [ApiController]
-    [Route("api/[controller]")]
-    [Authorize]
-    public class TripSchedulesController : ControllerBase
-    {
-        private readonly MzansiFleetDbContext _context;
-        private readonly ITaxiRankRepository _taxiRankRepository;
-        private readonly IUserRepository _userRepository;
-
-        public TripSchedulesController(
-            MzansiFleetDbContext context,
-            ITaxiRankRepository taxiRankRepository,
-            IUserRepository userRepository)
-        {
-            _context = context;
-            _taxiRankRepository = taxiRankRepository;
-            _userRepository = userRepository;
-        }
-
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<TripSchedule>>> GetAll([FromQuery] Guid? rankId = null, [FromQuery] Guid? tenantId = null)
-        {
-            // Get current user
-            var userIdClaim = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-            {
-                return Unauthorized(new { message = "Invalid user identity" });
-            }
-
-            var user = _userRepository.GetById(userId);
-            if (user == null)
-            {
-                return Unauthorized(new { message = "User not found" });
-            }
-
-            IQueryable<TripSchedule> query = _context.TripSchedules.Include(ts => ts.TaxiRank);
-
-            // Filter based on user role
-            if (user.Role == "TaxiRankAdmin" || user.Role == "TaxiMarshal")
-            {
-                // Get user's assigned taxi rank
-                TaxiRank? assignedRank = null;
-                if (user.Role == "TaxiMarshal")
-                {
-                    var marshalProfile = await _context.TaxiMarshalProfiles
-                        .FirstOrDefaultAsync(tmp => tmp.UserId == userId);
-                    if (marshalProfile != null)
-                    {
-                        assignedRank = await _taxiRankRepository.GetByIdAsync(marshalProfile.TaxiRankId);
-                    }
-                }
-                else if (user.Role == "TaxiRankAdmin")
-                {
-                    var adminProfile = await _context.TaxiRankAdmins
-                        .FirstOrDefaultAsync(trap => trap.UserId == userId);
-                    if (adminProfile != null)
-                    {
-                        assignedRank = await _taxiRankRepository.GetByIdAsync(adminProfile.TaxiRankId);
-                    }
-                }
-
-                if (assignedRank != null)
-                {
-                    // Only show schedules for the assigned taxi rank
-                    query = query.Where(ts => ts.TaxiRankId == assignedRank.Id);
-                }
-                else
-                {
-                    // User has no assigned rank, return empty
-                    return Ok(new List<TripSchedule>());
-                }
-            }
-            else
-            {
-                // For other roles, apply optional filters
-                if (rankId.HasValue)
-                {
-                    query = query.Where(ts => ts.TaxiRankId == rankId.Value);
-                }
-
-                if (tenantId.HasValue)
-                {
-                    query = query.Where(ts => ts.TenantId == tenantId.Value);
-                }
-            }
-
-            var schedules = await query.OrderBy(ts => ts.DepartureTime).ToListAsync();
-            return Ok(schedules);
-        }
-
-        [HttpPost]
-        [Authorize(Roles = "TaxiRankAdmin,TaxiMarshal")]
-        public async Task<ActionResult<TripSchedule>> Create([FromBody] CreateTripScheduleDto dto)
-        {
-            // Get current user
-            var userIdClaim = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-            {
-                return Unauthorized(new { message = "Invalid user identity" });
-            }
-
-            var user = _userRepository.GetById(userId);
-            if (user == null)
-            {
-                return Unauthorized(new { message = "User not found" });
-            }
-
-            // Validate that the taxi rank belongs to the user's tenant and is assigned to them
-            var taxiRank = await _taxiRankRepository.GetByIdAsync(dto.TaxiRankId);
-            if (taxiRank == null || taxiRank.TenantId != dto.TenantId)
-            {
-                return BadRequest(new { message = "Invalid taxi rank or taxi rank does not belong to the specified tenant" });
-            }
-
-            // Check if user is authorized for this taxi rank
-            bool isAuthorized = false;
-            if (user.Role == "TaxiMarshal")
-            {
-                var marshalProfile = await _context.TaxiMarshalProfiles
-                    .FirstOrDefaultAsync(tmp => tmp.UserId == userId && tmp.TaxiRankId == dto.TaxiRankId);
-                isAuthorized = marshalProfile != null;
-            }
-            else if (user.Role == "TaxiRankAdmin")
-            {
-                var adminProfile = await _context.TaxiRankAdmins
-                    .FirstOrDefaultAsync(trap => trap.UserId == userId && trap.TaxiRankId == dto.TaxiRankId);
-                isAuthorized = adminProfile != null;
-            }
-
-            if (!isAuthorized)
-            {
-                return Forbid("You are not authorized to manage schedules for this taxi rank");
-            }
-
-            var schedule = new TripSchedule
-            {
-                Id = Guid.NewGuid(),
-                TaxiRankId = dto.TaxiRankId,
-                TenantId = dto.TenantId,
-                RouteName = dto.RouteName,
-                DepartureStation = dto.DepartureStation,
-                DestinationStation = dto.DestinationStation,
-                DepartureTime = TimeSpan.Parse(dto.DepartureTime),
-                FrequencyMinutes = dto.FrequencyMinutes,
-                DaysOfWeek = dto.DaysOfWeek,
-                StandardFare = dto.StandardFare,
-                ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
-                MaxPassengers = dto.MaxPassengers,
-                IsActive = dto.IsActive,
-                Notes = dto.Notes,
-                CreatedAt = DateTime.UtcNow
-            };
-            
-            _context.TripSchedules.Add(schedule);
-            await _context.SaveChangesAsync();
-            
-            return CreatedAtAction(nameof(GetAll), new { id = schedule.Id }, schedule);
-        }
-
-        [HttpPut("{id}")]
-        [Authorize(Roles = "TaxiRankAdmin,TaxiMarshal")]
-        public async Task<ActionResult> Update(Guid id, [FromBody] UpdateTripScheduleDto dto)
-        {
-            // Get current user
-            var userIdClaim = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-            {
-                return Unauthorized(new { message = "Invalid user identity" });
-            }
-
-            var schedule = await _context.TripSchedules.FindAsync(id);
-            if (schedule == null)
-            {
-                return NotFound();
-            }
-
-            // Check if user is authorized for this taxi rank
-            var user = _userRepository.GetById(userId);
-            if (user == null)
-            {
-                return Unauthorized(new { message = "User not found" });
-            }
-            
-            bool isAuthorized = false;
-            if (user.Role == "TaxiMarshal")
-            {
-                var marshalProfile = await _context.TaxiMarshalProfiles
-                    .FirstOrDefaultAsync(tmp => tmp.UserId == userId && tmp.TaxiRankId == schedule.TaxiRankId);
-                isAuthorized = marshalProfile != null;
-            }
-            else if (user.Role == "TaxiRankAdmin")
-            {
-                var adminProfile = await _context.TaxiRankAdmins
-                    .FirstOrDefaultAsync(trap => trap.UserId == userId && trap.TaxiRankId == schedule.TaxiRankId);
-                isAuthorized = adminProfile != null;
-            }
-
-            if (!isAuthorized)
-            {
-                return Forbid("You are not authorized to update schedules for this taxi rank");
-            }
-
-            // Update fields
-            if (!string.IsNullOrEmpty(dto.RouteName))
-                schedule.RouteName = dto.RouteName;
-            if (!string.IsNullOrEmpty(dto.DepartureStation))
-                schedule.DepartureStation = dto.DepartureStation;
-            if (!string.IsNullOrEmpty(dto.DestinationStation))
-                schedule.DestinationStation = dto.DestinationStation;
-            if (!string.IsNullOrEmpty(dto.DepartureTime))
-                schedule.DepartureTime = TimeSpan.Parse(dto.DepartureTime);
-            if (dto.FrequencyMinutes > 0)
-                schedule.FrequencyMinutes = dto.FrequencyMinutes;
-            if (!string.IsNullOrEmpty(dto.DaysOfWeek))
-                schedule.DaysOfWeek = dto.DaysOfWeek;
-            if (dto.StandardFare > 0)
-                schedule.StandardFare = dto.StandardFare;
-            if (dto.ExpectedDurationMinutes.HasValue)
-                schedule.ExpectedDurationMinutes = dto.ExpectedDurationMinutes.Value;
-            if (dto.MaxPassengers.HasValue)
-                schedule.MaxPassengers = dto.MaxPassengers.Value;
-            schedule.IsActive = dto.IsActive;
-            if (!string.IsNullOrEmpty(dto.Notes))
-                schedule.Notes = dto.Notes;
-
-            schedule.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            return NoContent();
-        }
-
-        [HttpDelete("{id}")]
-        [Authorize(Roles = "TaxiRankAdmin,TaxiMarshal")]
-        public async Task<ActionResult> Delete(Guid id)
-        {
-            // Get current user
-            var userIdClaim = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-            {
-                return Unauthorized(new { message = "Invalid user identity" });
-            }
-
-            var schedule = await _context.TripSchedules.FindAsync(id);
-            if (schedule == null)
-            {
-                return NotFound();
-            }
-
-            // Check if user is authorized for this taxi rank
-            var user = _userRepository.GetById(userId);
-            if (user == null)
-            {
-                return Unauthorized(new { message = "User not found" });
-            }
-            
-            bool isAuthorized = false;
-            if (user.Role == "TaxiMarshal")
-            {
-                var marshalProfile = await _context.TaxiMarshalProfiles
-                    .FirstOrDefaultAsync(tmp => tmp.UserId == userId && tmp.TaxiRankId == schedule.TaxiRankId);
-                isAuthorized = marshalProfile != null;
-            }
-            else if (user.Role == "TaxiRankAdmin")
-            {
-                var adminProfile = await _context.TaxiRankAdmins
-                    .FirstOrDefaultAsync(trap => trap.UserId == userId && trap.TaxiRankId == schedule.TaxiRankId);
-                isAuthorized = adminProfile != null;
-            }
-
-            if (!isAuthorized)
-            {
-                return Forbid("You are not authorized to delete schedules for this taxi rank");
-            }
-
-            _context.TripSchedules.Remove(schedule);
-            await _context.SaveChangesAsync();
-            return NoContent();
-        }
-    }
-
+    
     [ApiController]
     [Route("api/[controller]")]
     public class MarshalsController : ControllerBase
@@ -874,7 +502,7 @@ namespace MzansiFleet.Api.Controllers
                 var routeIds = trips.Where(t => t.RouteId.HasValue).Select(t => t.RouteId!.Value).Distinct().ToList();
                 var routes = await _context.Set<Route>()
                     .Where(r => routeIds.Contains(r.Id))
-                    .ToDictionaryAsync(r => r.Id, r => r.Name);
+                    .ToDictionaryAsync(r => r.Id, r => r.RouteName);
 
                 var driverIds = trips.Where(t => t.DriverId.HasValue).Select(t => t.DriverId!.Value).Distinct().ToList();
                 var drivers = await _context.Set<DriverProfile>()
@@ -937,11 +565,11 @@ namespace MzansiFleet.Api.Controllers
 
         // NEW: Get passengers from bookings for a scheduled trip
         [HttpGet("passengers/from-bookings")]
-        public async Task<ActionResult<IEnumerable<Passenger>>> GetPassengersFromBookings([FromQuery] Guid tripScheduleId, [FromQuery] DateTime travelDate)
+        public async Task<ActionResult<IEnumerable<Passenger>>> GetPassengersFromBookings([FromQuery] Guid RouteId, [FromQuery] DateTime travelDate)
         {
             try
             {
-                var passengers = await _bookingIntegrationService.GetPassengersFromBookingsAsync(tripScheduleId, travelDate);
+                var passengers = await _bookingIntegrationService.GetPassengersFromBookingsAsync(RouteId, travelDate);
                 return Ok(passengers);
             }
             catch (Exception ex)
@@ -973,7 +601,7 @@ namespace MzansiFleet.Api.Controllers
                 try
                 {
                     var routeName = trip.RouteId.HasValue
-                        ? await _context.Set<Route>().Where(r => r.Id == trip.RouteId.Value).Select(r => r.Name).FirstOrDefaultAsync()
+                        ? await _context.Set<Route>().Where(r => r.Id == trip.RouteId.Value).Select(r => r.RouteName).FirstOrDefaultAsync()
                         : "Unknown Route";
 
                     await _notificationService.NotifyTripCompleted(
@@ -1047,3 +675,4 @@ namespace MzansiFleet.Api.Controllers
         public Guid AssignedByUserId { get; set; }
     }
 }
+

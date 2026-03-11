@@ -7,7 +7,9 @@ using MzansiFleet.Repository;
 using MzansiFleet.Repository.Repositories;
 using MzansiFleet.Application.Handlers;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System;
+using System.Threading.Tasks;
 using MzansiFleet.Api;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -16,9 +18,29 @@ using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 
-var builder = WebApplication.CreateBuilder(args);
+namespace MzansiFleet.Api
+{
+    public class TimeSpanConverter : JsonConverter<TimeSpan>
+    {
+        public override TimeSpan Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = reader.GetString();
+            return TimeSpan.TryParse(value, out var result) ? result : TimeSpan.Zero;
+        }
 
-// Configure logging
+        public override void Write(Utf8JsonWriter writer, TimeSpan value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value.ToString(@"hh\:mm\:ss"));
+        }
+    }
+
+    public class Program
+    {
+        public static async Task Main(string[] args)
+        {
+            var builder = WebApplication.CreateBuilder(args);
+
+            // Configure logging
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
@@ -66,6 +88,7 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
         options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.Converters.Add(new TimeSpanConverter());
     });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -101,8 +124,15 @@ builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITripCost
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITaxiMarshalRepository, MzansiFleet.Repository.Repositories.TaxiMarshalRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITaxiRankAdminRepository, MzansiFleet.Repository.Repositories.TaxiRankAdminRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IVehicleTaxiRankRepository, MzansiFleet.Repository.Repositories.VehicleTaxiRankRepository>();
-builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITripScheduleRepository, MzansiFleet.Repository.Repositories.TripScheduleRepository>();
+builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IRouteRepository, MzansiFleet.Repository.Repositories.RouteRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IScheduledTripBookingRepository, MzansiFleet.Repository.Repositories.ScheduledTripBookingRepository>();
+
+// Register AI Services
+builder.Services.AddScoped<MzansiFleet.Api.Services.AI.RouteOptimizationService>();
+builder.Services.AddScoped<MzansiFleet.Api.Services.AI.DemandForecastingService>();
+builder.Services.AddScoped<MzansiFleet.Api.Services.AI.ChatbotService>();
+builder.Services.AddScoped<MzansiFleet.Api.Services.AI.FraudDetectionService>();
+builder.Services.AddScoped<MzansiFleet.Api.Services.AI.ExternalAIService>();
 
 // Register authentication handlers
 builder.Services.AddScoped<LoginCommandHandler>();
@@ -196,10 +226,98 @@ try
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
     
     // Remove conflicting Routes table if it exists
-    Program_RemoveRoutes.RemoveRoutesTable(connectionString);
+    // Program_RemoveRoutes.RemoveRoutesTable(connectionString); // Commented out to allow Routes table to exist
     
     MigrationRunner.CreateTaxiRankTables(connectionString);
+    
+    // Create Routes table if it doesn't exist
+    using var conn = new Npgsql.NpgsqlConnection(connectionString);
+    conn.Open();
+    using var routesCmd = conn.CreateCommand();
+    routesCmd.CommandText = @"
+        CREATE TABLE IF NOT EXISTS ""Routes"" (
+            ""Id"" UUID PRIMARY KEY,
+            ""TaxiRankId"" UUID NOT NULL,
+            ""TenantId"" UUID NOT NULL,
+            ""RouteName"" TEXT NOT NULL,
+            ""DepartureStation"" TEXT NOT NULL,
+            ""DestinationStation"" TEXT NOT NULL,
+            ""DepartureTime"" INTERVAL NOT NULL,
+            ""FrequencyMinutes"" INTEGER NOT NULL,
+            ""DaysOfWeek"" TEXT NOT NULL,
+            ""StandardFare"" DECIMAL(18,2) NOT NULL,
+            ""ExpectedDurationMinutes"" INTEGER,
+            ""MaxPassengers"" INTEGER,
+            ""IsActive"" BOOLEAN NOT NULL DEFAULT TRUE,
+            ""Notes"" TEXT,
+            ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            ""UpdatedAt"" TIMESTAMP WITH TIME ZONE
+        );
+        
+        CREATE INDEX IF NOT EXISTS ""IX_Routes_TaxiRankId"" ON ""Routes""(""TaxiRankId"");
+        CREATE INDEX IF NOT EXISTS ""IX_Routes_TenantId"" ON ""Routes""(""TenantId"");
+    ";
+    routesCmd.ExecuteNonQuery();
+    
+    // Fix RouteStops table: MigrationRunner created it with "TripScheduleId" but EF expects "RouteId"
+    // Add RouteId column if missing, and make TripScheduleId nullable
+    using var fixRouteStopsCmd = conn.CreateCommand();
+    fixRouteStopsCmd.CommandText = @"
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'RouteStops' AND column_name = 'RouteId'
+            ) THEN
+                ALTER TABLE ""RouteStops"" ADD COLUMN ""RouteId"" UUID;
+            END IF;
+            
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'RouteStops' AND column_name = 'UpdatedAt'
+            ) THEN
+                ALTER TABLE ""RouteStops"" ADD COLUMN ""UpdatedAt"" TIMESTAMP WITH TIME ZONE;
+            END IF;
+        END $$;
+        
+        -- Make TripScheduleId nullable so EF inserts (which only set RouteId) don't fail
+        ALTER TABLE ""RouteStops"" ALTER COLUMN ""TripScheduleId"" DROP NOT NULL;
+        
+        -- Drop the foreign key constraint on TripScheduleId if it exists
+        ALTER TABLE ""RouteStops"" DROP CONSTRAINT IF EXISTS ""FK_RouteStops_TripSchedules"";
+        
+        CREATE INDEX IF NOT EXISTS ""IX_RouteStops_RouteId"" ON ""RouteStops""(""RouteId"");
+    ";
+    fixRouteStopsCmd.ExecuteNonQuery();
+    
+    // Fix RouteVehicles table: same issue - "TripScheduleId" vs "RouteId"
+    using var fixRouteVehiclesCmd = conn.CreateCommand();
+    fixRouteVehiclesCmd.CommandText = @"
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'RouteVehicles' AND column_name = 'RouteId'
+            ) THEN
+                ALTER TABLE ""RouteVehicles"" ADD COLUMN ""RouteId"" UUID;
+            END IF;
+        END $$;
+        
+        ALTER TABLE ""RouteVehicles"" ALTER COLUMN ""TripScheduleId"" DROP NOT NULL;
+        ALTER TABLE ""RouteVehicles"" DROP CONSTRAINT IF EXISTS ""FK_RouteVehicles_TripSchedules"";
+        
+        CREATE INDEX IF NOT EXISTS ""IX_RouteVehicles_RouteId"" ON ""RouteVehicles""(""RouteId"");
+    ";
+    fixRouteVehiclesCmd.ExecuteNonQuery();
+    
     logger.LogInformation("Taxi rank tables created successfully");
+
+    // Add PaymentMethod and PaymentReference columns to TripPassengers if missing
+    using var paymentCmd = conn.CreateCommand();
+    paymentCmd.CommandText = @"
+        ALTER TABLE ""TripPassengers"" ADD COLUMN IF NOT EXISTS ""PaymentMethod"" text NOT NULL DEFAULT 'Cash';
+        ALTER TABLE ""TripPassengers"" ADD COLUMN IF NOT EXISTS ""PaymentReference"" text;
+    ";
+    paymentCmd.ExecuteNonQuery();
+    logger.LogInformation("TripPassengers payment columns ensured");
 }
 catch (Exception ex)
 {
@@ -267,4 +385,7 @@ catch (Exception ex)
 {
     logger.LogError(ex, "Application failed to start");
     throw;
+}
+        }
+    }
 }

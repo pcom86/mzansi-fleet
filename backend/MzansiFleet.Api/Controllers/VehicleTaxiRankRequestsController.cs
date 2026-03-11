@@ -281,3 +281,4 @@ namespace MzansiFleet.Api.Controllers
         public string RejectionReason { get; set; }
     }
 }
+

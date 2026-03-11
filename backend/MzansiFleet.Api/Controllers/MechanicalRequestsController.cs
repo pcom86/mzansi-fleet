@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using MzansiFleet.Application.Commands;
@@ -512,4 +512,5 @@ namespace MzansiFleet.Api.Controllers
         public int? ServiceProviderRating { get; set; } // 1-5 stars rating
     }
 }
+
 

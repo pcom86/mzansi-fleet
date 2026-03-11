@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../contexts/ThemeContext';
@@ -17,8 +17,13 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
   // Form state
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [loadingAssociations, setLoadingAssociations] = useState(false);
+  const [loadingRanks, setLoadingRanks] = useState(false);
+  const [associations, setAssociations] = useState([]);
   const [taxiRanks, setTaxiRanks] = useState([]);
+  const [selectedAssociation, setSelectedAssociation] = useState(null);
   const [selectedTaxiRank, setSelectedTaxiRank] = useState(null);
+  const [associationModalVisible, setAssociationModalVisible] = useState(false);
   const [rankModalVisible, setRankModalVisible] = useState(false);
   
   // Personal Information
@@ -56,21 +61,57 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
       setMarshalCode(code);
     }
     
-    // Load taxi ranks
-    loadTaxiRanks();
+    // Load all taxi ranks on mount
+    loadAllTaxiRanks();
     
     // Pre-select taxi rank if provided
     if (taxiRankId) {
       setSelectedTaxiRank(taxiRankId);
+      loadAssociationsForRank(taxiRankId);
     }
   }, [fullName, taxiRankId]);
 
-  const loadTaxiRanks = async () => {
+  const loadAllTaxiRanks = async () => {
+    setLoadingRanks(true);
     try {
       const response = await client.get('/TaxiRanks');
-      setTaxiRanks(response.data || []);
+      if (response.data && Array.isArray(response.data)) {
+        setTaxiRanks(response.data);
+      } else {
+        setTaxiRanks([]);
+      }
     } catch (error) {
       console.error('Load taxi ranks error:', error);
+      Alert.alert('Error', 'Failed to load taxi ranks. Please check your connection.');
+      setTaxiRanks([]);
+    } finally {
+      setLoadingRanks(false);
+    }
+  };
+
+  const loadAssociationsForRank = async (rankId) => {
+    if (!rankId) {
+      setAssociations([]);
+      return;
+    }
+    setLoadingAssociations(true);
+    try {
+      const response = await client.get(`/TaxiRanks/${rankId}/associations`);
+      const data = response.data || [];
+      // Map associations to get the tenant info
+      const mapped = Array.isArray(data) ? data.map(a => ({
+        id: a.tenantId || a.tenant?.id,
+        name: a.tenant?.name || 'Unknown Association',
+        code: a.tenant?.code,
+        isPrimary: a.isPrimary,
+      })) : [];
+      setAssociations(mapped);
+    } catch (error) {
+      console.error('Load associations error:', error);
+      Alert.alert('Error', 'Failed to load associations for this taxi rank.');
+      setAssociations([]);
+    } finally {
+      setLoadingAssociations(false);
     }
   };
 
@@ -91,6 +132,10 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
         }
         if (!selectedTaxiRank) {
           Alert.alert('Error', 'Please select a taxi rank');
+          return false;
+        }
+        if (!selectedAssociation) {
+          Alert.alert('Error', 'Please select an association for this taxi rank');
           return false;
         }
         return true;
@@ -153,6 +198,7 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
         marshalCode,
         emergencyContact,
         experience,
+        tenantId: selectedAssociation, // Add association/tenant ID
         taxiRankId: selectedTaxiRank,
         permissions,
         status: 'Active',
@@ -177,7 +223,7 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
 
       Alert.alert(
         'Success!',
-        `Marshal account created successfully!\n\nMarshal Code: ${marshalCode}\nTaxi Rank: ${getSelectedTaxiRankName()}\nYou can now log in with these credentials.`,
+        `Marshal account created successfully!\n\nMarshal Code: ${marshalCode}\nAssociation: ${getSelectedAssociationName()}\nTaxi Rank: ${getSelectedTaxiRankName()}\nYou can now log in with these credentials.`,
         [
           {
             text: 'OK',
@@ -197,6 +243,26 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
     if (!selectedTaxiRank) return 'Select Taxi Rank';
     const rank = taxiRanks.find(r => r.id === selectedTaxiRank);
     return rank ? rank.name : 'Select Taxi Rank';
+  };
+
+  const getSelectedAssociationName = () => {
+    if (!selectedAssociation) return 'Select Association';
+    const association = associations.find(a => a.id === selectedAssociation);
+    return association ? association.name : 'Select Association';
+  };
+
+  // Handle taxi rank selection → load associations for that rank
+  const handleTaxiRankSelect = (rankId) => {
+    setSelectedTaxiRank(rankId);
+    setSelectedAssociation(null); // Reset association when rank changes
+    setRankModalVisible(false);
+    loadAssociationsForRank(rankId);
+  };
+
+  // Handle association selection
+  const handleAssociationSelect = (associationId) => {
+    setSelectedAssociation(associationId);
+    setAssociationModalVisible(false);
   };
 
   const nextStep = () => {
@@ -275,15 +341,43 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: c.textMuted }]}>Organization (Taxi Rank) *</Text>
+              <Text style={[styles.label, { color: c.textMuted }]}>Taxi Rank *</Text>
               <TouchableOpacity
                 style={[styles.input, styles.dropdownInput, { backgroundColor: c.surface, borderColor: c.border }]}
                 onPress={() => setRankModalVisible(true)}
+                disabled={loadingRanks}
               >
                 <View style={styles.dropdownContent}>
-                  <Ionicons name="location-outline" size={20} color={c.textMuted} />
+                  {loadingRanks ? (
+                    <ActivityIndicator size="small" color={c.textMuted} />
+                  ) : (
+                    <Ionicons name="location-outline" size={20} color={c.textMuted} />
+                  )}
                   <Text style={[styles.dropdownText, { color: selectedTaxiRank ? c.text : c.textMuted }]}>
-                    {getSelectedTaxiRankName()}
+                    {loadingRanks ? 'Loading taxi ranks...' : getSelectedTaxiRankName()}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color={c.textMuted} />
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: c.textMuted }]}>Association *</Text>
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownInput, { backgroundColor: c.surface, borderColor: c.border }]}
+                onPress={() => selectedTaxiRank ? setAssociationModalVisible(true) : null}
+                disabled={!selectedTaxiRank || loadingAssociations}
+              >
+                <View style={styles.dropdownContent}>
+                  {loadingAssociations ? (
+                    <ActivityIndicator size="small" color={c.textMuted} />
+                  ) : (
+                    <Ionicons name="business-outline" size={20} color={c.textMuted} />
+                  )}
+                  <Text style={[styles.dropdownText, { color: selectedAssociation ? c.text : c.textMuted }]}>
+                    {!selectedTaxiRank ? 'Select a taxi rank first' : 
+                     loadingAssociations ? 'Loading associations...' : 
+                     getSelectedAssociationName()}
                   </Text>
                   <Ionicons name="chevron-down" size={20} color={c.textMuted} />
                 </View>
@@ -452,6 +546,14 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
                 <Text style={[styles.reviewLabel, { color: c.textMuted }]}>Phone:</Text>
                 <Text style={[styles.reviewValue, { color: c.text }]}>{phoneNumber}</Text>
               </View>
+              <View style={styles.reviewRow}>
+                <Text style={[styles.reviewLabel, { color: c.textMuted }]}>Taxi Rank:</Text>
+                <Text style={[styles.reviewValue, { color: c.text }]}>{getSelectedTaxiRankName()}</Text>
+              </View>
+              <View style={styles.reviewRow}>
+                <Text style={[styles.reviewLabel, { color: c.textMuted }]}>Association:</Text>
+                <Text style={[styles.reviewValue, { color: c.text }]}>{getSelectedAssociationName()}</Text>
+              </View>
             </View>
 
             <View style={styles.reviewCard}>
@@ -536,6 +638,76 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
         {renderStep()}
       </ScrollView>
 
+      {/* Association Selection Modal */}
+      <Modal visible={associationModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: c.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Select Association</Text>
+              <TouchableOpacity onPress={() => setAssociationModalVisible(false)}>
+                <Ionicons name="close" size={24} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalScroll}>
+              {loadingAssociations ? (
+                <View style={styles.emptyState}>
+                  <ActivityIndicator size="large" color={GOLD} />
+                  <Text style={[styles.emptyStateText, { color: c.textMuted }]}>Loading associations...</Text>
+                </View>
+              ) : associations.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="business-outline" size={48} color={c.textMuted} />
+                  <Text style={[styles.emptyStateText, { color: c.textMuted }]}>
+                    No associations linked to this taxi rank
+                  </Text>
+                  <Text style={[styles.emptyStateSubtext, { color: c.textMuted }]}>
+                    This taxi rank has no associations. Please contact your administrator.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.retryButton, { backgroundColor: GOLD }]}
+                    onPress={() => loadAssociationsForRank(selectedTaxiRank)}
+                  >
+                    <Text style={[styles.retryButtonText, { color: '#000' }]}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                associations.map((association) => (
+                  <TouchableOpacity
+                    key={association.id}
+                    style={[
+                      styles.optionItem,
+                      { backgroundColor: c.surface, borderColor: c.border },
+                      selectedAssociation === association.id && { backgroundColor: 'rgba(255,215,0,0.1)', borderColor: GOLD }
+                    ]}
+                    onPress={() => handleAssociationSelect(association.id)}
+                  >
+                    <View style={styles.optionHeader}>
+                      <Text style={[styles.optionTitle, { color: c.text }]}>{association.name}</Text>
+                      {association.code && (
+                        <Text style={[styles.optionCode, { color: GOLD }]}>{association.code}</Text>
+                      )}
+                    </View>
+                    {association.description && (
+                      <Text style={[styles.optionSubtitle, { color: c.textMuted }]} numberOfLines={2}>
+                        {association.description}
+                      </Text>
+                    )}
+                    {association.type && (
+                      <View style={styles.statusBadge}>
+                        <Text style={[styles.statusText, { color: c.text }]}>
+                          {association.type}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Taxi Rank Selection Modal */}
       <Modal visible={rankModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -548,25 +720,50 @@ export default function MarshalOnboardingScreen({ navigation, route }) {
             </View>
             
             <ScrollView style={styles.modalScroll}>
-              {taxiRanks.map((rank) => (
-                <TouchableOpacity
-                  key={rank.id}
-                  style={[
-                    styles.optionItem,
-                    { backgroundColor: c.surface, borderColor: c.border },
-                    selectedTaxiRank === rank.id && { backgroundColor: 'rgba(255,215,0,0.1)', borderColor: GOLD }
-                  ]}
-                  onPress={() => {
-                    setSelectedTaxiRank(rank.id);
-                    setRankModalVisible(false);
-                  }}
-                >
-                  <Text style={[styles.optionTitle, { color: c.text }]}>{rank.name}</Text>
-                  <Text style={[styles.optionSubtitle, { color: c.textMuted }]}>
-                    {rank.code} • {rank.address}
+              {taxiRanks.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="location-outline" size={48} color={c.textMuted} />
+                  <Text style={[styles.emptyStateText, { color: c.textMuted }]}>
+                    No taxi ranks available
                   </Text>
-                </TouchableOpacity>
-              ))}
+                  <Text style={[styles.emptyStateSubtext, { color: c.textMuted }]}>
+                    Please contact your administrator to add taxi ranks
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.retryButton, { backgroundColor: GOLD }]}
+                    onPress={loadAllTaxiRanks}
+                  >
+                    <Text style={[styles.retryButtonText, { color: '#000' }]}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                taxiRanks.map((rank) => (
+                  <TouchableOpacity
+                    key={rank.id}
+                    style={[
+                      styles.optionItem,
+                      { backgroundColor: c.surface, borderColor: c.border },
+                      selectedTaxiRank === rank.id && { backgroundColor: 'rgba(255,215,0,0.1)', borderColor: GOLD }
+                    ]}
+                    onPress={() => handleTaxiRankSelect(rank.id)}
+                  >
+                    <View style={styles.optionHeader}>
+                      <Text style={[styles.optionTitle, { color: c.text }]}>{rank.name}</Text>
+                      <Text style={[styles.optionCode, { color: GOLD }]}>{rank.code}</Text>
+                    </View>
+                    <Text style={[styles.optionSubtitle, { color: c.textMuted }]} numberOfLines={2}>
+                      {rank.address || 'No address available'}
+                    </Text>
+                    {rank.status && (
+                      <View style={styles.statusBadge}>
+                        <Text style={[styles.statusText, { color: c.text }]}>
+                          {rank.status}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
           </View>
         </View>
@@ -883,5 +1080,68 @@ const styles = StyleSheet.create({
   },
   optionSubtitle: {
     fontSize: 14
+  },
+
+  // Enhanced option styles
+  optionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8
+  },
+  optionCode: {
+    fontSize: 14,
+    fontWeight: '700',
+    backgroundColor: 'rgba(255,215,0,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6
+  },
+  statusBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0,123,255,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(0,123,255,0.3)'
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600'
+  },
+
+  // Empty state styles
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center'
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20
+  },
+  retryButton: {
+    borderRadius: 12,
+    padding: 16,
+    paddingHorizontal: 32,
+    alignItems: 'center'
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '700'
   }
 });

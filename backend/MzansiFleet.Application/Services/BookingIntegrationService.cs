@@ -24,11 +24,11 @@ namespace MzansiFleet.Application.Services
             _context = context;
         }
 
-        public async Task<List<Passenger>> GetPassengersFromBookingsAsync(Guid tripScheduleId, DateTime travelDate)
+        public async Task<List<Passenger>> GetPassengersFromBookingsAsync(Guid routeId, DateTime travelDate)
         {
             var bookings = await _context.ScheduledTripBookings
                 .Include(b => b.Passengers)
-                .Where(b => b.TripScheduleId == tripScheduleId && 
+                .Where(b => b.RouteId == routeId && 
                            b.TravelDate.Date == travelDate.Date && 
                            b.Status == "Confirmed")
                 .ToListAsync();

@@ -31,3 +31,4 @@ namespace MzansiFleet.Api.Controllers
         }
     }
 }
+

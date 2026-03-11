@@ -62,7 +62,7 @@ namespace MzansiFleet.Repository
         public DbSet<TaxiRankAdminProfile> TaxiRankAdmins { get; set; }
         public DbSet<VehicleTaxiRank> VehicleTaxiRanks { get; set; }
         public DbSet<VehicleTaxiRankRequest> VehicleTaxiRankRequests { get; set; }
-        public DbSet<TripSchedule> TripSchedules { get; set; }
+        public DbSet<Route> Routes { get; set; }
         public DbSet<ScheduledTrip> ScheduledTrips { get; set; }
         public DbSet<RouteStop> RouteStops { get; set; }
         public DbSet<RouteVehicle> RouteVehicles { get; set; }
@@ -257,6 +257,22 @@ namespace MzansiFleet.Repository
                 .HasForeignKey(r => r.ServiceProviderId)
                 .OnDelete(DeleteBehavior.SetNull);
             
+            // Queue Marshal Module - Configure MarshalPermissions as owned type
+            modelBuilder.Entity<QueueMarshal>().Property(q => q.Id).ValueGeneratedNever();
+            modelBuilder.Entity<QueueMarshal>().OwnsOne(q => q.Permissions, p =>
+            {
+                p.Property(x => x.CanCaptureTrips).HasColumnName("Permissions_CanCaptureTrips");
+                p.Property(x => x.CanViewSchedules).HasColumnName("Permissions_CanViewSchedules");
+                p.Property(x => x.CanReceiveMessages).HasColumnName("Permissions_CanReceiveMessages");
+                p.Property(x => x.CanSendMessages).HasColumnName("Permissions_CanSendMessages");
+                p.Property(x => x.CanManageVehicles).HasColumnName("Permissions_CanManageVehicles");
+                p.Property(x => x.CanManageDrivers).HasColumnName("Permissions_CanManageDrivers");
+                p.Property(x => x.CanManageSchedules).HasColumnName("Permissions_CanManageSchedules");
+                p.Property(x => x.CanViewReports).HasColumnName("Permissions_CanViewReports");
+                p.Property(x => x.CanDeleteData).HasColumnName("Permissions_CanDeleteData");
+            });
+            modelBuilder.Entity<TripCapture>().Property(t => t.Id).ValueGeneratedNever();
+
             // Admin Dashboard Module - Trip and Passenger relationship
             modelBuilder.Entity<Trip>()
                 .HasMany(t => t.Passengers)

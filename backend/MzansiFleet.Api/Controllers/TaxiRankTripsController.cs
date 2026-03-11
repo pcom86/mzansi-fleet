@@ -150,7 +150,7 @@ namespace MzansiFleet.Api.Controllers
             // Try to get route information
             if (routeId.HasValue)
             {
-                var route = await _context.TripSchedules.FindAsync(routeId.Value);
+                var route = await _context.Routes.FindAsync(routeId.Value);
                 if (route != null)
                 {
                     departureStation = route.DepartureStation;
@@ -396,7 +396,7 @@ namespace MzansiFleet.Api.Controllers
                 DepartureStation = dto.DepartureStation,
                 DestinationStation = dto.DestinationStation,
                 DepartureTime = dto.DepartureTime ?? DateTime.UtcNow,
-                Status = "Departed",
+                Status = "Loading",
                 PassengerCount = 0,
                 TotalAmount = 0,
                 TotalCosts = 0,
@@ -449,6 +449,8 @@ namespace MzansiFleet.Api.Controllers
                 DepartureStation = dto.DepartureStation,
                 ArrivalStation = dto.ArrivalStation,
                 Amount = dto.Amount,
+                PaymentMethod = dto.PaymentMethod ?? "Cash",
+                PaymentReference = dto.PaymentReference,
                 SeatNumber = dto.SeatNumber,
                 Notes = dto.Notes,
                 BoardedAt = DateTime.UtcNow
@@ -572,6 +574,8 @@ namespace MzansiFleet.Api.Controllers
                 DepartureStation = dto.DepartureStation ?? trip.DepartureStation,
                 ArrivalStation = dto.ArrivalStation ?? trip.DestinationStation,
                 Amount = dto.Amount,
+                PaymentMethod = dto.PaymentMethod ?? "Cash",
+                PaymentReference = dto.PaymentReference,
                 SeatNumber = dto.SeatNumber,
                 Notes = dto.Notes,
                 BoardedAt = DateTime.UtcNow
@@ -735,6 +739,8 @@ namespace MzansiFleet.Api.Controllers
         public string DepartureStation { get; set; } = string.Empty;
         public string ArrivalStation { get; set; } = string.Empty;
         public decimal Amount { get; set; }
+        public string PaymentMethod { get; set; } = "Cash"; // Cash, Card
+        public string? PaymentReference { get; set; }
         public int? SeatNumber { get; set; }
         public string Notes { get; set; }
     }
@@ -747,6 +753,8 @@ namespace MzansiFleet.Api.Controllers
         public string DepartureStation { get; set; }
         public string ArrivalStation { get; set; }
         public decimal Amount { get; set; }
+        public string PaymentMethod { get; set; } = "Cash"; // Cash, Card
+        public string? PaymentReference { get; set; }
         public int? SeatNumber { get; set; }
         public string Notes { get; set; }
     }
@@ -806,3 +814,4 @@ namespace MzansiFleet.Api.Controllers
         public string Notes { get; set; } = string.Empty;
     }
 }
+

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Application.Commands;
 using MzansiFleet.Application.Queries;
@@ -97,3 +97,4 @@ namespace MzansiFleet.Api.Controllers
         }
     }
 }
+

@@ -38,7 +38,7 @@ namespace MzansiFleet.Domain.Entities
         public ICollection<TaxiRankTrip> Trips { get; set; } = new List<TaxiRankTrip>();
         public ICollection<TaxiRankAdminProfile> Admins { get; set; } = new List<TaxiRankAdminProfile>();
         public ICollection<VehicleTaxiRank> AssignedVehicles { get; set; } = new List<VehicleTaxiRank>();
-        public ICollection<TripSchedule> Schedules { get; set; } = new List<TripSchedule>();
+        public ICollection<Route> Routes { get; set; } = new List<Route>();
         public ICollection<DailyTaxiQueue> DailyQueues { get; set; } = new List<DailyTaxiQueue>();
         
         // Many-to-many relationship with Associations (Tenants)
@@ -102,15 +102,15 @@ namespace MzansiFleet.Domain.Entities
     }
 
     /// <summary>
-    /// Represents scheduled trips for a taxi rank route
+    /// Represents a route for a taxi rank (previously TripSchedule)
     /// </summary>
-    public class TripSchedule
+    public class Route
     {
         public Guid Id { get; set; }
         public Guid TaxiRankId { get; set; }
         public Guid TenantId { get; set; }
         
-        // Schedule Details
+        // Route Details
         public string RouteName { get; set; } = string.Empty; // e.g., "JHB to PTA"
         public string DepartureStation { get; set; } = string.Empty;
         public string DestinationStation { get; set; } = string.Empty;
@@ -146,7 +146,7 @@ namespace MzansiFleet.Domain.Entities
     public class RouteStop
     {
         public Guid Id { get; set; }
-        public Guid TripScheduleId { get; set; }
+        public Guid RouteId { get; set; }
         public string StopName { get; set; } = string.Empty;
         public int StopOrder { get; set; }          // 1-based order along the route
         public decimal FareFromOrigin { get; set; } // Fare to board at origin and alight here
@@ -156,7 +156,7 @@ namespace MzansiFleet.Domain.Entities
 
         // Navigation Properties
         [System.Text.Json.Serialization.JsonIgnore]
-        public TripSchedule? TripSchedule { get; set; }
+        public Route? Route { get; set; }
     }
 
     /// <summary>
@@ -165,7 +165,7 @@ namespace MzansiFleet.Domain.Entities
     public class ScheduledTrip
     {
         public Guid Id { get; set; }
-        public Guid TripScheduleId { get; set; } // Links to the route template
+        public Guid RouteId { get; set; } // Links to the route template
         public Guid TaxiRankId { get; set; }
         public Guid TenantId { get; set; }
         
@@ -197,7 +197,7 @@ namespace MzansiFleet.Domain.Entities
         public DateTime? UpdatedAt { get; set; }
         
         // Navigation Properties
-        public TripSchedule? TripSchedule { get; set; }
+        public Route? Route { get; set; }
         public TaxiRank? TaxiRank { get; set; }
         public Vehicle? Vehicle { get; set; }
         public DriverProfile? Driver { get; set; }
@@ -262,6 +262,8 @@ namespace MzansiFleet.Domain.Entities
         
         // Financial
         public decimal Amount { get; set; } // Amount paid by this passenger
+        public string PaymentMethod { get; set; } = "Cash"; // Cash, Card
+        public string? PaymentReference { get; set; } // Card transaction reference
         
         // Seat Information
         public int? SeatNumber { get; set; }
@@ -374,12 +376,13 @@ namespace MzansiFleet.Domain.Entities
     {
         public Guid Id { get; set; }
         public Guid UserId { get; set; }
-        public Guid TripScheduleId { get; set; }
+        public Guid RouteId { get; set; }
         public Guid TaxiRankId { get; set; }
         
         // Booking Details
         public DateTime TravelDate { get; set; } // The specific date the user wants to travel
         public int SeatsBooked { get; set; } = 1;
+        public List<int> SeatNumbers { get; set; } = new(); // Specific seat numbers selected
         public decimal TotalFare { get; set; }
         
         // Payment Information
@@ -401,7 +404,7 @@ namespace MzansiFleet.Domain.Entities
         
         // Navigation Properties
         public User? User { get; set; }
-        public TripSchedule? TripSchedule { get; set; }
+        public Route? Route { get; set; }
         public TaxiRank? TaxiRank { get; set; }
         public ICollection<BookingPassenger> Passengers { get; set; } = new List<BookingPassenger>();
     }
@@ -435,7 +438,7 @@ namespace MzansiFleet.Domain.Entities
     public class RouteVehicle
     {
         public Guid Id { get; set; }
-        public Guid TripScheduleId { get; set; }
+        public Guid RouteId { get; set; }
         public Guid VehicleId { get; set; }
         public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
         public bool IsActive { get; set; } = true;
@@ -443,7 +446,7 @@ namespace MzansiFleet.Domain.Entities
 
         // Navigation Properties
         [System.Text.Json.Serialization.JsonIgnore]
-        public TripSchedule? TripSchedule { get; set; }
+        public Route? Route { get; set; }
         public Vehicle? Vehicle { get; set; }
     }
 }

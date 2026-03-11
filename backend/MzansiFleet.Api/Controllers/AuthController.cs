@@ -117,3 +117,4 @@ namespace MzansiFleet.Api.Controllers
         public bool? IsActive { get; set; }
     }
 }
+

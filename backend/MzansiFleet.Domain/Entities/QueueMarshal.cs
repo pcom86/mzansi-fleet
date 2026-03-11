@@ -40,7 +40,7 @@ namespace MzansiFleet.Domain.Entities
     {
         public Guid Id { get; set; }
         public Guid MarshalId { get; set; }
-        public Guid ScheduleId { get; set; }
+        public Guid RouteId { get; set; }
         public Guid VehicleId { get; set; }
         public Guid TaxiRankId { get; set; }
         public int PassengerCount { get; set; }
@@ -54,7 +54,7 @@ namespace MzansiFleet.Domain.Entities
 
         // Navigation properties
         public QueueMarshal Marshal { get; set; }
-        public TripSchedule Schedule { get; set; }
+        public Route Route { get; set; }
         public Vehicle Vehicle { get; set; }
         public TaxiRank TaxiRank { get; set; }
     }

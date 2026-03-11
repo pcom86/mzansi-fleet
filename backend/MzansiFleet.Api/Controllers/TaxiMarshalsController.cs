@@ -334,3 +334,4 @@ namespace MzansiFleet.Api.Controllers
         public string Role { get; set; } = string.Empty;
     }
 }
+
