@@ -22,13 +22,24 @@ export default function RiderBookingScreen({ navigation }) {
   // Form state
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [passengerCount, setPassengerCount] = useState(1);
-  const [passengers, setPassengers] = useState([
-    { name: '', contactNumber: '', email: '', idNumber: '', address: '', destination: '' }
-  ]);
   const [paymentMethod, setPaymentMethod] = useState(''); // 'ozow' | 'wallet' | 'cash'
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Cart state
+  const [passengerCart, setPassengerCart] = useState([]);
+  const [currentPassenger, setCurrentPassenger] = useState({
+    name: '',
+    contactNumber: '',
+    email: '',
+    idNumber: '',
+    address: '',
+    destination: ''
+  });
+
+  // UI state
+  const [showCart, setShowCart] = useState(false);
+  const [step, setStep] = useState('add'); // 'add' | 'cart' | 'payment' | 'confirmation'
 
   // Data state
   const [schedules, setSchedules] = useState([]);
@@ -66,6 +77,47 @@ export default function RiderBookingScreen({ navigation }) {
   // ===== HELPERS =====
   const selectedTaxiRank = taxiRanks.find(r => r.id === selectedSchedule?.taxiRankId);
 
+  // ===== FARE CALCULATION =====
+  const calculateFareForDestination = (destination) => {
+    if (!selectedSchedule || !destination) return selectedSchedule?.standardFare || 0;
+    
+    // Different destinations have different fares
+    // This could be enhanced with a proper fare matrix from the API
+    const baseFare = selectedSchedule.standardFare;
+    
+    // Example fare multipliers for different destinations
+    const destinationMultipliers = {
+      [selectedSchedule.destinationStation]: 1.0, // Default route destination
+      // Major cities might have higher fares
+      'Johannesburg': 1.5,
+      'Pretoria': 1.3,
+      'Durban': 1.4,
+      'Cape Town': 1.6,
+      'Port Elizabeth': 1.2,
+      'Bloemfontein': 1.1,
+      'Polokwane': 1.2,
+      'Nelspruit': 1.3,
+      'Kimberley': 1.1,
+      // Smaller towns might have lower fares
+      'Middelburg': 0.8,
+      'Witbank': 0.9,
+      'Secunda': 0.9,
+      'Standerton': 0.8,
+    };
+    
+    const multiplier = destinationMultipliers[destination] || 1.0;
+    return Math.round(baseFare * multiplier * 100) / 100; // Round to 2 decimal places
+  };
+
+  const calculateTotalFare = () => {
+    return passengerCart.reduce((total, passenger) => {
+      const destination = passenger.destination?.trim() || selectedSchedule?.destinationStation;
+      return total + calculateFareForDestination(destination);
+    }, 0);
+  };
+
+  const getCartSize = () => passengerCart.length;
+
   // ===== FORM HANDLERS =====
   function selectSchedule(schedule) {
     setSelectedSchedule(schedule);
@@ -77,32 +129,78 @@ export default function RiderBookingScreen({ navigation }) {
     setPaymentModalVisible(false);
   }
 
-  function updatePassenger(index, field, value) {
-    const updated = [...passengers];
-    updated[index] = { ...updated[index], [field]: value };
-    setPassengers(updated);
+  // ===== CART MANAGEMENT =====
+  function updateCurrentPassenger(field, value) {
+    setCurrentPassenger(prev => ({ ...prev, [field]: value }));
   }
 
-  function addPassenger() {
-    setPassengers([...passengers, { name: '', contactNumber: '', email: '', idNumber: '', address: '', destination: '' }]);
-  }
-
-  function removePassenger(index) {
-    if (passengers.length > 1) {
-      setPassengers(passengers.filter((_, i) => i !== index));
+  function addPassengerToCart() {
+    // Validate current passenger
+    if (!currentPassenger.name.trim()) {
+      Alert.alert('Validation Error', 'Passenger name is required');
+      return;
     }
+    if (!currentPassenger.contactNumber.trim()) {
+      Alert.alert('Validation Error', 'Contact number is required');
+      return;
+    }
+
+    // Add to cart
+    const newPassenger = {
+      ...currentPassenger,
+      id: Date.now().toString(), // Simple unique ID
+      name: currentPassenger.name.trim(),
+      contactNumber: currentPassenger.contactNumber.trim(),
+      email: currentPassenger.email.trim() || '',
+      idNumber: currentPassenger.idNumber.trim() || '',
+      address: currentPassenger.address.trim() || '',
+      destination: currentPassenger.destination.trim() || selectedSchedule?.destinationStation || '',
+    };
+
+    setPassengerCart(prev => [...prev, newPassenger]);
+    
+    // Reset current passenger form
+    setCurrentPassenger({
+      name: '',
+      contactNumber: '',
+      email: '',
+      idNumber: '',
+      address: '',
+      destination: ''
+    });
+
+    Alert.alert('Success', `${newPassenger.name} added to cart`);
+  }
+
+  function removePassengerFromCart(passengerId) {
+    const passenger = passengerCart.find(p => p.id === passengerId);
+    setPassengerCart(prev => prev.filter(p => p.id !== passengerId));
+    if (passenger) {
+      Alert.alert('Removed', `${passenger.name} removed from cart`);
+    }
+  }
+
+  function clearCart() {
+    setPassengerCart([]);
+    Alert.alert('Cart Cleared', 'All passengers removed from cart');
+  }
+
+  function proceedToCheckout() {
+    if (passengerCart.length === 0) {
+      Alert.alert('Cart Empty', 'Please add passengers to cart first');
+      return;
+    }
+    setStep('payment');
+  }
+
+  function goBackToAddPassengers() {
+    setStep('add');
   }
 
   function validateForm() {
     if (!selectedSchedule) return 'Please select a scheduled trip';
     if (!paymentMethod) return 'Please select a payment method';
-    
-    for (let i = 0; i < passengerCount; i++) {
-      const p = passengers[i];
-      if (!p.name.trim()) return `Passenger ${i + 1}: Name is required`;
-      if (!p.contactNumber.trim()) return `Passenger ${i + 1}: Contact number is required`;
-    }
-    
+    if (passengerCart.length === 0) return 'Please add passengers to cart';
     return null;
   }
 
@@ -114,32 +212,39 @@ export default function RiderBookingScreen({ navigation }) {
     try {
       const bookingData = {
         userId: user?.id,
-        tripScheduleId: selectedSchedule.id,
-        taxiRankId: selectedSchedule.taxiRankId,
+        routeId: selectedSchedule.id, // Changed from tripScheduleId to routeId
         travelDate: selectedDate.toISOString(),
-        seatsBooked: passengerCount,
-        totalFare: selectedSchedule.standardFare * passengerCount,
-        passengers: passengers.slice(0, passengerCount).map(p => ({
-          name: p.name.trim(),
-          contactNumber: p.contactNumber.trim(),
-          email: p.email.trim() || null,
-          idNumber: p.idNumber.trim() || null,
-          address: p.address.trim() || null,
-          destination: p.destination.trim() || selectedSchedule.destinationStation,
+        seatsBooked: passengerCart.length,
+        totalFare: calculateTotalFare(),
+        passengers: passengerCart.map(p => ({
+          name: p.name,
+          contactNumber: p.contactNumber,
+          email: p.email || null,
+          idNumber: p.idNumber || null,
+          address: p.address || null,
+          destination: p.destination || selectedSchedule.destinationStation,
         })),
         paymentMethod,
         notes: notes.trim() || null,
       };
 
       const resp = await client.post('/ScheduledTripBookings', bookingData);
-      Alert.alert('Booking Successful!', `Your booking has been confirmed. Booking ID: ${resp.data?.id}`);
+      Alert.alert('Booking Successful!', `${passengerCart.length} passenger(s) booked successfully! Booking ID: ${resp.data?.id}`);
       
-      // Reset form
+      // Reset everything
       setSelectedSchedule(null);
-      setPassengers([{ name: '', contactNumber: '', email: '', idNumber: '', address: '', destination: '' }]);
-      setPassengerCount(1);
+      setPassengerCart([]);
+      setCurrentPassenger({
+        name: '',
+        contactNumber: '',
+        email: '',
+        idNumber: '',
+        address: '',
+        destination: ''
+      });
       setPaymentMethod('');
       setNotes('');
+      setStep('add');
     } catch (err) {
       Alert.alert('Booking Failed', err?.response?.data?.message || err?.message || 'Failed to create booking');
     } finally {
@@ -148,67 +253,170 @@ export default function RiderBookingScreen({ navigation }) {
   }
 
   // ===== RENDER HELPERS =====
-  function renderPassengerInput(index, passenger) {
+  function renderAddPassengerForm() {
     return (
-      <View key={index} style={[styles.passengerCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-        <View style={styles.passengerHeader}>
-          <Text style={[styles.passengerTitle, { color: c.text }]}>Passenger {index + 1}</Text>
-          {passengerCount > 1 && (
-            <TouchableOpacity onPress={() => removePassenger(index)} style={styles.removeBtn}>
-              <Ionicons name="remove-circle-outline" size={20} color={RED} />
+      <View>
+        {/* Current Passenger Form */}
+        <View style={[styles.passengerCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <View style={styles.passengerHeader}>
+            <View style={styles.passengerHeaderLeft}>
+              <Ionicons name="person-add-outline" size={20} color={GOLD} />
+              <Text style={[styles.passengerTitle, { color: c.text, marginLeft: 8 }]}>Add Passenger</Text>
+            </View>
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeText}>{getCartSize()}</Text>
+            </View>
+          </View>
+          
+          <View style={styles.formRow}>
+            <View style={styles.formHalf}>
+              <Text style={[styles.label, { color: c.textMuted }]}>Full Name *</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                placeholder="Enter full name"
+                placeholderTextColor={c.textMuted}
+                value={currentPassenger.name}
+                onChangeText={(value) => updateCurrentPassenger('name', value)}
+              />
+            </View>
+            
+            <View style={styles.formHalf}>
+              <Text style={[styles.label, { color: c.textMuted }]}>Contact Number *</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                placeholder="Phone number"
+                placeholderTextColor={c.textMuted}
+                value={currentPassenger.contactNumber}
+                onChangeText={(value) => updateCurrentPassenger('contactNumber', value)}
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+          
+          <View style={styles.formRow}>
+            <View style={styles.formHalf}>
+              <Text style={[styles.label, { color: c.textMuted }]}>Email Address</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                placeholder="Email (optional)"
+                placeholderTextColor={c.textMuted}
+                value={currentPassenger.email}
+                onChangeText={(value) => updateCurrentPassenger('email', value)}
+                keyboardType="email-address"
+              />
+            </View>
+            
+            <View style={styles.formHalf}>
+              <Text style={[styles.label, { color: c.textMuted }]}>ID Number</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                placeholder="ID number (optional)"
+                placeholderTextColor={c.textMuted}
+                value={currentPassenger.idNumber}
+                onChangeText={(value) => updateCurrentPassenger('idNumber', value)}
+              />
+            </View>
+          </View>
+          
+          <Text style={[styles.label, { color: c.textMuted }]}>Address</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+            placeholder="Address (optional)"
+            placeholderTextColor={c.textMuted}
+            value={currentPassenger.address}
+            onChangeText={(value) => updateCurrentPassenger('address', value)}
+          />
+          
+          <Text style={[styles.label, { color: c.textMuted }]}>Destination</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+            placeholder={`Different destination? (Default: ${selectedSchedule?.destinationStation || 'route destination'})`}
+            placeholderTextColor={c.textMuted}
+            value={currentPassenger.destination}
+            onChangeText={(value) => updateCurrentPassenger('destination', value)}
+          />
+          
+          {/* Show fare for this passenger's destination */}
+          {currentPassenger.destination && (
+            <View style={[styles.fareHint, { backgroundColor: GOLD_LIGHT, borderColor: GOLD }]}>
+              <Ionicons name="cash-outline" size={14} color={GOLD} />
+              <Text style={[styles.fareHintText, { color: GOLD }]}>
+                Fare for {currentPassenger.destination}: R{calculateFareForDestination(currentPassenger.destination).toFixed(2)}
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.formActions}>
+            <TouchableOpacity 
+              style={[styles.addToCartBtn, { backgroundColor: GOLD }]} 
+              onPress={addPassengerToCart}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="cart-outline" size={18} color="#000" />
+              <Text style={styles.addToCartBtnText}>Add to Cart</Text>
+            </TouchableOpacity>
+            
+            {getCartSize() > 0 && (
+              <TouchableOpacity 
+                style={[styles.proceedBtn, { backgroundColor: c.surface, borderColor: GOLD, borderWidth: 1 }]} 
+                onPress={proceedToCheckout}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.proceedBtnText, { color: GOLD }]}>Proceed to Payment ({getCartSize()})</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  function renderCart() {
+    return (
+      <View>
+        <View style={[styles.cartHeader, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <Text style={[styles.cartTitle, { color: c.text }]}>Shopping Cart ({getCartSize()} passengers)</Text>
+          {getCartSize() > 0 && (
+            <TouchableOpacity onPress={clearCart} style={styles.clearCartBtn}>
+              <Ionicons name="trash-outline" size={16} color={RED} />
+              <Text style={[styles.clearCartText, { color: RED }]}>Clear All</Text>
             </TouchableOpacity>
           )}
         </View>
         
-        <TextInput
-          style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-          placeholder="Full Name *"
-          placeholderTextColor={c.textMuted}
-          value={passenger.name}
-          onChangeText={(value) => updatePassenger(index, 'name', value)}
-        />
-        
-        <TextInput
-          style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-          placeholder="Contact Number *"
-          placeholderTextColor={c.textMuted}
-          value={passenger.contactNumber}
-          onChangeText={(value) => updatePassenger(index, 'contactNumber', value)}
-          keyboardType="phone-pad"
-        />
-        
-        <TextInput
-          style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-          placeholder="Email Address"
-          placeholderTextColor={c.textMuted}
-          value={passenger.email}
-          onChangeText={(value) => updatePassenger(index, 'email', value)}
-          keyboardType="email-address"
-        />
-        
-        <TextInput
-          style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-          placeholder="ID Number"
-          placeholderTextColor={c.textMuted}
-          value={passenger.idNumber}
-          onChangeText={(value) => updatePassenger(index, 'idNumber', value)}
-        />
-        
-        <TextInput
-          style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-          placeholder="Address"
-          placeholderTextColor={c.textMuted}
-          value={passenger.address}
-          onChangeText={(value) => updatePassenger(index, 'address', value)}
-        />
-        
-        <TextInput
-          style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-          placeholder="Destination (if different from route destination)"
-          placeholderTextColor={c.textMuted}
-          value={passenger.destination}
-          onChangeText={(value) => updatePassenger(index, 'destination', value)}
-        />
+        {getCartSize() === 0 ? (
+          <View style={[styles.emptyCart, { backgroundColor: c.surface, borderColor: c.border }]}>
+            <Ionicons name="cart-outline" size={48} color={c.textMuted} />
+            <Text style={[styles.emptyCartText, { color: c.textMuted }]}>Your cart is empty</Text>
+            <Text style={[styles.emptyCartSubText, { color: c.textMuted }]}>Add passengers to get started</Text>
+          </View>
+        ) : (
+          <View>
+            {passengerCart.map((passenger, index) => (
+              <View key={passenger.id} style={[styles.cartItem, { backgroundColor: c.surface, borderColor: c.border }]}>
+                <View style={styles.cartItemHeader}>
+                  <Text style={[styles.cartItemTitle, { color: c.text }]}>Passenger {index + 1}</Text>
+                  <TouchableOpacity onPress={() => removePassengerFromCart(passenger.id)}>
+                    <Ionicons name="remove-circle-outline" size={20} color={RED} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.cartItemDetail, { color: c.text }]}>Name: {passenger.name}</Text>
+                <Text style={[styles.cartItemDetail, { color: c.text }]}>Phone: {passenger.contactNumber}</Text>
+                {passenger.destination && (
+                  <Text style={[styles.cartItemDetail, { color: c.text }]}>Destination: {passenger.destination}</Text>
+                )}
+                <Text style={[styles.cartItemFare, { color: GOLD }]}>
+                  Fare: R{calculateFareForDestination(passenger.destination || selectedSchedule?.destinationStation).toFixed(2)}
+                </Text>
+              </View>
+            ))}
+            
+            <View style={[styles.cartSummary, { backgroundColor: c.surface, borderColor: c.border }]}>
+              <Text style={[styles.cartTotal, { color: c.text }]}>Total Fare:</Text>
+              <Text style={[styles.cartTotalAmount, { color: GOLD }]}>R{calculateTotalFare().toFixed(2)}</Text>
+            </View>
+          </View>
+        )}
       </View>
     );
   }
@@ -264,89 +472,91 @@ export default function RiderBookingScreen({ navigation }) {
           <Ionicons name="chevron-down" size={16} color={c.textMuted} />
         </TouchableOpacity>
 
-        {/* Passenger Count */}
-        <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Number of Passengers *</Text>
-        <View style={styles.passengerCountRow}>
+        {/* Step Navigation */}
+        <View style={styles.stepNav}>
           <TouchableOpacity 
-            style={[styles.passengerCountBtn, { backgroundColor: c.surface, borderColor: c.border }]}
-            onPress={() => setPassengerCount(Math.max(1, passengerCount - 1))}
+            style={[styles.stepBtn, step === 'add' && styles.activeStepBtn, { backgroundColor: step === 'add' ? GOLD : c.surface, borderColor: c.border }]}
+            onPress={() => setStep('add')}
           >
-            <Ionicons name="remove-outline" size={20} color={GOLD} />
+            <Text style={[styles.stepBtnText, { color: step === 'add' ? '#000' : c.text }]}>Add Passengers</Text>
           </TouchableOpacity>
-          <Text style={[styles.passengerCountText, { color: c.text }]}>{passengerCount}</Text>
           <TouchableOpacity 
-            style={[styles.passengerCountBtn, { backgroundColor: c.surface, borderColor: c.border }]}
-            onPress={() => setPassengerCount(Math.min(10, passengerCount + 1))}
+            style={[styles.stepBtn, step === 'payment' && styles.activeStepBtn, { backgroundColor: step === 'payment' ? GOLD : c.surface, borderColor: c.border }]}
+            onPress={() => getCartSize() > 0 && setStep('payment')}
+            disabled={getCartSize() === 0}
           >
-            <Ionicons name="add-outline" size={20} color={GOLD} />
+            <Text style={[styles.stepBtnText, { color: step === 'payment' ? '#000' : c.textMuted }]}>
+              Payment ({getCartSize()})
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Payment Method */}
-        <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Payment Method *</Text>
-        <TouchableOpacity 
-          style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
-          onPress={() => setPaymentModalVisible(true)}
-        >
-          <Ionicons name="card-outline" size={18} color={GOLD} />
-          <Text style={[styles.pickerText, { color: paymentMethod ? c.text : c.textMuted }]}>
-            {paymentMethod === 'ozow' ? 'Ozow (EFT)' : paymentMethod === 'wallet' ? 'Mzansi Wallet' : paymentMethod === 'cash' ? 'Cash' : 'Select payment method'}
-          </Text>
-          <Ionicons name="chevron-down" size={16} color={c.textMuted} />
-        </TouchableOpacity>
-
-        {/* Fare Summary */}
-        {selectedSchedule && (
-          <View style={[styles.fareSummary, { backgroundColor: c.surface, borderColor: c.border }]}>
-            <Text style={[styles.fareTitle, { color: c.text }]}>Fare Summary</Text>
-            <View style={styles.fareRow}>
-              <Text style={[styles.fareLabel, { color: c.textMuted }]}>Standard Fare:</Text>
-              <Text style={[styles.fareValue, { color: c.text }]}>R{selectedSchedule.standardFare}</Text>
-            </View>
-            <View style={styles.fareRow}>
-              <Text style={[styles.fareLabel, { color: c.textMuted }]}>Passengers:</Text>
-              <Text style={[styles.fareValue, { color: c.text }]}>×{passengerCount}</Text>
-            </View>
-            <View style={[styles.fareDivider, { backgroundColor: c.border }]} />
-            <View style={styles.fareRow}>
-              <Text style={[styles.fareTotal, { color: c.text }]}>Total Fare:</Text>
-              <Text style={[styles.fareTotal, { color: GOLD }]}>R{(selectedSchedule.standardFare * passengerCount).toFixed(2)}</Text>
-            </View>
+        {/* Dynamic Content Based on Step */}
+        {step === 'add' && (
+          <View>
+            {renderAddPassengerForm()}
+            {renderCart()}
           </View>
         )}
 
-        {/* Passenger Details */}
-        <Text style={[styles.sectionTitle, { color: c.text, marginTop: 24 }]}>Passenger Details *</Text>
-        {passengers.slice(0, passengerCount).map((passenger, index) => renderPassengerInput(index, passenger))}
+        {step === 'payment' && (
+          <View>
+            {/* Cart Summary */}
+            {renderCart()}
+            
+            {/* Payment Method */}
+            <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Payment Method *</Text>
+            <TouchableOpacity 
+              style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
+              onPress={() => setPaymentModalVisible(true)}
+            >
+              <Ionicons name="card-outline" size={18} color={GOLD} />
+              <Text style={[styles.pickerText, { color: paymentMethod ? c.text : c.textMuted }]}>
+                {paymentMethod === 'ozow' ? 'Ozow (EFT)' : paymentMethod === 'wallet' ? 'Mzansi Wallet' : paymentMethod === 'cash' ? 'Cash' : 'Select payment method'}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+            </TouchableOpacity>
 
-        {/* Notes */}
-        <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Additional Notes</Text>
-        <TextInput
-          style={[styles.textArea, { backgroundColor: c.surface, borderColor: c.border, color: c.text }]}
-          placeholder="Any special requirements or notes"
-          placeholderTextColor={c.textMuted}
-          value={notes}
-          onChangeText={setNotes}
-          multiline
-          numberOfLines={3}
-        />
+            {/* Notes */}
+            <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Additional Notes</Text>
+            <TextInput
+              style={[styles.textArea, { backgroundColor: c.surface, borderColor: c.border, color: c.text }]}
+              placeholder="Any special requirements or notes"
+              placeholderTextColor={c.textMuted}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              numberOfLines={3}
+            />
 
-        {/* Submit Button */}
-        <TouchableOpacity 
-          style={[styles.submitBtn, { backgroundColor: GOLD }]} 
-          onPress={handleSubmit} 
-          disabled={submitting}
-          activeOpacity={0.85}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Ionicons name="checkmark-circle-outline" size={20} color="#000" />
-              <Text style={styles.submitBtnText}>Complete Booking</Text>
+            {/* Action Buttons */}
+            <View style={styles.paymentActions}>
+              <TouchableOpacity 
+                style={[styles.backBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
+                onPress={goBackToAddPassengers}
+              >
+                <Ionicons name="arrow-back" size={18} color={c.text} />
+                <Text style={[styles.backBtnText, { color: c.text }]}>Back to Cart</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.checkoutBtn, { backgroundColor: GOLD }]} 
+                onPress={handleSubmit} 
+                disabled={submitting || !paymentMethod}
+                activeOpacity={0.85}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#000" />
+                    <Text style={styles.checkoutBtnText}>Pay R{calculateTotalFare().toFixed(2)}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
             </View>
-          )}
-        </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Schedule Modal */}
@@ -486,11 +696,142 @@ const styles = StyleSheet.create({
   
   // Passenger cards
   passengerCard: { padding: 16, borderRadius: 8, borderWidth: 1, marginBottom: 16 },
-  passengerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  passengerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  passengerHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
   passengerTitle: { fontSize: 16, fontWeight: '600' },
   removeBtn: { padding: 4 },
   input: { padding: 12, borderRadius: 6, borderWidth: 1, fontSize: 16, marginBottom: 12 },
+  label: { fontSize: 12, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  formRow: { flexDirection: 'row', gap: 12 },
+  formHalf: { flex: 1 },
+  fareHint: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 8, 
+    borderRadius: 6, 
+    borderWidth: 1, 
+    marginTop: 4,
+    marginBottom: 12 
+  },
+  fareHintText: { fontSize: 12, fontWeight: '600', marginLeft: 6 },
   textArea: { padding: 12, borderRadius: 6, borderWidth: 1, fontSize: 16, minHeight: 80, textAlignVertical: 'top' },
+  
+  // Cart UI
+  cartBadge: { 
+    backgroundColor: GOLD, 
+    borderRadius: 12, 
+    paddingHorizontal: 8, 
+    paddingVertical: 4,
+    minWidth: 24,
+    alignItems: 'center'
+  },
+  cartBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#000' },
+  formActions: { marginTop: 16 },
+  addToCartBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    padding: 14, 
+    borderRadius: 8,
+    marginBottom: 8
+  },
+  addToCartBtnText: { fontSize: 16, fontWeight: '600', color: '#000', marginLeft: 8 },
+  proceedBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    padding: 12, 
+    borderRadius: 8
+  },
+  proceedBtnText: { fontSize: 14, fontWeight: '600' },
+  
+  // Step Navigation
+  stepNav: { flexDirection: 'row', marginTop: 20, marginBottom: 20, gap: 8 },
+  stepBtn: { 
+    flex: 1, 
+    padding: 12, 
+    borderRadius: 8, 
+    borderWidth: 1, 
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  activeStepBtn: { borderWidth: 2 },
+  stepBtnText: { fontSize: 14, fontWeight: '600' },
+  
+  // Cart Components
+  cartHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    padding: 16, 
+    borderRadius: 8, 
+    borderWidth: 1, 
+    marginBottom: 16 
+  },
+  cartTitle: { fontSize: 18, fontWeight: '700' },
+  clearCartBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  clearCartText: { fontSize: 12, fontWeight: '600' },
+  
+  emptyCart: { 
+    padding: 32, 
+    borderRadius: 8, 
+    borderWidth: 1, 
+    alignItems: 'center',
+    marginBottom: 16 
+  },
+  emptyCartText: { fontSize: 16, fontWeight: '600', marginTop: 12 },
+  emptyCartSubText: { fontSize: 14, marginTop: 4 },
+  
+  cartItem: { 
+    padding: 16, 
+    borderRadius: 8, 
+    borderWidth: 1, 
+    marginBottom: 12 
+  },
+  cartItemHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 8 
+  },
+  cartItemTitle: { fontSize: 16, fontWeight: '600' },
+  cartItemDetail: { fontSize: 14, marginBottom: 2, color: c.text },
+  cartItemFare: { fontSize: 14, fontWeight: '600', marginTop: 8 },
+  
+  cartSummary: { 
+    padding: 16, 
+    borderRadius: 8, 
+    borderWidth: 1, 
+    marginBottom: 16 
+  },
+  cartTotal: { fontSize: 16, fontWeight: '700' },
+  cartTotalAmount: { fontSize: 16, fontWeight: '700' },
+  
+  // Payment Actions
+  paymentActions: { 
+    flexDirection: 'row', 
+    gap: 12, 
+    marginTop: 24 
+  },
+  backBtn: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    padding: 14, 
+    borderRadius: 8, 
+    borderWidth: 1 
+  },
+  backBtnText: { fontSize: 14, fontWeight: '600', marginLeft: 6 },
+  checkoutBtn: { 
+    flex: 2, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    padding: 14, 
+    borderRadius: 8 
+  },
+  checkoutBtnText: { fontSize: 16, fontWeight: '600', color: '#000' },
   
   // Submit
   submitBtn: { padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 24 },
