@@ -602,7 +602,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, flexGrow: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
               {dispatchEntry && (
                 <View style={[styles.dispatchPreview, { backgroundColor: '#22c55e0e', borderColor: '#22c55e35' }]}>
                   <View style={[styles.dispatchPreviewIcon, { backgroundColor: '#22c55e20' }]}>
