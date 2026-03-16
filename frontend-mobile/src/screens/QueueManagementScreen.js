@@ -650,7 +650,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                   <TouchableOpacity
                     style={{ flexDirection: 'row', alignItems: 'center', padding: 6 }}
                     onPress={() => {
-                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '', nextOfKin: '', destination: '', amount: 0 }]);
+                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '', nextOfKinName: '', nextOfKinContact: '', destination: '', amount: 0 }]);
                       setDispatchPax('');
                     }}
                   >
@@ -695,14 +695,26 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                     />
                     <TextInput
                       style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                      placeholder="Next of Kin (optional)"
+                      placeholder="Next of Kin Name (optional)"
                       placeholderTextColor={c.textMuted}
-                      value={p.nextOfKin}
+                      value={p.nextOfKinName}
                       onChangeText={v => {
                         const updated = [...dispatchPassengers];
-                        updated[i].nextOfKin = v;
+                        updated[i].nextOfKinName = v;
                         setDispatchPassengers(updated);
                       }}
+                    />
+                    <TextInput
+                      style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Next of Kin Contact (optional)"
+                      placeholderTextColor={c.textMuted}
+                      value={p.nextOfKinContact}
+                      onChangeText={v => {
+                        const updated = [...dispatchPassengers];
+                        updated[i].nextOfKinContact = v;
+                        setDispatchPassengers(updated);
+                      }}
+                      keyboardType="phone-pad"
                     />
                     {routeStops.length > 0 ? (
                       <TouchableOpacity

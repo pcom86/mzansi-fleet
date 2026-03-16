@@ -266,6 +266,8 @@ namespace MzansiFleet.Api.Controllers
                                 UserId = dto?.DispatchedByUserId ?? Guid.Empty, // Marshal as placeholder
                                 PassengerName = passengerDto.Name,
                                 PassengerPhone = passengerDto.Contact,
+                                NextOfKinName = passengerDto.NextOfKinName,
+                                NextOfKinContact = passengerDto.NextOfKinContact,
                                 DepartureStation = taxiRank?.Name ?? "Unknown",
                                 ArrivalStation = passengerDto.Destination ?? route?.DestinationStation ?? "Unknown",
                                 Amount = passengerDto.Amount,
@@ -494,7 +496,8 @@ namespace MzansiFleet.Api.Controllers
     {
         public string? Name { get; set; }
         public string? Contact { get; set; }
-        public string? NextOfKin { get; set; }
+        public string? NextOfKinName { get; set; }
+        public string? NextOfKinContact { get; set; }
         public string? Destination { get; set; }
         public decimal Amount { get; set; }
     }

@@ -257,6 +257,8 @@ namespace MzansiFleet.Domain.Entities
         // Passenger Details
         public string? PassengerName { get; set; }
         public string? PassengerPhone { get; set; }
+        public string? NextOfKinName { get; set; }
+        public string? NextOfKinContact { get; set; }
         public string DepartureStation { get; set; } = string.Empty;
         public string ArrivalStation { get; set; } = string.Empty;
         
@@ -301,27 +303,27 @@ namespace MzansiFleet.Domain.Entities
     }
 
     /// <summary>
-    /// Daily queue of available taxis for a taxi rank
+    /// Daily queue of available taxis for a taxi rank (FIFO per route)
     /// </summary>
     public class DailyTaxiQueue
     {
         public Guid Id { get; set; }
         public Guid TaxiRankId { get; set; }
+        public Guid? RouteId { get; set; } // Which route this vehicle is queued for
         public Guid VehicleId { get; set; }
         public Guid? DriverId { get; set; }
         public Guid TenantId { get; set; }
         
         // Queue Details
         public DateTime QueueDate { get; set; } // Date for this queue entry
-        public TimeSpan AvailableFrom { get; set; } // When the taxi becomes available
-        public TimeSpan? AvailableUntil { get; set; } // When the taxi is no longer available
-        public int Priority { get; set; } = 1; // Priority in queue (1 = highest)
-        public string Status { get; set; } = "Available"; // Available, Assigned, OutOfService
+        public int QueuePosition { get; set; } // FIFO position (1 = next to depart)
+        public TimeSpan JoinedAt { get; set; } // Time of day the vehicle joined the queue
+        public string Status { get; set; } = "Waiting"; // Waiting, Loading, Dispatched, Removed
         
-        // Assignment Details (when taxi is assigned to a trip)
-        public Guid? AssignedTripId { get; set; } // ID of the trip this taxi was assigned to
-        public DateTime? AssignedAt { get; set; }
-        public Guid? AssignedByUserId { get; set; } // User who assigned this taxi
+        // Dispatch Details
+        public DateTime? DepartedAt { get; set; } // When the vehicle was dispatched
+        public Guid? DispatchedByUserId { get; set; } // Marshal/Admin who dispatched
+        public int? PassengerCount { get; set; } // Number of passengers when dispatched
         
         // Metadata
         public string? Notes { get; set; }
@@ -330,10 +332,10 @@ namespace MzansiFleet.Domain.Entities
         
         // Navigation Properties
         public TaxiRank? TaxiRank { get; set; }
+        public Route? Route { get; set; }
         public Vehicle? Vehicle { get; set; }
         public DriverProfile? Driver { get; set; }
-        public User? AssignedByUser { get; set; }
-        public Trip? AssignedTrip { get; set; }
+        public User? DispatchedByUser { get; set; }
         public Tenant? Tenant { get; set; }
     }
 
@@ -378,6 +380,7 @@ namespace MzansiFleet.Domain.Entities
         public Guid UserId { get; set; }
         public Guid RouteId { get; set; }
         public Guid TaxiRankId { get; set; }
+        public Guid? ScheduledTripId { get; set; }
         
         // Booking Details
         public DateTime TravelDate { get; set; } // The specific date the user wants to travel
@@ -406,6 +409,7 @@ namespace MzansiFleet.Domain.Entities
         public User? User { get; set; }
         public Route? Route { get; set; }
         public TaxiRank? TaxiRank { get; set; }
+        public ScheduledTrip? ScheduledTrip { get; set; }
         public ICollection<BookingPassenger> Passengers { get; set; } = new List<BookingPassenger>();
     }
 
