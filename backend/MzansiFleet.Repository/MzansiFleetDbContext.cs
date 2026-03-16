@@ -69,6 +69,7 @@ namespace MzansiFleet.Repository
         public DbSet<TaxiRankAssociation> TaxiRankAssociations { get; set; }
         public DbSet<ScheduledTripBooking> ScheduledTripBookings { get; set; }
         public DbSet<BookingPassenger> BookingPassengers { get; set; }
+        public DbSet<DailyTaxiQueue> DailyTaxiQueues { get; set; }
         
         // Queue Marshal Module
         public DbSet<QueueMarshal> QueueMarshals { get; set; }
@@ -98,6 +99,9 @@ namespace MzansiFleet.Repository
         
         // Roadside Assistance Module
         public DbSet<RoadsideAssistanceRequest> RoadsideAssistanceRequests { get; set; }
+        
+        // Driver Behavior Module
+        public DbSet<DriverBehaviorEvent> DriverBehaviorEvents { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -155,6 +159,14 @@ namespace MzansiFleet.Repository
             modelBuilder.Entity<ScheduledTripBooking>().Property(s => s.Id).ValueGeneratedNever();
             modelBuilder.Entity<BookingPassenger>().Property(b => b.Id).ValueGeneratedNever();
             
+            // Allow users without a tenant (e.g. riders, drivers registering independently)
+            modelBuilder.Entity<User>()
+                .HasOne(u => u.Tenant)
+                .WithMany(t => t.Users)
+                .HasForeignKey(u => u.TenantId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+
             // Configure TaxiRankTrip foreign keys
             modelBuilder.Entity<TaxiRankTrip>()
                 .HasOne(t => t.Marshal)
@@ -272,6 +284,49 @@ namespace MzansiFleet.Repository
                 p.Property(x => x.CanDeleteData).HasColumnName("Permissions_CanDeleteData");
             });
             modelBuilder.Entity<TripCapture>().Property(t => t.Id).ValueGeneratedNever();
+
+            // Driver Behavior Module
+            modelBuilder.Entity<DriverBehaviorEvent>().Property(d => d.Id).ValueGeneratedNever();
+            modelBuilder.Entity<DriverBehaviorEvent>()
+                .HasOne(d => d.Driver)
+                .WithMany()
+                .HasForeignKey(d => d.DriverId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<DriverBehaviorEvent>()
+                .HasOne(d => d.Vehicle)
+                .WithMany()
+                .HasForeignKey(d => d.VehicleId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Daily Taxi Queue Module
+            modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.Id).ValueGeneratedNever();
+            
+            // Add value converters for DateTime properties to ensure UTC kind
+            var dateTimeConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+                v => v.Kind == DateTimeKind.Utc ? v : DateTime.SpecifyKind(v, DateTimeKind.Utc),
+                v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+            
+            var nullableDateTimeConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime?, DateTime?>(
+                v => v.HasValue ? (v.Value.Kind == DateTimeKind.Utc ? v.Value : DateTime.SpecifyKind(v.Value, DateTimeKind.Utc)) : v,
+                v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
+            
+            modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.QueueDate).HasConversion(dateTimeConverter);
+            modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.DepartedAt).HasConversion(nullableDateTimeConverter);
+            modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.CreatedAt).HasConversion(dateTimeConverter);
+            modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.UpdatedAt).HasConversion(nullableDateTimeConverter);
+            
+            modelBuilder.Entity<DailyTaxiQueue>()
+                .HasOne(d => d.TaxiRank).WithMany(r => r.DailyQueues)
+                .HasForeignKey(d => d.TaxiRankId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<DailyTaxiQueue>()
+                .HasOne(d => d.Route).WithMany()
+                .HasForeignKey(d => d.RouteId).OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity<DailyTaxiQueue>()
+                .HasOne(d => d.Vehicle).WithMany()
+                .HasForeignKey(d => d.VehicleId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<DailyTaxiQueue>()
+                .HasOne(d => d.Driver).WithMany()
+                .HasForeignKey(d => d.DriverId).OnDelete(DeleteBehavior.SetNull);
 
             // Admin Dashboard Module - Trip and Passenger relationship
             modelBuilder.Entity<Trip>()
