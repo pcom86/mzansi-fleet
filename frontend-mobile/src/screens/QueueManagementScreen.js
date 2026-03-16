@@ -704,7 +704,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                         setDispatchPassengers(updated);
                       }}
                     />
-                    {routeStops.length > 0 && (
+                    {routeStops.length > 0 ? (
                       <TouchableOpacity
                         style={[styles.passengerInput, { backgroundColor: p.destination ? '#22c55e10' : c.background, borderColor: p.destination ? '#22c55e' : c.border }]}
                         onPress={() => {
@@ -720,7 +720,18 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                                 setDispatchPassengers(updated);
                                 setDispatchPax('');
                               }
-                            })).concat([{ text: 'Cancel', style: 'cancel' }])
+                            })).concat([
+                              { 
+                                text: 'Other (Manual)', 
+                                onPress: () => {
+                                  const updated = [...dispatchPassengers];
+                                  updated[i].destination = 'Other';
+                                  updated[i].amount = 0;
+                                  setDispatchPassengers(updated);
+                                }
+                              },
+                              { text: 'Cancel', style: 'cancel' }
+                            ])
                           );
                         }}
                       >
@@ -728,6 +739,18 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                           {p.destination ? `Destination: ${p.destination} (R${p.amount?.toFixed(2)})` : 'Select Destination...'}
                         </Text>
                       </TouchableOpacity>
+                    ) : (
+                      <TextInput
+                        style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                        placeholder="Destination (optional)"
+                        placeholderTextColor={c.textMuted}
+                        value={p.destination}
+                        onChangeText={v => {
+                          const updated = [...dispatchPassengers];
+                          updated[i].destination = v;
+                          setDispatchPassengers(updated);
+                        }}
+                      />
                     )}
                   </View>
                 ))}
