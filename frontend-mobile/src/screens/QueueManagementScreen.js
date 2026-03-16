@@ -650,7 +650,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                   <TouchableOpacity
                     style={{ flexDirection: 'row', alignItems: 'center', padding: 6 }}
                     onPress={() => {
-                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '', destination: '', amount: 0 }]);
+                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '', nextOfKin: '', destination: '', amount: 0 }]);
                       // Clear manual count when adding passengers
                       setDispatchPax('');
                     }}
@@ -662,7 +662,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                 
                 {dispatchPassengers.map((passenger, index) => (
                   <View key={index} style={{ marginTop: 12, padding: 12, backgroundColor: c.background, borderRadius: 8, borderWidth: 1, borderColor: c.border }}>
-                    {/* Name and Contact row */}
+                    {/* Name row */}
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <View style={{ flex: 1, marginRight: 8 }}>
                         <TextInput
@@ -674,7 +674,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                             setDispatchPassengers(updated);
                             setDispatchPax('');
                           }}
-                          placeholder="Name"
+                          placeholder="Passenger Name"
                           placeholderTextColor={c.textMuted}
                         />
                       </View>
@@ -687,6 +687,39 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                       >
                         <Ionicons name="trash" size={18} color="#ef4444" />
                       </TouchableOpacity>
+                    </View>
+                    
+                    {/* Contact row */}
+                    <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={{ color: c.textMuted, fontSize: 11, marginBottom: 2 }}>Contact</Text>
+                        <TextInput
+                          style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.surface, fontSize: 14 }]}
+                          value={passenger.contact}
+                          onChangeText={(text) => {
+                            const updated = [...dispatchPassengers];
+                            updated[index].contact = text;
+                            setDispatchPassengers(updated);
+                          }}
+                          placeholder="Phone number"
+                          placeholderTextColor={c.textMuted}
+                          keyboardType="phone-pad"
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: c.textMuted, fontSize: 11, marginBottom: 2 }}>Next of Kin</Text>
+                        <TextInput
+                          style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.surface, fontSize: 14 }]}
+                          value={passenger.nextOfKin}
+                          onChangeText={(text) => {
+                            const updated = [...dispatchPassengers];
+                            updated[index].nextOfKin = text;
+                            setDispatchPassengers(updated);
+                          }}
+                          placeholder="Emergency contact"
+                          placeholderTextColor={c.textMuted}
+                        />
+                      </View>
                     </View>
                     
                     {/* Destination dropdown - only show if route has stops */}
