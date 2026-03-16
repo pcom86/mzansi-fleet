@@ -673,7 +673,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                       style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
                       placeholder="Name *"
                       placeholderTextColor={c.textMuted}
-                      value={p.name}
+                      value={p.name ?? ''}
                       onChangeText={v => {
                         const updated = [...dispatchPassengers];
                         updated[i].name = v;
@@ -685,7 +685,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                       style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
                       placeholder="Phone"
                       placeholderTextColor={c.textMuted}
-                      value={p.contact}
+                      value={p.contact ?? ''}
                       onChangeText={v => {
                         const updated = [...dispatchPassengers];
                         updated[i].contact = v;
@@ -697,7 +697,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                       style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
                       placeholder="Next of Kin Name (optional)"
                       placeholderTextColor={c.textMuted}
-                      value={p.nextOfKinName}
+                      value={p.nextOfKinName ?? ''}
                       onChangeText={v => {
                         const updated = [...dispatchPassengers];
                         updated[i].nextOfKinName = v;
@@ -708,7 +708,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                       style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
                       placeholder="Next of Kin Contact (optional)"
                       placeholderTextColor={c.textMuted}
-                      value={p.nextOfKinContact}
+                      value={p.nextOfKinContact ?? ''}
                       onChangeText={v => {
                         const updated = [...dispatchPassengers];
                         updated[i].nextOfKinContact = v;
@@ -756,7 +756,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                         style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
                         placeholder="Destination (optional)"
                         placeholderTextColor={c.textMuted}
-                        value={p.destination}
+                        value={p.destination ?? ''}
                         onChangeText={v => {
                           const updated = [...dispatchPassengers];
                           updated[i].destination = v;
