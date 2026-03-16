@@ -641,11 +641,11 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                 Enter number manually OR use passenger list below
               </Text>
 
-              {/* Passenger List Table */}
+              {/* Passenger List Section */}
               <View style={{ marginTop: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                   <Text style={[styles.fieldLabel, { color: c.textMuted }]}>
-                    Passenger List ({dispatchPassengers.length})
+                    Passengers ({dispatchPassengers.length})
                   </Text>
                   <TouchableOpacity
                     style={{ flexDirection: 'row', alignItems: 'center', padding: 6 }}
@@ -659,98 +659,78 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                   </TouchableOpacity>
                 </View>
 
-                {dispatchPassengers.length > 0 && (
-                  <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 8, overflow: 'hidden' }}>
-                    {/* Table Header */}
-                    <View style={{ flexDirection: 'row', backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border, paddingVertical: 8, paddingHorizontal: 6 }}>
-                      <Text style={{ flex: 2, fontSize: 11, fontWeight: '700', color: c.textMuted }}>Name</Text>
-                      <Text style={{ flex: 1.5, fontSize: 11, fontWeight: '700', color: c.textMuted }}>Contact</Text>
-                      <Text style={{ flex: 1.5, fontSize: 11, fontWeight: '700', color: c.textMuted }}>Next of Kin</Text>
-                      {routeStops.length > 0 && <Text style={{ flex: 1.5, fontSize: 11, fontWeight: '700', color: c.textMuted }}>Destination</Text>}
-                      <Text style={{ flex: 0.8, fontSize: 11, fontWeight: '700', color: c.textMuted }}>Fare</Text>
-                      <View style={{ width: 30 }} />
+                {dispatchPassengers.map((p, i) => (
+                  <View key={i} style={[styles.passengerCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>
+                        Passenger {i + 1}
+                      </Text>
+                      <TouchableOpacity onPress={() => setDispatchPassengers(prev => prev.filter((_, idx) => idx !== i))}>
+                        <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                      </TouchableOpacity>
                     </View>
-
-                    {/* Table Rows */}
-                    {dispatchPassengers.map((passenger, index) => (
-                      <View key={index} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: index % 2 === 0 ? c.background : c.surface, paddingVertical: 6, paddingHorizontal: 6, borderBottomWidth: index < dispatchPassengers.length - 1 ? 1 : 0, borderBottomColor: c.border }}>
-                        <TextInput
-                          style={{ flex: 2, fontSize: 13, color: c.text, padding: 4, borderWidth: 1, borderColor: c.border, borderRadius: 4, marginRight: 4 }}
-                          value={passenger.name}
-                          onChangeText={(text) => {
-                            const updated = [...dispatchPassengers];
-                            updated[index].name = text;
-                            setDispatchPassengers(updated);
-                            setDispatchPax('');
-                          }}
-                          placeholder="Name"
-                          placeholderTextColor={c.textMuted}
-                        />
-                        <TextInput
-                          style={{ flex: 1.5, fontSize: 13, color: c.text, padding: 4, borderWidth: 1, borderColor: c.border, borderRadius: 4, marginRight: 4 }}
-                          value={passenger.contact}
-                          onChangeText={(text) => {
-                            const updated = [...dispatchPassengers];
-                            updated[index].contact = text;
-                            setDispatchPassengers(updated);
-                          }}
-                          placeholder="Phone"
-                          placeholderTextColor={c.textMuted}
-                          keyboardType="phone-pad"
-                        />
-                        <TextInput
-                          style={{ flex: 1.5, fontSize: 13, color: c.text, padding: 4, borderWidth: 1, borderColor: c.border, borderRadius: 4, marginRight: 4 }}
-                          value={passenger.nextOfKin}
-                          onChangeText={(text) => {
-                            const updated = [...dispatchPassengers];
-                            updated[index].nextOfKin = text;
-                            setDispatchPassengers(updated);
-                          }}
-                          placeholder="Next of Kin"
-                          placeholderTextColor={c.textMuted}
-                        />
-                        {routeStops.length > 0 && (
-                          <TouchableOpacity
-                            style={{ flex: 1.5, marginRight: 4, padding: 4, borderWidth: 1, borderColor: passenger.destination ? '#22c55e' : c.border, borderRadius: 4, backgroundColor: passenger.destination ? '#22c55e20' : 'transparent' }}
-                            onPress={() => {
-                              // Show stop selection modal or dropdown
-                              Alert.alert(
-                                'Select Destination',
-                                '',
-                                routeStops.map(stop => ({
-                                  text: `${stop.stopName} (R${stop.fareFromOrigin?.toFixed(2) || '0.00'})`,
-                                  onPress: () => {
-                                    const updated = [...dispatchPassengers];
-                                    updated[index].destination = stop.stopName;
-                                    updated[index].amount = stop.fareFromOrigin || 0;
-                                    setDispatchPassengers(updated);
-                                    setDispatchPax('');
-                                  }
-                                })).concat([{ text: 'Cancel', style: 'cancel' }])
-                              );
-                            }}
-                          >
-                            <Text style={{ fontSize: 12, color: passenger.destination ? '#22c55e' : c.textMuted }} numberOfLines={1}>
-                              {passenger.destination || 'Select...'}
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                        <Text style={{ flex: 0.8, fontSize: 13, color: '#22c55e', fontWeight: '600', textAlign: 'right' }}>
-                          R{passenger.amount?.toFixed(2) || '0.00'}
+                    <TextInput
+                      style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Name *"
+                      placeholderTextColor={c.textMuted}
+                      value={p.name}
+                      onChangeText={v => {
+                        const updated = [...dispatchPassengers];
+                        updated[i].name = v;
+                        setDispatchPassengers(updated);
+                        setDispatchPax('');
+                      }}
+                    />
+                    <TextInput
+                      style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Phone"
+                      placeholderTextColor={c.textMuted}
+                      value={p.contact}
+                      onChangeText={v => {
+                        const updated = [...dispatchPassengers];
+                        updated[i].contact = v;
+                        setDispatchPassengers(updated);
+                      }}
+                      keyboardType="phone-pad"
+                    />
+                    <TextInput
+                      style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Next of Kin (optional)"
+                      placeholderTextColor={c.textMuted}
+                      value={p.nextOfKin}
+                      onChangeText={v => {
+                        const updated = [...dispatchPassengers];
+                        updated[i].nextOfKin = v;
+                        setDispatchPassengers(updated);
+                      }}
+                    />
+                    {routeStops.length > 0 && (
+                      <TouchableOpacity
+                        style={[styles.passengerInput, { backgroundColor: p.destination ? '#22c55e10' : c.background, borderColor: p.destination ? '#22c55e' : c.border }]}
+                        onPress={() => {
+                          Alert.alert(
+                            'Select Destination',
+                            '',
+                            routeStops.map(stop => ({
+                              text: `${stop.stopName} (R${stop.fareFromOrigin?.toFixed(2) || '0.00'})`,
+                              onPress: () => {
+                                const updated = [...dispatchPassengers];
+                                updated[i].destination = stop.stopName;
+                                updated[i].amount = stop.fareFromOrigin || 0;
+                                setDispatchPassengers(updated);
+                                setDispatchPax('');
+                              }
+                            })).concat([{ text: 'Cancel', style: 'cancel' }])
+                          );
+                        }}
+                      >
+                        <Text style={{ color: p.destination ? '#22c55e' : c.textMuted, fontSize: 14 }}>
+                          {p.destination ? `Destination: ${p.destination} (R${p.amount?.toFixed(2)})` : 'Select Destination...'}
                         </Text>
-                        <TouchableOpacity
-                          style={{ width: 30, alignItems: 'center' }}
-                          onPress={() => {
-                            const updated = dispatchPassengers.filter((_, i) => i !== index);
-                            setDispatchPassengers(updated);
-                          }}
-                        >
-                          <Ionicons name="trash" size={16} color="#ef4444" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
+                      </TouchableOpacity>
+                    )}
                   </View>
-                )}
+                ))}
 
                 {dispatchPassengers.length === 0 && (
                   <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 8, fontStyle: 'italic' }}>
@@ -1005,5 +985,9 @@ function createStyles(c) {
     dispatchPreviewIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     dispatchReg: { fontSize: 16, fontWeight: '900' },
     dispatchMeta: { fontSize: 12, marginTop: 2 },
+
+    // Passenger card styles
+    passengerCard: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10, gap: 8 },
+    passengerInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 },
   });
 }
