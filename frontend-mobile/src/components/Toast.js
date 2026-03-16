@@ -23,14 +23,14 @@ export default function Toast({ visible, message, type = 'success', duration = 2
   useEffect(() => {
     if (visible) {
       Animated.parallel([
-        Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: false }),
+        Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: false }),
       ]).start();
 
       const timer = setTimeout(() => {
         Animated.parallel([
-          Animated.timing(opacity, { toValue: 0, duration: 400, useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: -30, duration: 400, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0, duration: 400, useNativeDriver: false }),
+          Animated.timing(translateY, { toValue: -30, duration: 400, useNativeDriver: false }),
         ]).start(() => {
           if (onHide) onHide();
         });
@@ -49,9 +49,8 @@ export default function Toast({ visible, message, type = 'success', duration = 2
     <Animated.View
       style={[
         styles.container,
-        { backgroundColor: color.bg, opacity, transform: [{ translateY }] },
+        { backgroundColor: color.bg, opacity, transform: [{ translateY }], pointerEvents: 'none' },
       ]}
-      pointerEvents="none"
     >
       <Ionicons name={icon} size={20} color={color.text} />
       <Text style={[styles.text, { color: color.text }]}>{message}</Text>

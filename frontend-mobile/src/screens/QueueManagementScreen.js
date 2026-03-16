@@ -331,6 +331,12 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
           <Text style={[styles.headerTitle, { color: c.text }]}>Queue Management</Text>
           <Text style={[styles.headerSub, { color: c.textMuted }]} numberOfLines={1}>{rank.name}</Text>
         </View>
+        <TouchableOpacity 
+          style={styles.headerBtn} 
+          onPress={() => navigation.navigate('DispatchedItems')}
+        >
+          <Ionicons name="list-outline" size={20} color={c.primary} />
+        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.addBtn, { backgroundColor: c.primary }]}
           onPress={() => setAddModalVisible(true)}
@@ -940,7 +946,7 @@ function QueueCard({ entry, isFirst, isLast, c, onDispatch, onRemove, onMoveUp, 
           </Text>
           <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 1 }} numberOfLines={1}>
             {[entry.vehicleMake, entry.vehicleModel].filter(Boolean).join(' ')}
-            {entry.vehicleCapacity ? ` Â· ${entry.vehicleCapacity} seats` : ''}
+            {entry.vehicleCapacity ? ` · ${entry.vehicleCapacity} seats` : ''}
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4, gap: 8 }}>
             {entry.driverName && (

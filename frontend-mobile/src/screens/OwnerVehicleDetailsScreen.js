@@ -823,7 +823,7 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
               <Text style={styles.dateLabel}>From</Text>
               {Platform.OS === 'web' ? (
                 <View style={{ position: 'relative' }}>
-                  <View style={styles.statsDateBtn} pointerEvents="none">
+                  <View style={[styles.statsDateBtn, { pointerEvents: 'none' }]}>
                     <Text style={styles.statsDateBtnText}>{formatDateStr(statsStart)}</Text>
                     <Text style={styles.statsDateIcon}>📅</Text>
                   </View>
@@ -841,7 +841,7 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
               <Text style={styles.dateLabel}>To</Text>
               {Platform.OS === 'web' ? (
                 <View style={{ position: 'relative' }}>
-                  <View style={styles.statsDateBtn} pointerEvents="none">
+                  <View style={[styles.statsDateBtn, { pointerEvents: 'none' }]}>
                     <Text style={styles.statsDateBtnText}>{formatDateStr(statsEnd)}</Text>
                     <Text style={styles.statsDateIcon}>📅</Text>
                   </View>

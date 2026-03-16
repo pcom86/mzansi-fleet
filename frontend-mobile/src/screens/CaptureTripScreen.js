@@ -7,8 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import {
-  fetchAdminByUserId, fetchSchedules, fetchRankVehicles,
-  fetchTripSchedules, fetchVehiclesByRankId,
+  fetchAdminByUserId, fetchRankVehicles,
+  fetchVehiclesByRankId,
   createTrip, addPassengerToTrip, fetchTripPassengers,
   removePassengerFromTrip, updateTripStatus, fetchTripsByRank,
 } from '../api/taxiRanks';
@@ -22,25 +22,18 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
   const { theme } = useAppTheme();
   const c = theme.colors;
   const rank = navRoute?.params?.rank;
-  const preSelectedSchedule = navRoute?.params?.preSelectedSchedule;
 
   // Phase: 'setup' (fill trip details) -> 'passengers' (add passengers) -> 'review' (final check)
   const [phase, setPhase] = useState('setup');
-  // captureMode: null (choosing), 'scheduled', 'manual'
-  const [captureMode, setCaptureMode] = useState(null);
-
   // Active/resumable trips
   const [activeTrips, setActiveTrips] = useState([]);
   const [resumeModalVisible, setResumeModalVisible] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [adminProfile, setAdminProfile] = useState(null);
-  const [schedules, setSchedules] = useState([]);
   const [vehicles, setVehicles] = useState([]);
 
   // Trip setup form
-  const [selectedSchedule, setSelectedSchedule] = useState(null);
-  const [selectedStop, setSelectedStop] = useState(null);
   const [departureStation, setDepartureStation] = useState('');
   const [destinationStation, setDestinationStation] = useState('');
   const [vehicleReg, setVehicleReg] = useState('');
@@ -62,18 +55,11 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
   const [paxNotes, setPaxNotes] = useState('');
   const [paxPaymentMethod, setPaxPaymentMethod] = useState('Cash');
   const [paxPaymentRef, setPaxPaymentRef] = useState('');
-  const [paxStop, setPaxStop] = useState(null);
-  const [paxStopModalVisible, setPaxStopModalVisible] = useState(false);
   const [addingPax, setAddingPax] = useState(false);
 
   // Vehicle picker modal
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
 
-  // Route picker modal
-  const [routeModalVisible, setRouteModalVisible] = useState(false);
-
-  // Stop picker modal
-  const [stopModalVisible, setStopModalVisible] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!user?.userId && !user?.id) { setLoading(false); return; }
@@ -98,24 +84,12 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
       // Determine rank ID from admin profile or navigation param
       const rankId = admin?.taxiRankId || rank?.id;
 
-      let loadedSchedules = [];
+      // Load vehicles for the rank
       if (admin?.id) {
-        // Admin path: use admin-based APIs
-        const [schedResp, vehResp] = await Promise.all([
-          fetchSchedules(admin.id).catch(() => ({ data: [] })),
-          fetchRankVehicles(admin.id).catch(() => ({ data: [] })),
-        ]);
-        loadedSchedules = schedResp.data || schedResp || [];
-        setSchedules(loadedSchedules);
+        const vehResp = await fetchRankVehicles(admin.id).catch(() => ({ data: [] }));
         setVehicles(vehResp.data || vehResp || []);
       } else if (rankId) {
-        // Marshal path: use rank-based APIs
-        const [schedResp, vehResp] = await Promise.all([
-          fetchTripSchedules(rankId, user.tenantId).catch(() => ({ data: [] })),
-          fetchVehiclesByRankId(rankId).catch(() => ({ data: [] })),
-        ]);
-        loadedSchedules = schedResp.data || schedResp || [];
-        setSchedules(loadedSchedules);
+        const vehResp = await fetchVehiclesByRankId(rankId).catch(() => ({ data: [] }));
         setVehicles(vehResp.data || vehResp || []);
       }
 
@@ -128,79 +102,22 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
             t.status === 'Loading' || t.status === 'InProgress' || t.status === 'Active' || t.status === 'Pending'
           );
           setActiveTrips(inProgress);
-          if (inProgress.length > 0 && !preSelectedSchedule) {
+          if (inProgress.length > 0) {
             setResumeModalVisible(true);
           }
         } catch (_) {}
-      }
-
-      // Auto-set capture mode: if pre-selected schedule, go straight to form
-      // Otherwise if schedules exist, default to scheduled mode (skip mode selection)
-      const activeSchedules = loadedSchedules.filter(s => s.isActive !== false);
-      if (preSelectedSchedule) {
-        setCaptureMode('scheduled');
-        // Pre-populate from the passed schedule
-        setSelectedSchedule(preSelectedSchedule);
-        setDepartureStation(preSelectedSchedule.departureStation || rankName || '');
-        setSelectedStop(null);
-        setDestinationStation('');
-        setFare('');
-        setSelectedVehicleId(null);
-        setVehicleReg('');
-      } else if (activeSchedules.length > 0) {
-        setCaptureMode('scheduled');
-      } else {
-        setCaptureMode('manual');
       }
     } catch (err) {
       console.warn('CaptureTripScreen load error', err?.message);
     } finally {
       setLoading(false);
     }
-  }, [user, rank, preSelectedSchedule]);
+  }, [user, rank]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Pre-fill from a schedule selection
-  function selectRoute(sched) {
-    setSelectedSchedule(sched);
-    setDepartureStation(sched.departureStation || '');
-    // Clear stop, destination, fare — user must pick a stop
-    setSelectedStop(null);
-    setDestinationStation('');
-    setFare('');
-    // Clear vehicle selection so user picks from route-assigned vehicles
-    setSelectedVehicleId(null);
-    setVehicleReg('');
-    setRouteModalVisible(false);
-  }
-
-  // Sorted stops for the selected route
-  const routeStops = (selectedSchedule?.stops || [])
-    .slice()
-    .sort((a, b) => (a.stopOrder || 0) - (b.stopOrder || 0));
-
-  // Select a stop → auto-populate destination and fare
-  function selectStop(stop) {
-    setSelectedStop(stop);
-    setDestinationStation(stop.stopName || '');
-    setFare(String(stop.fareFromOrigin ?? selectedSchedule?.standardFare ?? ''));
-    setStopModalVisible(false);
-  }
-
-  // Vehicles to display: if a route is selected and has assigned vehicles, show those; otherwise all rank vehicles
-  const routeVehicleList = selectedSchedule?.routeVehicles?.filter(rv => rv.isActive !== false) || [];
-  const displayVehicles = routeVehicleList.length > 0
-    ? routeVehicleList.map(rv => ({
-        id: rv.vehicleId,
-        vehicleId: rv.vehicleId,
-        registration: rv.vehicle?.registration || rv.vehicle?.registrationNumber || rv.vehicleId,
-        make: rv.vehicle?.make || '',
-        model: rv.vehicle?.model || '',
-        capacity: rv.vehicle?.capacity,
-        vehicle: rv.vehicle,
-      }))
-    : vehicles;
+  // All rank vehicles available for selection
+  const displayVehicles = vehicles;
 
   function selectVehicle(v) {
     setSelectedVehicleId(v.vehicleId || v.id);
@@ -224,7 +141,6 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
       destinationStation: destinationStation.trim(),
       departureTime: new Date().toISOString(),
       notes: tripNotes.trim() || null,
-      tripScheduleId: selectedSchedule?.id || null,
     };
 
     setCreating(true);
@@ -282,7 +198,6 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
   function openAddPassenger() {
     setPaxName('');
     setPaxPhone('');
-    setPaxStop(null);
     setPaxAmount(fare || '');
     setPaxSeat(String(passengers.length + 1));
     setPaxNotes('');
@@ -304,7 +219,7 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
       passengerName: paxName.trim(),
       passengerPhone: paxPhone.trim(),
       departureStation: departureStation,
-      arrivalStation: paxStop?.stopName || destinationStation,
+      arrivalStation: destinationStation,
       amount: parseFloat(paxAmount),
       paymentMethod: paxPaymentMethod,
       paymentReference: paxPaymentMethod === 'Card' ? paxPaymentRef.trim() : null,
@@ -434,222 +349,42 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
         <PhaseStep num="2" label="Passengers" active={phase === 'passengers'} done={false} c={c} />
       </View>
 
-      {/* ===== SETUP PHASE ===== */}
-      {phase === 'setup' && !captureMode && (
+      {/* ===== MANUAL TRIP FORM ===== */}
+      {phase === 'setup' && (
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.sectionTitle, { color: c.text, marginBottom: 4 }]}>How would you like to capture this trip?</Text>
-          <Text style={[{ color: c.textMuted, fontSize: 12, marginBottom: 16 }]}>
-            Select a scheduled trip or enter details manually.
-          </Text>
-
-          {/* Scheduled Trip option */}
-          <TouchableOpacity
-            style={[styles.modeCard, { backgroundColor: c.surface, borderColor: schedules.length > 0 ? GOLD : c.border }]}
-            activeOpacity={0.85}
-            onPress={() => schedules.length > 0 ? setCaptureMode('scheduled') : Alert.alert('No Scheduled Trips', 'There are no scheduled trips available. Use manual capture instead.')}
-          >
-            <View style={[styles.modeIconWrap, { backgroundColor: schedules.length > 0 ? GOLD_LIGHT : c.surface2 }]}>
-              <Ionicons name="calendar-outline" size={28} color={schedules.length > 0 ? GOLD : c.textMuted} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.modeTitle, { color: c.text }]}>Scheduled Trip</Text>
-              <Text style={[styles.modeSub, { color: c.textMuted }]}>
-                {schedules.length > 0
-                  ? `${schedules.filter(s => s.isActive !== false).length} route(s) available`
-                  : 'No scheduled routes available'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={schedules.length > 0 ? GOLD : c.textMuted} />
-          </TouchableOpacity>
-
-          {/* Manual Capture option */}
-          <TouchableOpacity
-            style={[styles.modeCard, { backgroundColor: c.surface, borderColor: c.border }]}
-            activeOpacity={0.85}
-            onPress={() => setCaptureMode('manual')}
-          >
-            <View style={[styles.modeIconWrap, { backgroundColor: 'rgba(25,135,84,0.1)' }]}>
-              <Ionicons name="create-outline" size={28} color="#198754" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.modeTitle, { color: c.text }]}>Manual Capture</Text>
-              <Text style={[styles.modeSub, { color: c.textMuted }]}>Enter trip details manually</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={c.textMuted} />
-          </TouchableOpacity>
-        </ScrollView>
-      )}
-
-      {/* ===== SCHEDULED MODE: pick a route then fill remaining details ===== */}
-      {phase === 'setup' && captureMode === 'scheduled' && !selectedSchedule && (
-        <View style={{ flex: 1 }}>
-          <View style={styles.modeHeader}>
-            <TouchableOpacity onPress={() => {
-              setCaptureMode(null);
-              setSelectedSchedule(null);
-            }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="arrow-back" size={20} color={c.text} />
-            </TouchableOpacity>
-            <Text style={[styles.sectionTitle, { color: c.text, flex: 1, marginBottom: 0, marginLeft: 10 }]}>Select Route</Text>
-            <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
-              onPress={() => { setCaptureMode('manual'); setSelectedSchedule(null); }}
-            >
-              <Ionicons name="create-outline" size={14} color={c.textMuted} />
-              <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted }}>Manual</Text>
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={schedules.filter(s => s.isActive !== false)}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ padding: 16 }}
-            renderItem={({ item }) => {
-              const rvCount = item.routeVehicles?.filter(rv => rv.isActive !== false)?.length || 0;
-              const stopCount = item.stops?.length || 0;
-              return (
-                <TouchableOpacity
-                  style={[styles.scheduleCard, { backgroundColor: c.surface, borderColor: c.border }]}
-                  onPress={() => selectRoute(item)}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.modeIconWrap, { backgroundColor: GOLD_LIGHT }]}>
-                    <Ionicons name="git-branch-outline" size={22} color={GOLD} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.listItemTitle, { color: c.text }]}>{item.routeName}</Text>
-                    <Text style={[styles.listItemSub, { color: c.textMuted }]}>
-                      {item.departureStation} → {item.destinationStation}
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                      <Text style={[styles.listItemSub, { color: GOLD, fontWeight: '700' }]}>R{item.standardFare}</Text>
-                      {stopCount > 0 && (
-                        <Text style={[styles.listItemSub, { color: c.textMuted }]}>{stopCount} stop{stopCount > 1 ? 's' : ''}</Text>
-                      )}
-                      {rvCount > 0 && (
-                        <Text style={[styles.listItemSub, { color: c.textMuted }]}>{rvCount} vehicle{rvCount > 1 ? 's' : ''}</Text>
-                      )}
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={c.textMuted} />
-                </TouchableOpacity>
-              );
-            }}
-            ListEmptyComponent={
-              <View style={styles.emptyWrap}>
-                <Ionicons name="calendar-outline" size={48} color={c.textMuted} />
-                <Text style={[styles.emptyText, { color: c.textMuted }]}>No scheduled routes</Text>
-              </View>
-            }
-          />
-        </View>
-      )}
-
-      {/* ===== TRIP FORM (shown after selecting a schedule OR in manual mode) ===== */}
-      {phase === 'setup' && captureMode && (captureMode === 'manual' || selectedSchedule) && (
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          {/* Back navigation */}
-          <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}
-            onPress={() => {
-              if (captureMode === 'scheduled' && selectedSchedule) {
-                // Go back to route list
-                setSelectedSchedule(null);
-                setSelectedStop(null);
-                setDestinationStation('');
-                setFare('');
-                setSelectedVehicleId(null);
-                setVehicleReg('');
-              } else {
-                // Manual mode or no schedule — switch to scheduled if routes exist
-                const activeSchedules = schedules.filter(s => s.isActive !== false);
-                if (activeSchedules.length > 0) {
-                  setCaptureMode('scheduled');
-                  setSelectedSchedule(null);
-                  setSelectedStop(null);
-                  setDepartureStation(rank?.name || '');
-                  setDestinationStation('');
-                  setFare('');
-                  setSelectedVehicleId(null);
-                  setVehicleReg('');
-                } else {
-                  navigation.goBack();
-                }
-              }
-            }}
-          >
-            <Ionicons name="arrow-back" size={18} color={GOLD} />
-            <Text style={{ color: GOLD, fontWeight: '700', fontSize: 13, marginLeft: 6 }}>
-              {captureMode === 'scheduled' && selectedSchedule ? 'Change Route' : 'Back'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Selected route summary (scheduled mode) */}
-          {selectedSchedule && (
-            <View style={[styles.selectedRouteBar, { backgroundColor: GOLD_LIGHT, borderColor: GOLD }]}>
-              <Ionicons name="git-branch-outline" size={18} color={GOLD} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '800', fontSize: 14, color: c.text }}>{selectedSchedule.routeName}</Text>
-                <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 1 }}>
-                  {selectedSchedule.departureStation} → {selectedSchedule.destinationStation} · R{selectedSchedule.standardFare}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* ── Route Section ── */}
+          {/* ── Route Details ── */}
           <View style={[styles.formCard, { backgroundColor: c.surface, borderColor: c.border }]}>
             <View style={styles.formCardHeader}>
               <Ionicons name="navigate-circle-outline" size={20} color={GOLD} />
-              <Text style={[styles.formCardTitle, { color: c.text }]}>Route</Text>
+              <Text style={[styles.formCardTitle, { color: c.text }]}>Route Details</Text>
               {departureStation && destinationStation ? (
                 <Ionicons name="checkmark-circle" size={16} color="#198754" style={{ marginLeft: 'auto' }} />
               ) : null}
             </View>
 
-            <Text style={[styles.label, { color: c.textMuted, marginTop: 4 }]}>Departure Station</Text>
+            <Text style={[styles.label, { color: c.textMuted, marginTop: 4 }]}>From</Text>
             <TextInput value={departureStation} onChangeText={setDepartureStation} style={inp}
-              placeholder="e.g. Park Station" placeholderTextColor={c.textMuted} editable={!selectedSchedule} />
+              placeholder="Departure station" placeholderTextColor={c.textMuted} />
 
-            {selectedSchedule ? (
-              <>
-                <Text style={[styles.label, { color: c.textMuted }]}>Destination Stop</Text>
-                <TouchableOpacity
-                  style={[styles.pickerBtn, { backgroundColor: c.background, borderColor: c.border }]}
-                  onPress={() => setStopModalVisible(true)}
-                >
-                  <Ionicons name="location-outline" size={18} color={GOLD} />
-                  <Text style={[styles.pickerText, { color: selectedStop ? c.text : c.textMuted }]}>
-                    {selectedStop ? selectedStop.stopName : 'Select a stop'}
-                  </Text>
-                  {fare ? (
-                    <Text style={{ color: GOLD, fontWeight: '700', fontSize: 14, marginRight: 4 }}>R{fare}</Text>
-                  ) : null}
-                  <Ionicons name="chevron-down" size={16} color={c.textMuted} />
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.label, { color: c.textMuted }]}>Destination Station</Text>
-                <TextInput value={destinationStation} onChangeText={setDestinationStation} style={inp}
-                  placeholder="e.g. Pretoria Central" placeholderTextColor={c.textMuted} />
-              </>
-            )}
+            <Text style={[styles.label, { color: c.textMuted }]}>To</Text>
+            <TextInput value={destinationStation} onChangeText={setDestinationStation} style={inp}
+              placeholder="Destination station" placeholderTextColor={c.textMuted} />
           </View>
 
-          {/* ── Vehicle Section ── */}
+          {/* ── Vehicle ── */}
           <View style={[styles.formCard, { backgroundColor: c.surface, borderColor: c.border }]}>
             <View style={styles.formCardHeader}>
               <Ionicons name="bus-outline" size={20} color={GOLD} />
               <Text style={[styles.formCardTitle, { color: c.text }]}>Vehicle</Text>
-              {selectedVehicleId || vehicleReg ? (
+              {selectedVehicleId ? (
                 <Ionicons name="checkmark-circle" size={16} color="#198754" style={{ marginLeft: 'auto' }} />
               ) : null}
             </View>
             <TouchableOpacity
-              style={[styles.pickerBtn, { backgroundColor: c.background, borderColor: c.border }]}
-              onPress={() => displayVehicles.length > 0 ? setVehicleModalVisible(true) : Alert.alert('No Vehicles', selectedSchedule ? 'No vehicles assigned to this route.' : 'No vehicles assigned to this rank.')}
+              style={[styles.pickerBtn, { backgroundColor: c.background, borderColor: selectedVehicleId ? GOLD : c.border }]}
+              onPress={() => displayVehicles.length > 0 ? setVehicleModalVisible(true) : Alert.alert('No Vehicles', 'No vehicles available.')}
             >
-              <Ionicons name="bus-outline" size={18} color={GOLD} />
+              <Ionicons name="bus-outline" size={18} color={selectedVehicleId ? GOLD : c.textMuted} />
               <Text style={[styles.pickerText, { color: selectedVehicleId ? c.text : c.textMuted }]}>
                 {vehicleReg || 'Select vehicle'}
               </Text>
@@ -665,7 +400,7 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
             )}
           </View>
 
-          {/* ── Fare & Notes Section ── */}
+          {/* ── Fare & Notes ── */}
           <View style={[styles.formCard, { backgroundColor: c.surface, borderColor: c.border }]}>
             <View style={styles.formCardHeader}>
               <Ionicons name="cash-outline" size={20} color={GOLD} />
@@ -676,7 +411,7 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
             </View>
             <Text style={[styles.label, { color: c.textMuted, marginTop: 4 }]}>Standard Fare (R)</Text>
             <TextInput value={fare} onChangeText={setFare} style={inp}
-              placeholder="25.00" placeholderTextColor={c.textMuted} keyboardType="decimal-pad" />
+              placeholder="0.00" placeholderTextColor={c.textMuted} keyboardType="decimal-pad" />
 
             <Text style={[styles.label, { color: c.textMuted }]}>Notes (optional)</Text>
             <TextInput value={tripNotes} onChangeText={setTripNotes} style={[...inp, { minHeight: 56 }]}
@@ -848,24 +583,6 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
               <TextInput value={paxPhone} onChangeText={setPaxPhone} style={inp}
                 placeholder="072 123 4567" placeholderTextColor={c.textMuted} keyboardType="phone-pad" />
 
-              {routeStops.length > 0 && (
-                <>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Destination Stop</Text>
-                  <TouchableOpacity
-                    style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: paxStop ? GOLD : c.border }]}
-                    onPress={() => setPaxStopModalVisible(true)}
-                  >
-                    <Ionicons name="location-outline" size={18} color={paxStop ? GOLD : c.textMuted} />
-                    <Text style={[styles.pickerText, { color: paxStop ? c.text : c.textMuted }]}>
-                      {paxStop ? paxStop.stopName : 'Select passenger stop'}
-                    </Text>
-                    {paxStop && (
-                      <Text style={{ color: GOLD, fontWeight: '700', fontSize: 14, marginRight: 4 }}>R{paxStop.fareFromOrigin ?? fare}</Text>
-                    )}
-                    <Ionicons name="chevron-down" size={16} color={c.textMuted} />
-                  </TouchableOpacity>
-                </>
-              )}
 
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
@@ -956,7 +673,7 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
                         passengerName: paxName.trim(),
                         passengerPhone: paxPhone.trim(),
                         departureStation,
-                        arrivalStation: paxStop?.stopName || destinationStation,
+                        arrivalStation: destinationStation,
                         amount: parseFloat(paxAmount),
                         paymentMethod: paxPaymentMethod,
                         paymentReference: paxPaymentMethod === 'Card' ? paxPaymentRef.trim() : null,
@@ -968,7 +685,6 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
                       // Reset for next passenger
                       setPaxName('');
                       setPaxPhone('');
-                      setPaxStop(null);
                       setPaxAmount(fare || '');
                       setPaxSeat(String(passengers.length + 2));
                       setPaxNotes('');
@@ -995,175 +711,7 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ===== ROUTE PICKER MODAL ===== */}
-      <Modal visible={routeModalVisible} animationType="slide" transparent onRequestClose={() => setRouteModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: c.background }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: c.text }]}>Select Route</Text>
-              <TouchableOpacity onPress={() => setRouteModalVisible(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={schedules.filter(s => s.isActive)}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item }) => {
-                const rvCount = item.routeVehicles?.filter(rv => rv.isActive !== false)?.length || 0;
-                return (
-                  <TouchableOpacity
-                    style={[styles.listItem, { backgroundColor: c.surface, borderColor: c.border }]}
-                    onPress={() => selectRoute(item)}
-                  >
-                    <Ionicons name="git-branch-outline" size={18} color={GOLD} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.listItemTitle, { color: c.text }]}>{item.routeName}</Text>
-                      <Text style={[styles.listItemSub, { color: c.textMuted }]}>
-                        {item.departureStation} → {item.destinationStation} · R{item.standardFare}
-                      </Text>
-                      {rvCount > 0 && (
-                        <Text style={[styles.listItemSub, { color: GOLD, fontWeight: '600', marginTop: 2 }]}>
-                          {rvCount} vehicle{rvCount > 1 ? 's' : ''} assigned
-                        </Text>
-                      )}
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={c.textMuted} />
-                  </TouchableOpacity>
-                );
-              }}
-              ListEmptyComponent={
-                <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 40 }]}>No routes configured</Text>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
 
-      {/* ===== STOP PICKER MODAL ===== */}
-      <Modal visible={stopModalVisible} animationType="slide" transparent onRequestClose={() => setStopModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: c.background }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: c.text }]}>Select Destination Stop</Text>
-              <TouchableOpacity onPress={() => setStopModalVisible(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-            {selectedSchedule && (
-              <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-                <Text style={[styles.listItemSub, { color: GOLD, fontWeight: '700' }]}>
-                  {selectedSchedule.routeName}: {selectedSchedule.departureStation} → {selectedSchedule.destinationStation}
-                </Text>
-              </View>
-            )}
-            <FlatList
-              data={[
-                ...routeStops,
-                // Add final destination as an option
-                ...(selectedSchedule?.destinationStation ? [{
-                  id: 'final-destination',
-                  stopName: selectedSchedule.destinationStation,
-                  stopOrder: 999,
-                  fareFromOrigin: selectedSchedule.standardFare,
-                  isFinalDestination: true,
-                }] : []),
-              ]}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.listItem, { backgroundColor: selectedStop?.id === item.id ? GOLD_LIGHT : c.surface, borderColor: selectedStop?.id === item.id ? GOLD : c.border }]}
-                  onPress={() => selectStop(item)}
-                >
-                  <Ionicons name={item.isFinalDestination ? 'flag-outline' : 'location-outline'} size={18} color={GOLD} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.listItemTitle, { color: c.text }]}>
-                      {item.stopName}
-                      {item.isFinalDestination ? ' (Final)' : ''}
-                    </Text>
-                    {item.estimatedMinutesFromDeparture ? (
-                      <Text style={[styles.listItemSub, { color: c.textMuted }]}>
-                        ~{item.estimatedMinutesFromDeparture} min from departure
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Text style={{ color: GOLD, fontWeight: '800', fontSize: 15 }}>R{item.fareFromOrigin}</Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 40 }]}>
-                  No stops configured for this route
-                </Text>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* ===== PASSENGER STOP PICKER MODAL ===== */}
-      <Modal visible={paxStopModalVisible} animationType="slide" transparent onRequestClose={() => setPaxStopModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: c.background }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: c.text }]}>Passenger Stop</Text>
-              <TouchableOpacity onPress={() => setPaxStopModalVisible(false)}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
-              </TouchableOpacity>
-            </View>
-            {selectedSchedule && (
-              <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-                <Text style={[styles.listItemSub, { color: GOLD, fontWeight: '700' }]}>
-                  {selectedSchedule.departureStation} → {selectedSchedule.destinationStation}
-                </Text>
-              </View>
-            )}
-            <FlatList
-              data={[
-                ...routeStops,
-                ...(selectedSchedule?.destinationStation ? [{
-                  id: 'final-destination',
-                  stopName: selectedSchedule.destinationStation,
-                  stopOrder: 999,
-                  fareFromOrigin: selectedSchedule.standardFare,
-                  isFinalDestination: true,
-                }] : []),
-              ]}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.listItem, { backgroundColor: paxStop?.id === item.id ? GOLD_LIGHT : c.surface, borderColor: paxStop?.id === item.id ? GOLD : c.border }]}
-                  onPress={() => {
-                    setPaxStop(item);
-                    setPaxAmount(String(item.fareFromOrigin ?? selectedSchedule?.standardFare ?? fare ?? ''));
-                    setPaxStopModalVisible(false);
-                  }}
-                >
-                  <Ionicons name={item.isFinalDestination ? 'flag-outline' : 'location-outline'} size={18} color={GOLD} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.listItemTitle, { color: c.text }]}>
-                      {item.stopName}
-                      {item.isFinalDestination ? ' (Final)' : ''}
-                    </Text>
-                    {item.estimatedMinutesFromDeparture ? (
-                      <Text style={[styles.listItemSub, { color: c.textMuted }]}>
-                        ~{item.estimatedMinutesFromDeparture} min from departure
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Text style={{ color: GOLD, fontWeight: '800', fontSize: 15 }}>R{item.fareFromOrigin}</Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 40 }]}>
-                  No stops configured for this route
-                </Text>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
 
       {/* ===== VEHICLE PICKER MODAL ===== */}
       <Modal visible={vehicleModalVisible} animationType="slide" transparent onRequestClose={() => setVehicleModalVisible(false)}>
@@ -1175,13 +723,6 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
                 <Ionicons name="close" size={24} color={c.textMuted} />
               </TouchableOpacity>
             </View>
-            {selectedSchedule && routeVehicleList.length > 0 && (
-              <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-                <Text style={[styles.listItemSub, { color: GOLD, fontWeight: '700' }]}>
-                  Vehicles assigned to: {selectedSchedule.routeName}
-                </Text>
-              </View>
-            )}
             <FlatList
               data={displayVehicles}
               keyExtractor={(item) => item.id || item.vehicleId}
@@ -1206,7 +747,7 @@ export default function CaptureTripScreen({ route: navRoute, navigation }) {
               )}
               ListEmptyComponent={
                 <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 40 }]}>
-                  {selectedSchedule ? 'No vehicles assigned to this route' : 'No vehicles assigned'}
+                  No vehicles available
                 </Text>
               }
             />
@@ -1328,8 +869,23 @@ const styles = StyleSheet.create({
   modeSub: { fontSize: 12, marginTop: 2 },
   modeHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: 'rgba(128,128,128,0.2)' },
 
-  // Schedule card in list
+  // Schedule card in list (legacy)
   scheduleCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 10 },
+
+  // New schedule cards
+  scheduleCardNew: { flexDirection: 'row', borderWidth: 1, borderRadius: 14, marginBottom: 12, overflow: 'hidden' },
+  scheduleAccent: { width: 4, backgroundColor: GOLD },
+  scheduleRouteName: { fontSize: 15, fontWeight: '900' },
+  fareBadge: { backgroundColor: GOLD, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  fareBadgeText: { color: '#000', fontSize: 13, fontWeight: '900' },
+  stationDot: { width: 8, height: 8, borderRadius: 4 },
+  metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  metaChipText: { fontSize: 10, fontWeight: '700' },
+  manualCaptureBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, padding: 14, marginTop: 16 },
+
+  // Schedule summary banner in form
+  scheduleBanner: { flexDirection: 'row', borderWidth: 1.5, borderRadius: 14, marginBottom: 14, overflow: 'hidden' },
+  scheduleBannerAccent: { width: 5 },
 
   // Form section cards
   formCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 12 },

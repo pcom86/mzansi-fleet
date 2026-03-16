@@ -138,6 +138,7 @@ export default function OnboardingWizardScreen({ route, navigation }) {
   };
 
   // Determine total steps and button label
+  const isRider = role === 'User' || role === 'Rider';
   const totalSteps = role === 'Owner' ? 3 : isTaxiRankAdmin(role) ? 3 : role === 'TaxiMarshal' ? 2 : 1;
   const isLastStep = step >= totalSteps - 1;
 
@@ -285,10 +286,30 @@ export default function OnboardingWizardScreen({ route, navigation }) {
           navigation.replace('TaxiRankDashboard');
         }
 
+      } else if (isRider) {
+        // --- Rider flow: single step registration with name, phone, email, password ---
+        if (!userFirstName || !userLastName) return Alert.alert('Validation', 'First and last name are required');
+        if (!userEmail) return Alert.alert('Validation', 'Email is required');
+        if (!userPhone) return Alert.alert('Validation', 'Phone number is required');
+        if (!userPassword || userPassword.length < 6) return Alert.alert('Validation', 'Password must be at least 6 characters');
+
+        const userPayload = {
+          tenantId: null,
+          email: userEmail,
+          phone: userPhone,
+          password: userPassword,
+          role: 'User',
+          isActive: true,
+          fullName: `${userFirstName} ${userLastName}`.trim(),
+        };
+        await createUser(userPayload);
+        await signIn(userEmail, userPassword);
+        Alert.alert('Welcome!', 'Your rider account has been created. Start browsing trips!');
+        navigation.replace('RiderDashboard');
       } else {
         // --- Generic non-owner role ---
         if (!userEmail || !userPassword) return Alert.alert('Validation', 'User email and password required');
-        const userPayload = { tenantId: createdTenantId || '00000000-0000-0000-0000-000000000000', email: userEmail, phone: '', password: userPassword, role: role, isActive: true };
+        const userPayload = { tenantId: createdTenantId || null, email: userEmail, phone: '', password: userPassword, role: role, isActive: true };
         await createUser(userPayload);
         Alert.alert('Success', 'Registration successful');
         navigation.navigate('Login');
@@ -448,8 +469,21 @@ export default function OnboardingWizardScreen({ route, navigation }) {
         </>
       )}
 
+      {/* ===== Rider Registration ===== */}
+      {isRider && step === 0 && (
+        <>
+          <Text style={[styles.title, { color: c.text }]}>Register as a Passenger</Text>
+          <Text style={[styles.subtitle, { color: c.textMuted }]}>Join MzansiFleet App to browse taxi ranks, book trips, and manage your travel</Text>
+          <TextInput placeholder="First name *" placeholderTextColor={c.textMuted} value={userFirstName} onChangeText={setUserFirstName} style={inp} />
+          <TextInput placeholder="Last name *" placeholderTextColor={c.textMuted} value={userLastName} onChangeText={setUserLastName} style={inp} />
+          <TextInput placeholder="Phone number *" placeholderTextColor={c.textMuted} value={userPhone} onChangeText={setUserPhone} style={inp} keyboardType="phone-pad" />
+          <TextInput placeholder="Email *" placeholderTextColor={c.textMuted} value={userEmail} onChangeText={setUserEmail} style={inp} autoCapitalize="none" keyboardType="email-address" />
+          <TextInput placeholder="Password * (min 6 characters)" placeholderTextColor={c.textMuted} value={userPassword} onChangeText={setUserPassword} secureTextEntry style={inp} />
+        </>
+      )}
+
       {/* ===== Generic non-owner step ===== */}
-      {!isTaxiRankRole(role) && role !== 'Owner' && step === 0 && (
+      {!isTaxiRankRole(role) && role !== 'Owner' && !isRider && step === 0 && (
         <>
           <Text style={[styles.title, { color: c.text }]}>Create Account</Text>
           <TextInput placeholder="Email" placeholderTextColor={c.textMuted} value={userEmail} onChangeText={setUserEmail} style={inp} autoCapitalize="none" keyboardType="email-address" />

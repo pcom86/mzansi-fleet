@@ -119,6 +119,12 @@ export function fetchUserBookings(userId) {
   return client.get(`/ScheduledTripBookings/user/${userId}`);
 }
 
+// Update a booking (edit passengers, add more passengers)
+export async function updateTripBooking(bookingId, body) {
+  const resp = await client.put(`/ScheduledTripBookings/${bookingId}`, body);
+  return resp.data;
+}
+
 // Cancel a booking
 export async function cancelTripBooking(bookingId, reason) {
   const resp = await client.put(`/ScheduledTripBookings/${bookingId}/cancel`, { reason });
@@ -173,6 +179,18 @@ export async function removePassengerFromTrip(tripId, passengerId) {
 // Update trip status (Departed, InTransit, Arrived, Completed)
 export async function updateTripStatus(tripId, status) {
   const resp = await client.put(`/TaxiRankTrips/${tripId}/status`, { status });
+  return resp.data;
+}
+
+// Complete a trip — finalizes earnings and notifies the vehicle owner
+export async function completeTrip(tripId, notes = '') {
+  const resp = await client.put(`/TaxiRankTrips/${tripId}/complete`, { notes });
+  return resp.data;
+}
+
+// Update trip details (vehicle, driver, marshal, time, notes, status)
+export async function updateTrip(tripId, updates) {
+  const resp = await client.put(`/TaxiRankTrips/${tripId}`, updates);
   return resp.data;
 }
 

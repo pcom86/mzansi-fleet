@@ -22,6 +22,7 @@ namespace MzansiFleet.Domain.Entities
         public string Phone { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty; // See MzansiFleet.Domain.Constants.Roles for valid roles: Owner, Driver, Staff, ServiceProvider, TaxiRankAdmin, TaxiMarshal, etc.
+        public string? FullName { get; set; }
         public bool IsActive { get; set; }
         public Tenant? Tenant { get; set; }
     }

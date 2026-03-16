@@ -692,12 +692,18 @@ namespace MzansiFleet.Repository.Repositories
             => await _context.ScheduledTripBookings
                 .Include(b => b.Route)
                 .Include(b => b.TaxiRank)
+                .Include(b => b.Passengers)
+                .Include(b => b.ScheduledTrip)
+                    .ThenInclude(st => st!.Vehicle)
                 .FirstOrDefaultAsync(b => b.Id == id);
 
         public async Task<IEnumerable<ScheduledTripBooking>> GetByUserIdAsync(Guid userId)
             => await _context.ScheduledTripBookings
                 .Include(b => b.Route)
                 .Include(b => b.TaxiRank)
+                .Include(b => b.Passengers)
+                .Include(b => b.ScheduledTrip)
+                    .ThenInclude(st => st!.Vehicle)
                 .Where(b => b.UserId == userId)
                 .OrderByDescending(b => b.TravelDate)
                 .ToListAsync();

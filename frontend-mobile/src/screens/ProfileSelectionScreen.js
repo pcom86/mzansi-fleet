@@ -9,7 +9,7 @@ export default function ProfileSelectionScreen({ navigation }) {
   const c = theme.colors;
 
   const profiles = [
-    { key: 'user', title: 'Normal User / Rider', subtitle: 'Book rides and track trips', icon: 'person-outline', onPress: () => navigation.navigate('Onboarding', { role: 'User' }) },
+    { key: 'user', title: 'Normal User / Passenger', subtitle: 'Book rides and track trips', icon: 'person-outline', onPress: () => navigation.navigate('Onboarding', { role: 'User' }) },
     { key: 'rank', title: 'Taxi Rank User', subtitle: 'Manage rank operations', icon: 'business-outline', onPress: () => navigation.navigate('TaxiRankRoleSelection') },
     { key: 'driver', title: 'Driver', subtitle: 'Register and start driving', icon: 'car-sport-outline', onPress: () => navigation.navigate('DriverRegistration') },
     { key: 'service', title: 'Service Provider', subtitle: 'Offer maintenance services', icon: 'construct-outline', onPress: () => navigation.navigate('ServiceProviderRegistration') },
@@ -24,7 +24,7 @@ export default function ProfileSelectionScreen({ navigation }) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.heroTitle}>Choose Your Profile</Text>
-          <Text style={styles.heroSub}>Set up the right experience for your role in Mzansi Fleet.</Text>
+          <Text style={styles.heroSub}>Set up the right experience for your role in MzansiFleet App.</Text>
         </View>
       </View>
 

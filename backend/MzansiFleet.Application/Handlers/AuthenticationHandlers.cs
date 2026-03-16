@@ -118,6 +118,10 @@ namespace MzansiFleet.Application.Handlers
                 }
             }
             catch { /* Ignore profile lookup errors */ }
+
+            // Fallback to User.FullName if no profile-based name was found
+            if (string.IsNullOrEmpty(fullName))
+                fullName = user.FullName;
             
             return new LoginResponseDto
             {
@@ -127,7 +131,8 @@ namespace MzansiFleet.Application.Handlers
                 Role = user.Role,
                 TenantId = user.TenantId ?? Guid.Empty,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(expirationMinutes),
-                FullName = fullName
+                FullName = fullName,
+                Phone = user.Phone
             };
         }
 

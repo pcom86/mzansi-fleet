@@ -73,6 +73,7 @@ export function AuthProvider({ children }) {
       email: resp?.email || (resp && resp.data && resp.data.email) || email,
       role: resp?.role || (resp && resp.data && resp.data.role) || null,
       fullName: resp?.fullName || (resp && resp.data && resp.data.fullName) || null,
+      phone: resp?.phone || (resp && resp.data && resp.data.phone) || null,
       tenantId: resp?.tenantId || (resp && resp.data && resp.data.tenantId) || null,
     };
     if (!tok) throw new Error('No token returned from login');

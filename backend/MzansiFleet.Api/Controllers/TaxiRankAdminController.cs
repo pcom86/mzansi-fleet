@@ -641,12 +641,6 @@ namespace MzansiFleet.Api.Controllers
         public string? StopNotes { get; set; }
     }
 
-    public class AssignVehicleDto
-    {
-        public Guid VehicleId { get; set; }
-        public string? Notes { get; set; }
-    }
-
     public class CreateScheduleDto
     {
         public string RouteName { get; set; } = string.Empty;

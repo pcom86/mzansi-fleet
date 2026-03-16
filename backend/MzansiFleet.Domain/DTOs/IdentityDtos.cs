@@ -46,6 +46,7 @@ namespace MzansiFleet.Domain.DTOs
         public Guid TenantId { get; set; }
         public DateTime ExpiresAt { get; set; }
         public string? FullName { get; set; }
+        public string? Phone { get; set; }
     }
 
     public class LogoutRequestDto

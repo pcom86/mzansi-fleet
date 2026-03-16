@@ -24,6 +24,7 @@ namespace MzansiFleet.Application.Handlers
                 Phone = request.Phone,
                 PasswordHash = request.PasswordHash,
                 Role = request.Role,
+                FullName = request.FullName,
                 IsActive = request.IsActive
             };
             _repository.Add(entity);

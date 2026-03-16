@@ -11,8 +11,10 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import client from '../api/client';
 import { submitMechanicalRequestReview } from '../api/reviews';
+import { fetchDriverEvents } from '../api/driverBehavior';
 import RatingReviewModal from './RatingReviewModal';
 import ThemeToggle from '../components/ThemeToggle';
+import { startMonitoring, stopMonitoring, isMonitoring, getCurrentSpeed } from '../services/DrivingMonitorService';
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 const API = {
@@ -65,7 +67,7 @@ function DatePickerField({ label, date, onChange, c, s }) {
       <>
         <Text style={s.label}>{label}</Text>
         <View style={{ position: 'relative', marginBottom: 4 }}>
-          <View style={[s.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]} pointerEvents="none">
+          <View style={[s.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', pointerEvents: 'none' }]}>
             <Text style={{ color: c.text, fontSize: 14 }}>{fmt(date)}</Text>
             <Ionicons name="calendar-outline" size={16} color={c.textMuted} />
           </View>
@@ -474,7 +476,7 @@ function DetailRow({ icon, label, value, highlight, c, s }) {
 }
 
 // ── Tab screens ──────────────────────────────────────────────────────────────
-function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onToggle, onAddEarning, onAddExpense, refreshing, onRefresh, c, s }) {
+function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onToggle, onAddEarning, onAddExpense, refreshing, onRefresh, monitorActive, monitorSpeed, recentBehaviorEvents, c, s }) {
   const { name: month } = monthRange();
   const earn = earnings.reduce((a, e) => a + (e.amount || 0), 0);
   const exp = expenses.reduce((a, e) => a + (e.amount || 0), 0);
@@ -499,6 +501,43 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
         </View>
         <Ionicons name="chevron-forward" size={18} color="#ffffffcc" />
       </TouchableOpacity>
+
+      {/* Driving Monitor Status */}
+      {monitorActive && (
+        <View style={s.monitorBanner}>
+          <View style={s.monitorDot} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={s.monitorTitle}>Behavior Monitoring Active</Text>
+            <Text style={s.monitorSub}>Sensors tracking driving patterns</Text>
+          </View>
+          <View style={s.monitorSpeedBadge}>
+            <Text style={s.monitorSpeedTxt}>{monitorSpeed}</Text>
+            <Text style={s.monitorSpeedUnit}>km/h</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Recent Behavior Alerts */}
+      {recentBehaviorEvents && recentBehaviorEvents.length > 0 && (
+        <View style={s.behaviorAlertCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Ionicons name="alert-circle" size={16} color="#f59e0b" />
+            <Text style={s.behaviorAlertTitle}>Recent Alerts</Text>
+          </View>
+          {recentBehaviorEvents.slice(0, 3).map((evt, i) => {
+            const isPos = evt.eventType === 'Positive';
+            return (
+              <View key={i} style={[s.behaviorAlertRow, { borderLeftColor: isPos ? '#22c55e' : '#ef4444' }]}>
+                <Text style={[s.behaviorAlertCat, { color: isPos ? '#22c55e' : '#ef4444' }]}>{evt.category}</Text>
+                <Text style={s.behaviorAlertDesc} numberOfLines={1}>{evt.description}</Text>
+                <Text style={[s.behaviorAlertPts, { color: isPos ? '#22c55e' : '#ef4444' }]}>
+                  {evt.pointsImpact > 0 ? '+' : ''}{evt.pointsImpact}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
 
       {/* Vehicle Details */}
       <VehicleDetailsCard vehicle={vehicle} c={c} s={s} />
@@ -801,8 +840,52 @@ function MessagesTab({ userId, c, s }) {
   );
 }
 
-function ProfileTab({ profile, user, vehicle, onToggle, onLogout, mode, setMode, c, s }) {
+function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle, onLogout, mode, setMode, c, s }) {
   const initials = (profile?.name || user?.fullName || 'D').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  
+  // Calculate behavior score from events
+  const behaviorScore = useMemo(() => {
+    if (!behaviorEvents || behaviorEvents.length === 0) return 100;
+    const totalPoints = behaviorEvents.reduce((sum, e) => sum + (e.pointsImpact || 0), 0);
+    return Math.max(0, Math.min(100, 100 + totalPoints));
+  }, [behaviorEvents]);
+  
+  // Get recent negative behaviors for display
+  const recentIssues = useMemo(() => {
+    if (!behaviorEvents) return [];
+    return behaviorEvents
+      .filter(e => e.pointsImpact < 0)
+      .slice(0, 3);
+  }, [behaviorEvents]);
+  
+  // Calculate average rating
+  const avgRating = useMemo(() => {
+    if (!ratings || ratings.length === 0) return 0;
+    const sum = ratings.reduce((acc, r) => acc + (r.rating || r.score || 0), 0);
+    return (sum / ratings.length).toFixed(1);
+  }, [ratings]);
+  
+  // Format expiry date
+  const fmtDate = (d) => {
+    if (!d) return 'Not set';
+    const date = new Date(d);
+    return date.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+  
+  // Check if date is expired or expiring soon
+  const getExpiryStatus = (d) => {
+    if (!d) return null;
+    const date = new Date(d);
+    const now = new Date();
+    const daysDiff = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+    if (daysDiff < 0) return { color: '#ef4444', text: 'Expired', bg: '#ef444420' };
+    if (daysDiff < 30) return { color: '#f59e0b', text: `Expires in ${daysDiff} days`, bg: '#f59e0b20' };
+    return { color: '#22c55e', text: 'Valid', bg: '#22c55e20' };
+  };
+  
+  const licenseStatus = getExpiryStatus(profile?.licenseExpiryDate);
+  const pdpStatus = getExpiryStatus(profile?.pdpExpiryDate);
+  
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
       {/* Avatar card */}
@@ -820,9 +903,113 @@ function ProfileTab({ profile, user, vehicle, onToggle, onLogout, mode, setMode,
         </TouchableOpacity>
       </View>
 
-      {/* Driver info */}
-      <Text style={s.profGroupLabel}>DRIVER INFO</Text>
+      {/* Driver Performance Summary */}
+      <View style={[s.performanceCard, { backgroundColor: c.surface }]}>
+        <View style={s.performanceRow}>
+          <View style={s.performanceItem}>
+            <View style={[s.performanceIcon, { backgroundColor: behaviorScore >= 80 ? '#22c55e20' : behaviorScore >= 60 ? '#f59e0b20' : '#ef444420' }]}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={behaviorScore >= 80 ? '#22c55e' : behaviorScore >= 60 ? '#f59e0b' : '#ef4444'} />
+            </View>
+            <Text style={[s.performanceValue, { color: behaviorScore >= 80 ? '#22c55e' : behaviorScore >= 60 ? '#f59e0b' : '#ef4444' }]}>{behaviorScore}</Text>
+            <Text style={s.performanceLabel}>Behavior Score</Text>
+          </View>
+          <View style={s.performanceDivider} />
+          <View style={s.performanceItem}>
+            <View style={[s.performanceIcon, { backgroundColor: '#f59e0b20' }]}>
+              <Ionicons name="star-outline" size={20} color="#f59e0b" />
+            </View>
+            <Text style={[s.performanceValue, { color: '#f59e0b' }]}>{avgRating}</Text>
+            <Text style={s.performanceLabel}>Avg Rating</Text>
+          </View>
+          <View style={s.performanceDivider} />
+          <View style={s.performanceItem}>
+            <View style={[s.performanceIcon, { backgroundColor: '#3b82f620' }]}>
+              <Ionicons name="ribbon-outline" size={20} color="#3b82f6" />
+            </View>
+            <Text style={[s.performanceValue, { color: '#3b82f6' }]}>{ratings?.length || 0}</Text>
+            <Text style={s.performanceLabel}>Reviews</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* License Information */}
+      <Text style={s.profGroupLabel}>LICENSE INFORMATION</Text>
       <View style={s.profSection}>
+        {profile?.licenseNumber ? (
+          <View style={s.profRow}>
+            <View style={[s.profRowIcon, { backgroundColor: '#3b82f620' }]}>
+              <Ionicons name="id-card-outline" size={16} color="#3b82f6" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.profRowTxt}>License No: {profile.licenseNumber}</Text>
+            </View>
+          </View>
+        ) : null}
+        {profile?.category ? (
+          <View style={s.profRow}>
+            <View style={[s.profRowIcon, { backgroundColor: '#8b5cf620' }]}>
+              <Ionicons name="car-outline" size={16} color="#8b5cf6" />
+            </View>
+            <Text style={s.profRowTxt}>Category: {profile.category}</Text>
+          </View>
+        ) : null}
+        {profile?.licenseExpiryDate ? (
+          <View style={s.profRow}>
+            <View style={[s.profRowIcon, { backgroundColor: licenseStatus?.bg || '#9ca3af20' }]}>
+              <Ionicons name="calendar-outline" size={16} color={licenseStatus?.color || '#9ca3af'} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.profRowTxt}>Expires: {fmtDate(profile.licenseExpiryDate)}</Text>
+              {licenseStatus && (
+                <View style={[s.statusBadge, { backgroundColor: licenseStatus.bg }]}>
+                  <Text style={[s.statusBadgeTxt, { color: licenseStatus.color }]}>{licenseStatus.text}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        ) : null}
+        {!profile?.licenseNumber && !profile?.category && (
+          <Text style={[s.profRowTxt, { color: c.textMuted, fontStyle: 'italic' }]}>No license information on file</Text>
+        )}
+      </View>
+
+      {/* PDP Information */}
+      <Text style={s.profGroupLabel}>PROFESSIONAL DRIVING PERMIT (PDP)</Text>
+      <View style={s.profSection}>
+        <View style={s.profRow}>
+          <View style={[s.profRowIcon, { backgroundColor: profile?.hasPdp ? '#10b98120' : '#ef444420' }]}>
+            <Ionicons name={profile?.hasPdp ? "checkmark-circle-outline" : "close-circle-outline"} size={16} color={profile?.hasPdp ? '#10b981' : '#ef4444'} />
+          </View>
+          <Text style={s.profRowTxt}>{profile?.hasPdp ? 'PDP Certified' : 'No PDP on file'}</Text>
+        </View>
+        {profile?.hasPdp && profile?.pdpExpiryDate && (
+          <View style={s.profRow}>
+            <View style={[s.profRowIcon, { backgroundColor: pdpStatus?.bg || '#9ca3af20' }]}>
+              <Ionicons name="calendar-outline" size={16} color={pdpStatus?.color || '#9ca3af'} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.profRowTxt}>PDP Expires: {fmtDate(profile.pdpExpiryDate)}</Text>
+              {pdpStatus && (
+                <View style={[s.statusBadge, { backgroundColor: pdpStatus.bg }]}>
+                  <Text style={[s.statusBadgeTxt, { color: pdpStatus.color }]}>{pdpStatus.text}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Personal Info */}
+      <Text style={s.profGroupLabel}>PERSONAL INFORMATION</Text>
+      <View style={s.profSection}>
+        {profile?.idNumber ? (
+          <View style={s.profRow}>
+            <View style={[s.profRowIcon, { backgroundColor: '#6366f120' }]}>
+              <Ionicons name="person-outline" size={16} color="#6366f1" />
+            </View>
+            <Text style={s.profRowTxt}>ID: {profile.idNumber}</Text>
+          </View>
+        ) : null}
         {profile?.phone ? (
           <View style={s.profRow}>
             <View style={[s.profRowIcon, { backgroundColor: '#3b82f620' }]}>
@@ -831,26 +1018,39 @@ function ProfileTab({ profile, user, vehicle, onToggle, onLogout, mode, setMode,
             <Text style={s.profRowTxt}>{profile.phone}</Text>
           </View>
         ) : null}
-        {profile?.category ? (
+        {profile?.experience ? (
           <View style={s.profRow}>
-            <View style={[s.profRowIcon, { backgroundColor: '#8b5cf620' }]}>
-              <Ionicons name="card-outline" size={16} color="#8b5cf6" />
+            <View style={[s.profRowIcon, { backgroundColor: '#f59e0b20' }]}>
+              <Ionicons name="briefcase-outline" size={16} color="#f59e0b" />
             </View>
-            <Text style={s.profRowTxt}>Licence: {profile.category}</Text>
-          </View>
-        ) : null}
-        {profile?.hasPdp ? (
-          <View style={s.profRow}>
-            <View style={[s.profRowIcon, { backgroundColor: '#10b98120' }]}>
-              <Ionicons name="checkmark-circle-outline" size={16} color="#10b981" />
-            </View>
-            <Text style={s.profRowTxt}>PDP Holder</Text>
+            <Text style={s.profRowTxt}>{profile.experience}</Text>
           </View>
         ) : null}
       </View>
 
+      {/* Recent Behavior Issues */}
+      {recentIssues.length > 0 && (
+        <>
+          <Text style={[s.profGroupLabel, { color: '#ef4444' }]}>RECENT BEHAVIOR ALERTS</Text>
+          <View style={[s.profSection, { borderColor: '#ef444440' }]}>
+            {recentIssues.map((issue, idx) => (
+              <View key={idx} style={s.behaviorRow}>
+                <View style={[s.behaviorIcon, { backgroundColor: '#ef444420' }]}>
+                  <Ionicons name="warning-outline" size={14} color="#ef4444" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.behaviorTitle}>{issue.category}</Text>
+                  <Text style={s.behaviorDesc} numberOfLines={1}>{issue.description}</Text>
+                </View>
+                <Text style={s.behaviorPoints}>{issue.pointsImpact}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
       {/* Vehicle */}
-      <Text style={s.profGroupLabel}>VEHICLE</Text>
+      <Text style={s.profGroupLabel}>VEHICLE ASSIGNMENT</Text>
       <View style={s.profSection}>
         <View style={s.profRow}>
           <View style={[s.profRowIcon, { backgroundColor: vehicle ? c.primary + '20' : '#9ca3af20' }]}>
@@ -902,6 +1102,8 @@ export default function DriverDashboardScreen({ navigation }) {
   const [earnings, setEarnings] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [maintenance, setMaintenance] = useState([]);
+  const [behaviorEvents, setBehaviorEvents] = useState([]);
+  const [ratings, setRatings] = useState([]);
 
   const [earnModal, setEarnModal] = useState(false);
   const [expModal, setExpModal] = useState(false);
@@ -910,6 +1112,9 @@ export default function DriverDashboardScreen({ navigation }) {
   const [editingRequest, setEditingRequest] = useState(null);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
   const [ratingRequest, setRatingRequest] = useState(null);
+  const [monitorActive, setMonitorActive] = useState(false);
+  const [monitorSpeed, setMonitorSpeed] = useState(0);
+  const [recentBehaviorEvents, setRecentBehaviorEvents] = useState([]);
 
   async function submitReview({ rating, review }) {
     await submitMechanicalRequestReview({
@@ -928,6 +1133,23 @@ export default function DriverDashboardScreen({ navigation }) {
       const profResp = await API.getDriverProfiles();
       const prof = Array.isArray(profResp.data) ? profResp.data.find(d => d.userId === user.id) : null;
       setProfile(prof);
+
+      // Fetch behavior events and ratings if profile exists
+      if (prof?.id) {
+        try {
+          const events = await fetchDriverEvents(prof.id, 20);
+          setBehaviorEvents(Array.isArray(events) ? events : []);
+        } catch { setBehaviorEvents([]); }
+        
+        // Fetch ratings from reviews API (mechanical request reviews for now)
+        try {
+          const mr = await API.getMaintenance();
+          const all = Array.isArray(mr.data) ? mr.data : [];
+          // Filter completed requests with ratings
+          const rated = all.filter(r => r.status === 'completed' && r.driverRating != null);
+          setRatings(rated.map(r => ({ rating: r.driverRating, review: r.driverReview, date: r.completedAt })));
+        } catch { setRatings([]); }
+      }
 
       let veh = null;
       try {
@@ -972,11 +1194,43 @@ export default function DriverDashboardScreen({ navigation }) {
 
   async function toggleAvailability() {
     if (!profile) return;
+    const goingOnline = !profile.isAvailable;
     try {
-      await API.updateDriverProfile(profile.id, { ...profile, isAvailable: !profile.isAvailable });
-      setProfile(p => ({ ...p, isAvailable: !p.isAvailable }));
+      await API.updateDriverProfile(profile.id, { ...profile, isAvailable: goingOnline });
+      setProfile(p => ({ ...p, isAvailable: goingOnline }));
+
+      // Start/stop driving behavior monitor
+      if (goingOnline) {
+        const result = await startMonitoring({
+          driverId: profile.id,
+          vehicleId: vehicle?.id,
+          tenantId: user?.tenantId,
+          reporterId: user?.userId || user?.id,
+          onEvent: (evt) => {
+            setRecentBehaviorEvents(prev => [evt, ...prev].slice(0, 10));
+          },
+          onStatusChange: (status) => {
+            setMonitorActive(status.monitoring);
+            setMonitorSpeed(status.speed || 0);
+          },
+        });
+        if (result.success) {
+          setMonitorActive(true);
+        } else if (result.error) {
+          Alert.alert('Monitor', `Could not start behavior monitoring: ${result.error}`);
+        }
+      } else {
+        stopMonitoring();
+        setMonitorActive(false);
+        setMonitorSpeed(0);
+      }
     } catch { Alert.alert('Error', 'Could not update availability'); }
   }
+
+  // Cleanup monitor on unmount
+  useEffect(() => {
+    return () => { stopMonitoring(); };
+  }, []);
 
   async function logout() {
     try { await signOut(); } catch {}
@@ -1027,7 +1281,9 @@ export default function DriverDashboardScreen({ navigation }) {
         {tab === 'overview' && (
           <OverviewTab profile={profile} vehicle={vehicle} earnings={earnings} expenses={expenses} maintenance={maintenance}
             onToggle={toggleAvailability} onAddEarning={() => setEarnModal(true)} onAddExpense={() => setExpModal(true)}
-            refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} c={c} s={s} />
+            refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
+            monitorActive={monitorActive} monitorSpeed={monitorSpeed} recentBehaviorEvents={recentBehaviorEvents}
+            c={c} s={s} />
         )}
         {tab === 'maintenance' && (
           <MaintenanceTab maintenance={maintenance} vehicle={vehicle} profile={profile} onNew={() => setMaintModal(true)}
@@ -1062,6 +1318,7 @@ export default function DriverDashboardScreen({ navigation }) {
         {tab === 'messages' && <MessagesTab userId={user?.id} c={c} s={s} />}
         {tab === 'profile' && (
           <ProfileTab profile={profile} user={user} vehicle={vehicle}
+            behaviorEvents={behaviorEvents} ratings={ratings}
             onToggle={toggleAvailability} onLogout={logout}
             mode={mode} setMode={setMode} c={c} s={s} />
         )}
@@ -1120,6 +1377,22 @@ function createStyles(c) {
     heroBannerIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
     heroBannerTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
     heroBannerSub: { fontSize: 12, color: '#ffffffcc', marginTop: 2 },
+
+    // ── Driving Monitor ──
+    monitorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0d6efd15', borderWidth: 1, borderColor: '#0d6efd44', borderRadius: 14, padding: 12, marginBottom: 12 },
+    monitorDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#0d6efd' },
+    monitorTitle: { fontSize: 13, fontWeight: '800', color: '#0d6efd' },
+    monitorSub: { fontSize: 10, color: c.textMuted, marginTop: 1 },
+    monitorSpeedBadge: { alignItems: 'center', backgroundColor: c.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: c.border },
+    monitorSpeedTxt: { fontSize: 18, fontWeight: '900', color: c.text },
+    monitorSpeedUnit: { fontSize: 9, fontWeight: '700', color: c.textMuted },
+
+    behaviorAlertCard: { backgroundColor: '#f59e0b10', borderWidth: 1, borderColor: '#f59e0b44', borderRadius: 14, padding: 12, marginBottom: 12 },
+    behaviorAlertTitle: { fontSize: 13, fontWeight: '800', color: '#f59e0b' },
+    behaviorAlertRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingLeft: 8, borderLeftWidth: 3, marginBottom: 4 },
+    behaviorAlertCat: { fontSize: 12, fontWeight: '800', minWidth: 80 },
+    behaviorAlertDesc: { flex: 1, fontSize: 11, color: c.textMuted },
+    behaviorAlertPts: { fontSize: 12, fontWeight: '900' },
 
     // ── Hero profit card ──
     heroCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, borderRadius: 20, padding: 20, marginBottom: 14 },
@@ -1267,5 +1540,25 @@ function createStyles(c) {
     profActionTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: c.text },
     logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', borderRadius: 16, paddingVertical: 16, marginTop: 16, gap: 8 },
     logoutTxt: { fontSize: 16, fontWeight: '900', color: '#fff' },
+
+    // ── Profile Performance Card ──
+    performanceCard: { borderRadius: 16, borderWidth: 1, borderColor: c.border, padding: 16, marginBottom: 20 },
+    performanceRow: { flexDirection: 'row', alignItems: 'center' },
+    performanceItem: { flex: 1, alignItems: 'center' },
+    performanceIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+    performanceValue: { fontSize: 22, fontWeight: '900' },
+    performanceLabel: { fontSize: 11, color: c.textMuted, marginTop: 2, fontWeight: '600' },
+    performanceDivider: { width: 1, height: 50, backgroundColor: c.border },
+
+    // ── Profile Status Badges ──
+    statusBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
+    statusBadgeTxt: { fontSize: 10, fontWeight: '700' },
+
+    // ── Profile Behavior Alerts ──
+    behaviorRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border, gap: 10 },
+    behaviorIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+    behaviorTitle: { fontSize: 13, fontWeight: '700', color: c.text },
+    behaviorDesc: { fontSize: 11, color: c.textMuted, marginTop: 1 },
+    behaviorPoints: { fontSize: 14, fontWeight: '900', color: '#ef4444' },
   });
 }

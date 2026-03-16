@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace MzansiFleet.Api.Controllers
 {
@@ -16,10 +17,12 @@ namespace MzansiFleet.Api.Controllers
     public class RoutesController : ControllerBase
     {
         private readonly MzansiFleetDbContext _context;
+        private readonly ILogger<RoutesController> _logger;
 
-        public RoutesController(MzansiFleetDbContext context)
+        public RoutesController(MzansiFleetDbContext context, ILogger<RoutesController> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         /// <summary>
@@ -29,6 +32,8 @@ namespace MzansiFleet.Api.Controllers
         [AllowAnonymous]
         public async Task<ActionResult<IEnumerable<RouteDto>>> GetRoutes([FromQuery] Guid taxiRankId)
         {
+            _logger.LogInformation($"[Routes] GetRoutes called with taxiRankId: {taxiRankId}");
+            
             if (taxiRankId == Guid.Empty)
                 return BadRequest(new { message = "taxiRankId is required" });
 
@@ -40,6 +45,8 @@ namespace MzansiFleet.Api.Controllers
                 .Where(s => s.TaxiRankId == taxiRankId && s.IsActive)
                 .OrderBy(s => s.RouteName)
                 .ToListAsync();
+
+            _logger.LogInformation($"[Routes] Found {schedules.Count} schedules for taxiRankId: {taxiRankId}");
 
             // Group by route name + stations to get unique routes
             var routeGroups = schedules

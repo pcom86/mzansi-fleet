@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  StyleSheet, Alert, RefreshControl,
+  StyleSheet, Alert, RefreshControl, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
-import { fetchUserBookings, cancelTripBooking } from '../api/taxiRanks';
+import { fetchUserBookings, cancelTripBooking, updateTripBooking } from '../api/taxiRanks';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -22,6 +22,19 @@ function fmtTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function fmtTimeSpan(ts) {
+  if (!ts) return '';
+  const parts = ts.toString().split(':');
+  if (parts.length >= 2) {
+    const h = parseInt(parts[0], 10);
+    const m = parts[1].padStart(2, '0');
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${m} ${suffix}`;
+  }
+  return ts;
 }
 
 const STATUS_COLORS = {
@@ -41,6 +54,13 @@ export default function MyBookingsScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [bookings, setBookings] = useState([]);
   const [filter, setFilter] = useState('all'); // all, upcoming, past, cancelled
+
+  // Edit booking state
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingBooking, setEditingBooking] = useState(null);
+  const [editPassengers, setEditPassengers] = useState([]);
+  const [newPassenger, setNewPassenger] = useState({ name: '', contactNumber: '', email: '', destination: '' });
+  const [saving, setSaving] = useState(false);
 
   const userId = user?.userId || user?.id;
 
@@ -77,6 +97,74 @@ export default function MyBookingsScreen({ navigation }) {
     ]);
   }
 
+  function openEditModal(booking) {
+    setEditingBooking(booking);
+    setEditPassengers((booking.passengers || []).map(p => ({ ...p })));
+    setNewPassenger({ name: '', contactNumber: '', email: '', destination: '' });
+    setEditModalVisible(true);
+  }
+
+  function closeEditModal() {
+    setEditModalVisible(false);
+    setEditingBooking(null);
+    setEditPassengers([]);
+    setNewPassenger({ name: '', contactNumber: '', email: '', destination: '' });
+  }
+
+  function updateEditPassenger(index, field, value) {
+    setEditPassengers(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  }
+
+  async function handleSaveEdit() {
+    if (!editingBooking) return;
+    setSaving(true);
+    try {
+      const updatedPassengers = editPassengers.filter(p => p.id).map(p => ({
+        id: p.id,
+        name: p.name,
+        contactNumber: p.contactNumber,
+        email: p.email || '',
+        destination: p.destination || '',
+      }));
+
+      const newPassengers = editPassengers.filter(p => !p.id).map(p => ({
+        name: p.name,
+        contactNumber: p.contactNumber,
+        email: p.email || '',
+        destination: p.destination || '',
+      }));
+
+      const nextSeatBase = Math.max(...(editingBooking.seatNumbers || [0]), 0);
+      const newSeatNumbers = newPassengers.map((_, i) => nextSeatBase + i + 1);
+
+      await updateTripBooking(editingBooking.id, {
+        updatedPassengers,
+        newPassengers: newPassengers.length > 0 ? newPassengers : null,
+        newSeatNumbers: newSeatNumbers.length > 0 ? newSeatNumbers : null,
+      });
+
+      Alert.alert('Success', 'Booking updated successfully');
+      closeEditModal();
+      loadData(true);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function addNewPassengerToEdit() {
+    if (!newPassenger.name || !newPassenger.contactNumber) {
+      return Alert.alert('Validation', 'Name and phone are required');
+    }
+    setEditPassengers(prev => [...prev, { ...newPassenger, id: null }]);
+    setNewPassenger({ name: '', contactNumber: '', email: '', destination: '' });
+  }
+
   const now = new Date();
   const filtered = bookings.filter(b => {
     if (filter === 'upcoming') return new Date(b.travelDate) >= now && b.status !== 'Cancelled';
@@ -98,14 +186,14 @@ export default function MyBookingsScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color="#fff" />
+          <View><Ionicons name="arrow-back" size={22} color="#fff" /></View>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>My Bookings</Text>
           <Text style={styles.headerSub}>{bookings.length} total booking{bookings.length !== 1 ? 's' : ''}</Text>
         </View>
         <TouchableOpacity onPress={() => navigation.navigate('BookTrip')} style={styles.addBtn}>
-          <Ionicons name="add" size={22} color="#000" />
+          <View><Ionicons name="add" size={22} color="#000" /></View>
         </TouchableOpacity>
       </View>
 
@@ -142,21 +230,24 @@ export default function MyBookingsScreen({ navigation }) {
         ) : (
           filtered.map((b) => {
             const sc = STATUS_COLORS[b.status] || STATUS_COLORS.Pending;
-            const schedule = b.tripSchedule;
+            const route = b.route;
             const rank = b.taxiRank;
             const isPast = new Date(b.travelDate) < now;
             const canCancel = !isPast && b.status !== 'Cancelled' && b.status !== 'Completed';
+            const bookingRef = b.id ? b.id.toString().substring(0, 8).toUpperCase() : '';
+            const vehicle = b.scheduledTrip?.vehicle;
+            const canEdit = !isPast && b.status !== 'Cancelled' && b.status !== 'Completed';
 
             return (
               <View key={b.id} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
                 <View style={styles.cardTop}>
                   <View style={[styles.cardIcon, { backgroundColor: GOLD_LIGHT }]}>
-                    <Ionicons name="ticket-outline" size={20} color={GOLD} />
+                    <View><Ionicons name="ticket-outline" size={20} color={GOLD} /></View>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.cardTitle, { color: c.text }]}>{schedule?.routeName || 'Trip'}</Text>
+                    <Text style={[styles.cardTitle, { color: c.text }]}>{route?.routeName || 'Trip'}</Text>
                     <Text style={[styles.cardRoute, { color: c.textMuted }]}>
-                      {schedule?.departureStation || '?'} → {schedule?.destinationStation || '?'}
+                      {route?.departureStation || '?'} → {route?.destinationStation || '?'}
                     </Text>
                   </View>
                   <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
@@ -164,36 +255,217 @@ export default function MyBookingsScreen({ navigation }) {
                   </View>
                 </View>
 
+                {bookingRef ? (
+                  <View style={[styles.refBadge, { backgroundColor: GOLD_LIGHT }]}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Booking Ref</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: GOLD, letterSpacing: 1 }}>{bookingRef}</Text>
+                  </View>
+                ) : null}
+
                 <View style={styles.infoGrid}>
                   <InfoItem icon="calendar-outline" label="Date" value={fmtDate(b.travelDate)} c={c} />
-                  <InfoItem icon="people-outline" label="Seats" value={String(b.seatsBooked)} c={c} />
-                  <InfoItem icon="cash-outline" label="Fare" value={`R${b.totalFare}`} c={c} />
-                  {rank && <InfoItem icon="location-outline" label="Rank" value={rank.name || ''} c={c} />}
+                  <InfoItem icon="time-outline" label="Departure" value={fmtTimeSpan(route?.departureTime) || '--'} c={c} />
+                  <InfoItem icon="people-outline" label="Seats" value={`${b.seatsBooked} (${(b.seatNumbers || []).join(', ') || '--'})`} c={c} />
+                  <InfoItem icon="cash-outline" label="Total Fare" value={`R${(b.totalFare || 0).toFixed(2)}`} c={c} />
+                  <InfoItem icon="card-outline" label="Payment" value={b.paymentMethod || '--'} c={c} />
+                  <InfoItem icon="receipt-outline" label="Pay Status" value={b.paymentStatus || '--'} c={c} />
+                  {vehicle ? <InfoItem icon="car-outline" label="Vehicle" value={vehicle.registration || '--'} c={c} /> : null}
+                  {rank ? <InfoItem icon="location-outline" label="Rank" value={rank.name || ''} c={c} /> : null}
                 </View>
 
-                {b.confirmedAt && (
+                {b.passengers && b.passengers.length > 0 ? (
+                  <View style={[styles.passengersWrap, { borderColor: c.border }]}>
+                    <Text style={[styles.passengersTitle, { color: c.textMuted }]}>Passengers</Text>
+                    {b.passengers.map((p, i) => (
+                      <View key={p.id || i} style={styles.passengerRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.passengerName, { color: c.text }]}>{p.name}</Text>
+                          <Text style={{ fontSize: 11, color: c.textMuted }}>
+                            {p.contactNumber}{p.destination ? ` → ${p.destination}` : ''}
+                          </Text>
+                        </View>
+                        {(b.seatNumbers || [])[i] ? (
+                          <View style={[styles.seatBadge, { backgroundColor: GOLD_LIGHT }]}>
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: GOLD }}>Seat {b.seatNumbers[i]}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                {b.notes ? (
+                  <Text style={[styles.notesText, { color: c.textMuted }]}>{b.notes}</Text>
+                ) : null}
+
+                {b.confirmedAt ? (
                   <Text style={[styles.confirmedAt, { color: c.textMuted }]}>
                     Confirmed {fmtDate(b.confirmedAt)} at {fmtTime(b.confirmedAt)}
                   </Text>
-                )}
+                ) : null}
 
-                {b.cancellationReason && (
+                {b.cancellationReason ? (
                   <Text style={[styles.cancelReason, { color: '#dc3545' }]}>
                     Reason: {b.cancellationReason}
                   </Text>
-                )}
+                ) : null}
 
-                {canCancel && (
-                  <TouchableOpacity style={styles.cancelBtn} onPress={() => handleCancel(b)}>
-                    <Ionicons name="close-circle-outline" size={16} color="#dc3545" />
-                    <Text style={styles.cancelBtnText}>Cancel Booking</Text>
-                  </TouchableOpacity>
-                )}
+                {canEdit ? (
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity style={[styles.editBtn, { borderColor: GOLD }]} onPress={() => openEditModal(b)}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="create-outline" size={14} color={GOLD} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: GOLD }}>Edit / Add Passengers</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.cancelBtn} onPress={() => handleCancel(b)}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="close-circle-outline" size={14} color="#dc3545" />
+                        <Text style={styles.cancelBtnText}>Cancel</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
             );
           })
         )}
       </ScrollView>
+
+      {/* Edit Booking Modal */}
+      <Modal visible={editModalVisible} animationType="slide" transparent onRequestClose={closeEditModal}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: c.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Edit Booking</Text>
+              <TouchableOpacity onPress={closeEditModal}>
+                <View><Ionicons name="close" size={24} color={c.textMuted} /></View>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+              {editingBooking ? (
+                <View style={{ padding: 16 }}>
+                  {/* Booking Ref */}
+                  <View style={[styles.refBadge, { backgroundColor: GOLD_LIGHT, marginBottom: 16 }]}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Booking Ref</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: GOLD, letterSpacing: 1 }}>{editingBooking.id?.toString().substring(0, 8).toUpperCase()}</Text>
+                  </View>
+
+                  {/* Existing Passengers */}
+                  <Text style={[styles.editSectionTitle, { color: c.text }]}>Passengers ({editPassengers.length})</Text>
+                  {editPassengers.map((p, i) => (
+                    <View key={p.id || `new-${i}`} style={[styles.editPassengerCard, { backgroundColor: c.surface, borderColor: p.id ? c.border : GOLD }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: p.id ? c.text : GOLD }}>
+                          {p.id ? `Passenger ${i + 1}` : 'New Passenger'}
+                        </Text>
+                        {!p.id ? (
+                          <TouchableOpacity onPress={() => setEditPassengers(prev => prev.filter((_, idx) => idx !== i))}>
+                            <View><Ionicons name="trash-outline" size={16} color="#dc3545" /></View>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                      <TextInput
+                        style={[styles.editInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                        placeholder="Name"
+                        placeholderTextColor={c.textMuted}
+                        value={p.name}
+                        onChangeText={v => updateEditPassenger(i, 'name', v)}
+                      />
+                      <TextInput
+                        style={[styles.editInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                        placeholder="Phone"
+                        placeholderTextColor={c.textMuted}
+                        value={p.contactNumber}
+                        onChangeText={v => updateEditPassenger(i, 'contactNumber', v)}
+                        keyboardType="phone-pad"
+                      />
+                      <TextInput
+                        style={[styles.editInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                        placeholder="Email (optional)"
+                        placeholderTextColor={c.textMuted}
+                        value={p.email || ''}
+                        onChangeText={v => updateEditPassenger(i, 'email', v)}
+                        keyboardType="email-address"
+                      />
+                      <TextInput
+                        style={[styles.editInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                        placeholder="Destination (optional)"
+                        placeholderTextColor={c.textMuted}
+                        value={p.destination || ''}
+                        onChangeText={v => updateEditPassenger(i, 'destination', v)}
+                      />
+                    </View>
+                  ))}
+
+                  {/* Add New Passenger */}
+                  <Text style={[styles.editSectionTitle, { color: c.text, marginTop: 16 }]}>Add New Passenger</Text>
+                  <View style={[styles.editPassengerCard, { backgroundColor: c.surface, borderColor: c.border, borderStyle: 'dashed' }]}>
+                    <TextInput
+                      style={[styles.editInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Name *"
+                      placeholderTextColor={c.textMuted}
+                      value={newPassenger.name}
+                      onChangeText={v => setNewPassenger(prev => ({ ...prev, name: v }))}
+                    />
+                    <TextInput
+                      style={[styles.editInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Phone *"
+                      placeholderTextColor={c.textMuted}
+                      value={newPassenger.contactNumber}
+                      onChangeText={v => setNewPassenger(prev => ({ ...prev, contactNumber: v }))}
+                      keyboardType="phone-pad"
+                    />
+                    <TextInput
+                      style={[styles.editInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Email (optional)"
+                      placeholderTextColor={c.textMuted}
+                      value={newPassenger.email}
+                      onChangeText={v => setNewPassenger(prev => ({ ...prev, email: v }))}
+                      keyboardType="email-address"
+                    />
+                    <TextInput
+                      style={[styles.editInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Destination (optional)"
+                      placeholderTextColor={c.textMuted}
+                      value={newPassenger.destination}
+                      onChangeText={v => setNewPassenger(prev => ({ ...prev, destination: v }))}
+                    />
+                    <TouchableOpacity style={[styles.addPassBtn, { borderColor: GOLD }]} onPress={addNewPassengerToEdit}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        <Ionicons name="add-circle-outline" size={18} color={GOLD} />
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: GOLD }}>Add Passenger</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Save / Cancel */}
+                  <View style={{ flexDirection: 'row', gap: 12, marginTop: 20, marginBottom: 40 }}>
+                    <TouchableOpacity
+                      style={{ flex: 1, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: c.border, alignItems: 'center' }}
+                      onPress={closeEditModal}
+                    >
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: c.textMuted }}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ flex: 2, padding: 14, borderRadius: 10, backgroundColor: GOLD, alignItems: 'center' }}
+                      onPress={handleSaveEdit}
+                      disabled={saving}
+                    >
+                      {saving ? (
+                        <ActivityIndicator color="#000" />
+                      ) : (
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: '#000' }}>Save Changes</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -252,6 +524,27 @@ const styles = StyleSheet.create({
   confirmedAt: { fontSize: 11, fontStyle: 'italic' },
   cancelReason: { fontSize: 11, fontStyle: 'italic' },
 
-  cancelBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 8, borderTopWidth: 1, borderColor: 'rgba(0,0,0,0.06)', marginTop: 4 },
-  cancelBtnText: { color: '#dc3545', fontSize: 13, fontWeight: '700' },
+  cancelBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(220,53,69,0.3)' },
+  cancelBtnText: { color: '#dc3545', fontSize: 12, fontWeight: '700' },
+
+  refBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginBottom: 4 },
+  passengersWrap: { borderTopWidth: 1, paddingTop: 8, marginTop: 4 },
+  passengersTitle: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 6 },
+  passengerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+  passengerName: { fontSize: 13, fontWeight: '600' },
+  seatBadge: { borderRadius: 6, paddingVertical: 2, paddingHorizontal: 8 },
+  notesText: { fontSize: 11, fontStyle: 'italic', marginTop: 4 },
+
+  actionRow: { flexDirection: 'row', gap: 8, borderTopWidth: 1, borderColor: 'rgba(0,0,0,0.06)', paddingTop: 10, marginTop: 6, justifyContent: 'flex-end' },
+  editBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { maxHeight: '85%', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderColor: 'rgba(0,0,0,0.08)' },
+  modalTitle: { fontSize: 18, fontWeight: '900' },
+
+  editSectionTitle: { fontSize: 15, fontWeight: '800', marginBottom: 10 },
+  editPassengerCard: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10, gap: 8 },
+  editInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 },
+  addPassBtn: { borderWidth: 1, borderRadius: 8, padding: 10, marginTop: 4 },
 });

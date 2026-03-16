@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import MzansiLogo from '../components/MzansiLogo';
 import { useAppTheme } from '../theme';
@@ -9,8 +11,9 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const { signIn } = useAuth();
   const [loading, setLoading] = useState(false);
-  const { theme } = useAppTheme();
+  const { theme, mode, setMode } = useAppTheme();
   const c = theme.colors;
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(c), [c]);
 
   function normalizeRole(role) {
@@ -32,8 +35,10 @@ export default function LoginScreen({ navigation }) {
         navigation.replace('ServiceProviderDashboard');
       } else if (role === 'taximarshal') {
         navigation.replace('MarshalDashboard');
-      } else if (role === 'taxirankadmin' || role === 'user') {
+      } else if (role === 'taxirankadmin') {
         navigation.replace('TaxiRankDashboard');
+      } else if (role === 'user' || role === 'rider') {
+        navigation.replace('RiderDashboard');
       } else {
         navigation.replace('OwnerDashboard');
       }
@@ -47,7 +52,24 @@ export default function LoginScreen({ navigation }) {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+      {/* Custom header row */}
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>Login</Text>
+        <TouchableOpacity
+          onPress={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+          style={styles.themeToggle}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle theme"
+        >
+          <Ionicons
+            name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'}
+            size={18}
+            color={mode === 'dark' ? '#fbbf24' : '#f59e0b'}
+          />
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.logoWrap}>
         <MzansiLogo width={120} height={48} />
       </View>
@@ -87,8 +109,26 @@ export default function LoginScreen({ navigation }) {
 
 function createStyles(c) {
   return StyleSheet.create({
-    container: { flex: 1, padding: 16, justifyContent: 'center', backgroundColor: c.background },
-    logoWrap: { alignItems: 'center', marginBottom: 8 },
+    container: { flex: 1, paddingHorizontal: 24, paddingVertical: 16, backgroundColor: c.background },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingBottom: 12,
+      marginBottom: 8,
+    },
+    headerTitle: { fontSize: 17, fontWeight: '700', color: c.text },
+    themeToggle: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: c.surface2,
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    logoWrap: { alignItems: 'center', marginBottom: 8, marginTop: 32 },
     title: { fontSize: 24, textAlign: 'center', marginBottom: 24, fontWeight: '800', color: c.text },
     label: { fontSize: 12, fontWeight: '900', marginTop: 10, marginBottom: 6, color: c.text },
     input: { borderWidth: 1, borderColor: c.border, padding: 12, borderRadius: 12, backgroundColor: c.surface, color: c.text, marginBottom: 4 },

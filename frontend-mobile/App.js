@@ -48,7 +48,14 @@ import AdminTripDetailsScreen from './src/screens/AdminTripDetailsScreen';
 import CreateTripScheduleScreen from './src/screens/CreateTripScheduleScreen';
 import VehicleRouteAssignmentScreen from './src/screens/VehicleRouteAssignmentScreen';
 import MarshalDashboardScreen from './src/screens/MarshalDashboardScreen';
+import CompleteTripScreen from './src/screens/CompleteTripScreen';
+import RiderDashboardScreen from './src/screens/RiderDashboardScreen';
 import RiderTripBrowserScreen from './src/screens/RiderTripBrowserScreen';
+import DriverScoreboardScreen from './src/screens/DriverScoreboardScreen';
+import QueueManagementScreen from './src/screens/QueueManagementScreen';
+import DispatchedItemsScreen from './src/screens/DispatchedItemsScreen';
+import EnhancedQueueManagementScreen from './src/screens/EnhancedQueueManagementScreen';
+import QueueAnalyticsScreen from './src/screens/QueueAnalyticsScreen';
 import { ConnectivityProvider } from './src/context/ConnectivityContext';
 import BackendStatusBanner from './src/components/BackendStatusBanner';
 
@@ -78,6 +85,7 @@ function AppNavigator() {
           headerStyle: { backgroundColor: c.surface },
           headerTintColor: c.text,
           contentStyle: { backgroundColor: c.background },
+          headerRightContainerStyle: { paddingRight: 14 },
           headerBackImage: ({ tintColor }) => (
             <Ionicons name="chevron-back" size={24} color={tintColor} />
           ),
@@ -85,26 +93,29 @@ function AppNavigator() {
             <TouchableOpacity
               onPress={() => setMode(mode === 'dark' ? 'light' : 'dark')}
               style={{
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 12,
+                width: 34,
+                height: 34,
+                borderRadius: 10,
                 backgroundColor: c.surface2,
                 borderWidth: 1,
                 borderColor: c.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 2,
               }}
               accessibilityRole="button"
               accessibilityLabel="Toggle theme"
             >
               <Ionicons
                 name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'}
-                size={18}
+                size={16}
                 color={c.text}
               />
             </TouchableOpacity>
           ),
         }}
       >
-          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ProfileSelection" component={ProfileSelectionScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingWizardScreen} />
           <Stack.Screen name="TaxiRankRoleSelection" component={TaxiRankRoleSelectionScreen} options={{ title: 'Taxi Rank Registration' }} />
@@ -146,7 +157,14 @@ function AppNavigator() {
           <Stack.Screen name="CreateTripSchedule" component={CreateTripScheduleScreen} options={{ headerShown: false }} />
           <Stack.Screen name="VehicleRouteAssignment" component={VehicleRouteAssignmentScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MarshalDashboard" component={MarshalDashboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CompleteTrip" component={CompleteTripScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="RiderDashboard" component={RiderDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RiderTripBrowser" component={RiderTripBrowserScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DriverScoreboard" component={DriverScoreboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="QueueManagement" component={QueueManagementScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DispatchedItems" component={DispatchedItemsScreen} options={{ title: 'Dispatched Items' }} />
+          <Stack.Screen name="EnhancedQueueManagement" component={EnhancedQueueManagementScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="QueueAnalytics" component={QueueAnalyticsScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

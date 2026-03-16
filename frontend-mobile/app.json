@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Mzansi Fleet Mobile",
-    "slug": "mzansi-fleet-mobile",
+    "name": "MzansiFleet App",
+    "slug": "mzansifleet-app",
     "version": "0.1.0",
     "jsEngine": "jsc",
     "platforms": [
@@ -10,17 +10,26 @@
       "web"
     ],
     "extra": {
-      "apiUrl": "http://192.168.1.160:5000/api",
+      "apiUrl": "http://192.168.68.107:5000/api",
       "eas": {
         "projectId": "2bcdc50c-c61e-4d29-b4c0-00643c195802"
       }
     },
     "android": {
-      "package": "com.pcom86.mzansifleetmobile",
-      "usesCleartextTraffic": true
+      "package": "com.pcom86.mzansifleetapp",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "android.permission.NFC"
+      ]
+    },
+    "ios": {
+      "infoPlist": {
+        "NFCReaderUsageDescription": "This app uses NFC to process card payments at the point of sale."
+      }
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "react-native-nfc-manager"
     ]
   }
 }

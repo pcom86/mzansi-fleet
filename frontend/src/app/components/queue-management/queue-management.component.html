@@ -1,0 +1,332 @@
+<div class="queue-management-container">
+  <!-- Modern Header with Gradient -->
+  <div class="modern-header">
+    <div class="header-content">
+      <div class="header-left">
+        <div class="header-icon">
+          <mat-icon>queue</mat-icon>
+        </div>
+        <div class="header-text">
+          <h1>Queue Management</h1>
+          <p>Manage taxi queues and vehicle dispatch</p>
+        </div>
+      </div>
+      <div class="header-controls">
+        <mat-form-field appearance="outline" class="date-picker-modern">
+          <mat-label>Select Date</mat-label>
+          <input matInput [matDatepicker]="picker" [(ngModel)]="selectedDate" (dateChange)="onDateChange()">
+          <mat-datepicker-toggle matSuffix [for]="picker"></mat-datepicker-toggle>
+          <mat-datepicker #picker></mat-datepicker>
+        </mat-form-field>
+        <button mat-icon-button class="refresh-btn" (click)="loadQueueData()">
+          <mat-icon>refresh</mat-icon>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-content-modern">
+    <!-- Quick Stats Overview -->
+    <div class="stats-overview" *ngIf="queueOverview">
+      <div class="stats-header">
+        <h2>Today's Overview</h2>
+        <span class="date-badge">{{ selectedDate | date:'mediumDate' }}</span>
+      </div>
+      <div class="stats-cards">
+        <div class="stat-card-modern waiting">
+          <div class="stat-icon-wrapper">
+            <mat-icon class="stat-icon">hourglass_empty</mat-icon>
+          </div>
+          <div class="stat-content">
+            <div class="stat-number">{{ queueOverview.totalStats.waiting }}</div>
+            <div class="stat-label">Waiting</div>
+            <div class="stat-progress">
+              <div class="progress-bar" [style.width.%]="getWaitingPercentage()"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-card-modern loading">
+          <div class="stat-icon-wrapper">
+            <mat-icon class="stat-icon">loading</mat-icon>
+          </div>
+          <div class="stat-content">
+            <div class="stat-number">{{ queueOverview.totalStats.loading }}</div>
+            <div class="stat-label">Loading</div>
+            <div class="stat-progress">
+              <div class="progress-bar" [style.width.%]="getLoadingPercentage()"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-card-modern dispatched">
+          <div class="stat-icon-wrapper">
+            <mat-icon class="stat-icon">directions_car</mat-icon>
+          </div>
+          <div class="stat-content">
+            <div class="stat-number">{{ queueOverview.totalStats.dispatched }}</div>
+            <div class="stat-label">Dispatched</div>
+            <div class="stat-progress">
+              <div class="progress-bar" [style.width.%]="getDispatchedPercentage()"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-card-modern total">
+          <div class="stat-icon-wrapper">
+            <mat-icon class="stat-icon">assessment</mat-icon>
+          </div>
+          <div class="stat-content">
+            <div class="stat-number">{{ getTotalVehicles() }}</div>
+            <div class="stat-label">Total Vehicles</div>
+            <div class="stat-subtitle">In queue today</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Tab Navigation -->
+    <div class="tab-navigation">
+      <mat-tab-group class="modern-tabs" [(selectedIndex)]="activeTabIndex" (selectedIndexChange)="onTabChange($event)">
+        <mat-tab label="Queue Overview">
+          <div class="tab-content">
+            <!-- Route Queue Cards -->
+            <div class="route-queues-section" *ngIf="queueOverview && queueOverview.routeQueues.length > 0">
+              <div class="section-header">
+                <h3>Active Routes</h3>
+                <span class="route-count">{{ queueOverview.routeQueues.length }} routes</span>
+              </div>
+              
+              <div class="route-queues-grid">
+                <mat-card class="route-queue-card" *ngFor="let routeQueue of queueOverview.routeQueues">
+                  <div class="route-header">
+                    <div class="route-info">
+                      <h4>{{ routeQueue.routeName || 'General Queue' }}</h4>
+                      <p>{{ routeQueue.departureStation }} → {{ routeQueue.destinationStation }}</p>
+                    </div>
+                    <div class="route-status">
+                      <mat-chip [color]="getRouteStatusColor(routeQueue)" selected>
+                        {{ getRouteStatus(routeQueue) }}
+                      </mat-chip>
+                    </div>
+                  </div>
+                  
+                  <div class="route-stats">
+                    <div class="stat-item">
+                      <span class="stat-value">{{ routeQueue.waitingVehicles }}</span>
+                      <span class="stat-type">Waiting</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="stat-value">{{ routeQueue.loadingVehicles }}</span>
+                      <span class="stat-type">Loading</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="stat-value">{{ routeQueue.dispatchedVehicles }}</span>
+                      <span class="stat-type">Dispatched</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="stat-value">{{ routeQueue.averageWaitTime || 0 }}m</span>
+                      <span class="stat-type">Avg Wait</span>
+                    </div>
+                  </div>
+
+                  <div class="next-vehicle" *ngIf="routeQueue.nextVehicle">
+                    <div class="next-vehicle-header">
+                      <mat-icon>next_week</mat-icon>
+                      <span>Next Vehicle</span>
+                    </div>
+                    <div class="next-vehicle-info">
+                      <div class="vehicle-details">
+                        <span class="vehicle-reg">{{ routeQueue.nextVehicle.vehicleRegistration }}</span>
+                        <span class="joined-time">Joined: {{ routeQueue.nextVehicle.joinedAt }}</span>
+                      </div>
+                      <button mat-raised-button color="primary" class="dispatch-btn"
+                              (click)="dispatchVehicle(routeQueue.nextVehicle.id, routeQueue.nextVehicle.vehicleRegistration)">
+                        <mat-icon>directions_car</mat-icon>
+                        Dispatch
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="queue-actions">
+                    <button mat-stroked-button color="primary" class="action-btn">
+                      <mat-icon>visibility</mat-icon>
+                      View Details
+                    </button>
+                    <button mat-stroked-button color="accent" class="action-btn">
+                      <mat-icon>edit</mat-icon>
+                      Manage
+                    </button>
+                  </div>
+                </mat-card>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div class="empty-state-modern" *ngIf="!queueOverview || queueOverview.routeQueues.length === 0">
+              <div class="empty-content">
+                <div class="empty-icon">
+                  <mat-icon>queue_play_next</mat-icon>
+                </div>
+                <h3>No Active Queues</h3>
+                <p>There are no active queues for the selected date.</p>
+                <button mat-raised-button color="primary" (click)="loadQueueData()">
+                  <mat-icon>refresh</mat-icon>
+                  Refresh
+                </button>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <mat-tab label="Vehicle Assignment">
+          <div class="tab-content">
+            <div class="vehicle-assignment-modern">
+              <!-- Assignment Header -->
+              <div class="assignment-header-modern">
+                <div class="header-info">
+                  <h3>Available Vehicles</h3>
+                  <p>Select a route and click on a vehicle to assign it to the queue</p>
+                </div>
+                <div class="route-selector-modern">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Select Route</mat-label>
+                    <mat-select [(ngModel)]="selectedRouteId">
+                      <mat-option *ngFor="let route of availableRoutes" [value]="route.id">
+                        {{ route.routeName }} ({{ route.departureStation }} → {{ route.destinationStation }})
+                      </mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                </div>
+              </div>
+
+              <!-- Vehicle Grid -->
+              <div class="vehicles-grid-modern" *ngIf="availableVehicles.length > 0">
+                <mat-card class="vehicle-card-modern" 
+                          *ngFor="let vehicle of availableVehicles" 
+                          (click)="assignVehicle(vehicle)">
+                  <div class="vehicle-card-header">
+                    <div class="vehicle-icon">
+                      <mat-icon>directions_bus</mat-icon>
+                    </div>
+                    <div class="vehicle-status">
+                      <mat-chip [color]="vehicle.currentStatus === 'Available' ? 'primary' : 'warn'" selected>
+                        {{ vehicle.currentStatus }}
+                      </mat-chip>
+                    </div>
+                  </div>
+                  
+                  <div class="vehicle-info">
+                    <h4>{{ vehicle.registration }}</h4>
+                    <p>{{ vehicle.make }} {{ vehicle.model }}</p>
+                    <div class="vehicle-specs">
+                      <span class="spec-item">
+                        <mat-icon>people</mat-icon>
+                        {{ vehicle.capacity }} seats
+                      </span>
+                      <span class="spec-item">
+                        <mat-icon>category</mat-icon>
+                        {{ vehicle.vehicleType }}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div class="vehicle-actions">
+                    <button mat-raised-button color="primary" class="assign-btn"
+                            (click)="assignVehicle(vehicle)"
+                            [disabled]="!selectedRouteId">
+                      <mat-icon>add_circle</mat-icon>
+                      Add to Queue
+                    </button>
+                  </div>
+                </mat-card>
+              </div>
+
+              <!-- Empty State -->
+              <div class="empty-state-modern" *ngIf="availableVehicles.length === 0">
+                <div class="empty-content">
+                  <div class="empty-icon">
+                    <mat-icon>no_crash</mat-icon>
+                  </div>
+                  <h3>No Available Vehicles</h3>
+                  <p>All vehicles are currently assigned or not available for queue.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <mat-tab label="Analytics">
+          <div class="tab-content">
+            <div class="analytics-modern">
+              <div class="analytics-header">
+                <h3>Queue Analytics</h3>
+                <div class="period-selector">
+                  <mat-button-toggle-group [(value)]="selectedPeriod" class="period-toggle">
+                    <mat-button-toggle value="today">Today</mat-button-toggle>
+                    <mat-button-toggle value="week">Week</mat-button-toggle>
+                    <mat-button-toggle value="month">Month</mat-button-toggle>
+                  </mat-button-toggle-group>
+                </div>
+              </div>
+
+              <!-- Analytics Cards -->
+              <div class="analytics-grid">
+                <mat-card class="analytics-card">
+                  <div class="analytics-card-header">
+                    <h4>Average Wait Time</h4>
+                    <mat-icon>schedule</mat-icon>
+                  </div>
+                  <div class="analytics-value">
+                    <span class="value">15</span>
+                    <span class="unit">minutes</span>
+                  </div>
+                  <div class="analytics-trend positive">
+                    <mat-icon>trending_down</mat-icon>
+                    <span>-12% from yesterday</span>
+                  </div>
+                </mat-card>
+
+                <mat-card class="analytics-card">
+                  <div class="analytics-card-header">
+                    <h4>Utilization Rate</h4>
+                    <mat-icon>speed</mat-icon>
+                  </div>
+                  <div class="analytics-value">
+                    <span class="value">78</span>
+                    <span class="unit">%</span>
+                  </div>
+                  <div class="analytics-trend positive">
+                    <mat-icon>trending_up</mat-icon>
+                    <span>+5% from yesterday</span>
+                  </div>
+                </mat-card>
+
+                <mat-card class="analytics-card">
+                  <div class="analytics-card-header">
+                    <h4>Total Dispatches</h4>
+                    <mat-icon>local_shipping</mat-icon>
+                  </div>
+                  <div class="analytics-value">
+                    <span class="value">142</span>
+                    <span class="unit">vehicles</span>
+                  </div>
+                  <div class="analytics-trend positive">
+                    <mat-icon>trending_up</mat-icon>
+                    <span>+8% from yesterday</span>
+                  </div>
+                </mat-card>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+    </div>
+  </div>
+</div>
+
+<!-- Loading State -->
+<div class="loading-state" *ngIf="loading">
+  <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+  <p>Loading queue data...</p>
+</div>

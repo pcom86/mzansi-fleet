@@ -175,6 +175,18 @@ export default function MarshalDashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('CreateTripSchedule')}
           />
           <ActionCard
+            icon="checkmark-done-outline" title="Complete Trip"
+            desc="Finalize trip & record earnings"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('CreateTripSchedule')}
+          />
+          <ActionCard
+            icon="list-outline" title="Queue Management"
+            desc="Manage vehicle departure queue"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('QueueManagement', { rank: activeRank })}
+          />
+          <ActionCard
             icon="document-text-outline" title="Trip History"
             desc="View your captured trips"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}

@@ -19,11 +19,20 @@ namespace MzansiFleet.Domain.Entities
         public string Phone { get; set; }
         public string Email { get; set; }
         public string PhotoUrl { get; set; }
+        
+        // License Information
+        public string LicenseNumber { get; set; }
         public string LicenseCopy { get; set; }
-        public string Experience { get; set; }
+        public DateTime? LicenseExpiryDate { get; set; }
         public string Category { get; set; }
+        
+        // PDP Information
         public bool HasPdp { get; set; }
         public string PdpCopy { get; set; }
+        public DateTime? PdpExpiryDate { get; set; }
+        
+        // Professional Info
+        public string Experience { get; set; }
         public bool IsActive { get; set; }
         public bool IsAvailable { get; set; }
         public Guid? AssignedVehicleId { get; set; }

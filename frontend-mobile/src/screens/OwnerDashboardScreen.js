@@ -35,6 +35,7 @@ import { getAllVehicles } from '../api/vehicles';
 import { approveMechanicalRequest, completeMechanicalRequest, declineMechanicalRequest, deleteMechanicalRequest, getMechanicalRequests } from '../api/maintenance';
 import { getUnreadCount } from '../api/messaging';
 import { getCurrentMonthRange, getOwnerAnalyticsDashboard } from '../api/analytics';
+import { fetchDriverScoreboard } from '../api/driverBehavior';
 import { useAppTheme } from '../theme';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -79,6 +80,7 @@ export default function OwnerDashboardScreen({ navigation }) {
   const [maintenanceRequests, setMaintenanceRequests] = useState([]);
   const [requestsBusy, setRequestsBusy] = useState(false);
   const [requestsPage, setRequestsPage] = useState(1);
+  const [driverScores, setDriverScores] = useState([]);
 
   const monthRange = useMemo(() => getCurrentMonthRange(), []);
 
@@ -150,6 +152,12 @@ export default function OwnerDashboardScreen({ navigation }) {
 
         setMaintenanceTomorrow(countTomorrow);
         setUnreadMessages(unread || 0);
+
+        // Load driver scores (non-blocking)
+        try {
+          const scores = await fetchDriverScoreboard(user?.tenantId);
+          if (mounted) setDriverScores(scores || []);
+        } catch { /* ignore - drivers tab will show empty */ }
       } catch (err) {
         console.warn('Error loading owner dashboard data', err);
       } finally {
@@ -307,11 +315,13 @@ export default function OwnerDashboardScreen({ navigation }) {
 
   const pendingMaint = maintenanceRequests.filter(r => r.state === 'Pending').length;
 
+  const lowScoreDrivers = driverScores.filter(d => d.score < 60).length;
+
   const TABS = [
     { key: 'overview',     label: 'Overview',     icon: 'grid-outline',        activeIcon: 'grid' },
-    { key: 'maintenance',  label: 'Maintenance',  icon: 'construct-outline',   activeIcon: 'construct', badge: pendingMaint },
+    { key: 'drivers',      label: 'Drivers',      icon: 'people-outline',      activeIcon: 'people', badge: lowScoreDrivers },
     { key: 'vehicles',     label: 'Vehicles',     icon: 'car-outline',         activeIcon: 'car' },
-    { key: 'messages',     label: 'Messages',     icon: 'chatbubbles-outline', activeIcon: 'chatbubbles', badge: unreadMessages },
+    { key: 'maintenance',  label: 'Maint.',        icon: 'construct-outline',   activeIcon: 'construct', badge: pendingMaint },
     { key: 'profile',      label: 'Profile',      icon: 'person-outline',      activeIcon: 'person' },
   ];
 
@@ -556,6 +566,154 @@ export default function OwnerDashboardScreen({ navigation }) {
           </ScrollView>
         )}
 
+        {/* ── DRIVERS ── */}
+        {tab === 'drivers' && (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+            {/* Driver Performance Header */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Driver Performance</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('DriverScoreboard')}>
+                <Text style={styles.sectionLink}>Full Scoreboard</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Summary Cards */}
+            {driverScores.length > 0 && (() => {
+              const avgScore = Math.round(driverScores.reduce((s, d) => s + d.score, 0) / driverScores.length);
+              const topDriver = driverScores[0];
+              const totalNeg = driverScores.reduce((s, d) => s + d.negativeEvents, 0);
+              const totalPos = driverScores.reduce((s, d) => s + d.positiveEvents, 0);
+              const avgGradeColor = avgScore >= 90 ? '#22c55e' : avgScore >= 75 ? '#3b82f6' : avgScore >= 60 ? '#f59e0b' : '#ef4444';
+              return (
+                <View style={styles.metricsGrid}>
+                  <View style={styles.metricCard}>
+                    <View style={[styles.metricIcon, { backgroundColor: avgGradeColor + '20' }]}>
+                      <Ionicons name="speedometer-outline" size={18} color={avgGradeColor} />
+                    </View>
+                    <Text style={styles.metricValue}>{avgScore}/100</Text>
+                    <Text style={styles.metricLabel}>Fleet Avg Score</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <View style={[styles.metricIcon, { backgroundColor: '#3b82f620' }]}>
+                      <Ionicons name="people-outline" size={18} color="#3b82f6" />
+                    </View>
+                    <Text style={styles.metricValue}>{driverScores.length}</Text>
+                    <Text style={styles.metricLabel}>Total Drivers</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <View style={[styles.metricIcon, { backgroundColor: '#22c55e20' }]}>
+                      <Ionicons name="checkmark-circle-outline" size={18} color="#22c55e" />
+                    </View>
+                    <Text style={styles.metricValue}>{totalPos}</Text>
+                    <Text style={styles.metricLabel}>Positive Events</Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <View style={[styles.metricIcon, { backgroundColor: '#ef444420' }]}>
+                      <Ionicons name="alert-circle-outline" size={18} color="#ef4444" />
+                    </View>
+                    <Text style={styles.metricValue}>{totalNeg}</Text>
+                    <Text style={styles.metricLabel}>Negative Events</Text>
+                  </View>
+                </View>
+              );
+            })()}
+
+            {/* Driver Rankings */}
+            {driverScores.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="people-outline" size={48} color={c.textMuted} />
+                <Text style={styles.emptyTitle}>No Drivers Found</Text>
+                <Text style={styles.emptyTxt}>Add drivers to your fleet to start tracking performance</Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Driver Rankings</Text>
+                </View>
+                {driverScores.map((driver, idx) => {
+                  const gc = driver.score >= 90 ? '#22c55e' : driver.score >= 75 ? '#3b82f6' : driver.score >= 60 ? '#f59e0b' : driver.score >= 40 ? '#f97316' : '#ef4444';
+                  const trendColor = driver.trend === 'Improving' ? '#22c55e' : driver.trend === 'Declining' ? '#ef4444' : '#6b7280';
+                  const trendIcn = driver.trend === 'Improving' ? 'trending-up' : driver.trend === 'Declining' ? 'trending-down' : 'remove-outline';
+                  return (
+                    <TouchableOpacity
+                      key={driver.driverId}
+                      style={[styles.driverPerfCard, { backgroundColor: c.surface, borderColor: c.border }]}
+                      activeOpacity={0.85}
+                      onPress={() => navigation.navigate('DriverScoreboard')}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        {/* Rank */}
+                        <View style={[styles.driverRankBadge, { backgroundColor: idx < 3 ? c.primary + '15' : c.background }]}>
+                          <Text style={[styles.driverRankTxt, { color: idx < 3 ? c.primary : c.textMuted }]}>#{idx + 1}</Text>
+                        </View>
+
+                        {/* Info */}
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={[styles.driverPerfName, { color: c.text }]}>{driver.driverName}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                            <Ionicons name={trendIcn} size={12} color={trendColor} />
+                            <Text style={{ fontSize: 11, color: trendColor, fontWeight: '600' }}>{driver.trend}</Text>
+                            {driver.topCategory ? (
+                              <Text style={{ fontSize: 10, color: c.textMuted }}>· Top: {driver.topCategory}</Text>
+                            ) : null}
+                          </View>
+                        </View>
+
+                        {/* Score Circle */}
+                        <View style={[styles.driverScoreCircle, { borderColor: gc }]}>
+                          <Text style={[styles.driverScoreNum, { color: gc }]}>{driver.score}</Text>
+                          <Text style={[styles.driverScoreGrade, { color: gc }]}>{driver.grade}</Text>
+                        </View>
+                      </View>
+
+                      {/* Stats row */}
+                      <View style={[styles.driverPerfStats, { borderColor: c.border }]}>
+                        <View style={styles.driverPerfStatItem}>
+                          <Ionicons name="checkmark-circle" size={13} color="#22c55e" />
+                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{driver.positiveEvents}</Text>
+                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>Good</Text>
+                        </View>
+                        <View style={styles.driverPerfStatItem}>
+                          <Ionicons name="close-circle" size={13} color="#ef4444" />
+                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{driver.negativeEvents}</Text>
+                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>Bad</Text>
+                        </View>
+                        <View style={styles.driverPerfStatItem}>
+                          <Ionicons name="alert-circle" size={13} color="#f59e0b" />
+                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{driver.unresolvedEvents}</Text>
+                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>Open</Text>
+                        </View>
+                        <View style={styles.driverPerfStatItem}>
+                          <Ionicons name="calendar" size={13} color="#3b82f6" />
+                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{driver.last30DaysEvents}</Text>
+                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>30d</Text>
+                        </View>
+                      </View>
+
+                      {/* Score bar */}
+                      <View style={{ marginTop: 8 }}>
+                        <View style={[styles.healthBar, { backgroundColor: c.border }]}>
+                          <View style={[styles.healthBarFill, { width: `${driver.score}%`, backgroundColor: gc }]} />
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* View full scoreboard CTA */}
+                <TouchableOpacity
+                  style={[styles.viewAllBtn, { borderColor: c.primary }]}
+                  onPress={() => navigation.navigate('DriverScoreboard')}
+                >
+                  <Ionicons name="speedometer-outline" size={16} color={c.primary} />
+                  <Text style={[styles.viewAllBtnTxt, { color: c.primary }]}>View Full Scoreboard & Record Events</Text>
+                  <Ionicons name="chevron-forward" size={16} color={c.primary} />
+                </TouchableOpacity>
+              </>
+            )}
+          </ScrollView>
+        )}
+
         {/* ── MAINTENANCE ── */}
         {tab === 'maintenance' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
@@ -733,6 +891,7 @@ export default function OwnerDashboardScreen({ navigation }) {
             <Text style={styles.profGroupLabel}>FLEET</Text>
             {[
               { icon: 'car-outline',          color: '#3b82f6', label: 'My Vehicles',        screen: 'OwnerVehicles' },
+              { icon: 'speedometer-outline',  color: '#f59e0b', label: 'Driver Scoreboard',  screen: 'DriverScoreboard' },
               { icon: 'document-text-outline', color: '#8b5cf6', label: 'Tenders',            screen: 'OwnerTenders' },
               { icon: 'storefront-outline',   color: '#10b981', label: 'Rental Marketplace', screen: 'RentalMarketplace' },
             ].map(a => (
@@ -943,6 +1102,21 @@ function createStyles(c) {
     profActionTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: c.text },
     logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ef4444', borderRadius: 16, padding: 16, marginTop: 16 },
     logoutTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
+
+    // ── Driver Performance ──
+    driverPerfCard: { borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 12 },
+    driverRankBadge: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    driverRankTxt: { fontSize: 14, fontWeight: '900' },
+    driverPerfName: { fontSize: 15, fontWeight: '800' },
+    driverScoreCircle: { width: 52, height: 52, borderRadius: 26, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+    driverScoreNum: { fontSize: 16, fontWeight: '900', lineHeight: 18 },
+    driverScoreGrade: { fontSize: 10, fontWeight: '800' },
+    driverPerfStats: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, paddingTop: 10, marginTop: 10 },
+    driverPerfStatItem: { alignItems: 'center', gap: 2 },
+    driverPerfStatNum: { fontSize: 13, fontWeight: '800' },
+    driverPerfStatLbl: { fontSize: 9, fontWeight: '600' },
+    viewAllBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderRadius: 14, padding: 14, marginTop: 8 },
+    viewAllBtnTxt: { fontSize: 13, fontWeight: '700' },
 
     // ── Compat / misc ──
     btn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border },

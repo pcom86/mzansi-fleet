@@ -24,6 +24,7 @@ namespace MzansiFleet.Application.Handlers
             entity.PasswordHash = request.PasswordHash;
             entity.Role = request.Role;
             entity.IsActive = request.IsActive;
+            entity.FullName = request.FullName;
             _repository.Update(entity);
             return Task.FromResult(entity);
         }

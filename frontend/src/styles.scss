@@ -12,6 +12,9 @@
 
 html, body {
   height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden; // Prevent horizontal scrolling
 }
 
 body {
@@ -20,6 +23,54 @@ body {
   color: #2c3e50;
   background: #FFFFFF;
   margin: 0;
+  padding: 0;
+  // Prevent top clipping in mobile browsers
+  padding-top: env(safe-area-inset-top, 0);
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+}
+
+// Fix for mobile viewport issues
+@supports (-webkit-touch-callout: none) {
+  body {
+    // Prevent zoom on input focus in iOS
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+// Ensure app container doesn't get clipped
+app-root, app-root > * {
+  min-height: 100vh;
+  display: block;
+}
+
+// Fix for mobile browsers that hide the address bar
+@media screen and (max-width: 768px) {
+  html, body {
+    height: -webkit-fill-available;
+    min-height: 100vh;
+  }
+}
+
+/* Material Design Components */
+.mat-mdc-chip {
+  // Prevent chip text clipping
+  .mat-mdc-chip-action-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  
+  // Ensure proper chip sizing
+  &.mat-mdc-standard-chip {
+    min-height: 32px;
+    max-width: 100%;
+    
+    .mat-mdc-chip-action-container {
+      max-width: 100%;
+    }
+  }
 }
 
 /* Material Icons Fix */

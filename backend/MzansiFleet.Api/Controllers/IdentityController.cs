@@ -204,12 +204,17 @@ namespace MzansiFleet.Api.Controllers
             // Hash the password using BCrypt
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
             
+            // Treat empty GUID as null (no tenant) to avoid FK violation
+            var tenantId = dto.TenantId;
+            if (tenantId == Guid.Empty) tenantId = null;
+
             var command = new CreateUserCommand {
-                TenantId = dto.TenantId,
+                TenantId = tenantId,
                 Email = dto.Email,
                 Phone = dto.Phone,
                 PasswordHash = passwordHash,
                 Role = dto.Role,
+                FullName = dto.FullName,
                 IsActive = dto.IsActive
             };
             var created = await _createUserHandler.Handle(command, CancellationToken.None);
@@ -226,11 +231,31 @@ namespace MzansiFleet.Api.Controllers
                 Phone = user.Phone,
                 PasswordHash = user.PasswordHash,
                 Role = user.Role,
-                IsActive = user.IsActive
+                IsActive = user.IsActive,
+                FullName = user.FullName
             };
             _updateUserHandler.Handle(command, CancellationToken.None);
             return NoContent();
         }
+        [HttpPatch("users/{id}/name")]
+        public async Task<IActionResult> UpdateUserName(Guid id, [FromBody] UpdateNameDto dto)
+        {
+            var user = await _getUserByIdHandler.Handle(new GetUserByIdQuery { Id = id }, CancellationToken.None);
+            if (user == null) return NotFound();
+            var command = new UpdateUserCommand {
+                Id = user.Id,
+                TenantId = user.TenantId,
+                Email = user.Email,
+                Phone = user.Phone,
+                PasswordHash = user.PasswordHash,
+                Role = user.Role,
+                IsActive = user.IsActive,
+                FullName = dto.FullName
+            };
+            await _updateUserHandler.Handle(command, CancellationToken.None);
+            return Ok(new { message = "Name updated", fullName = dto.FullName });
+        }
+
         [HttpPut("users/{id}/activate")]
         public async Task<IActionResult> ActivateUser(Guid id)
         {
@@ -652,7 +677,13 @@ namespace MzansiFleet.Api.Controllers
         public string Phone { get; set; }
         public string Password { get; set; }  // Changed from PasswordHash to Password
         public string Role { get; set; }
+        public string? FullName { get; set; }
         public bool IsActive { get; set; } = true;  // Default to active
+    }
+
+    public class UpdateNameDto
+    {
+        public string FullName { get; set; }
     }
 
     public class CreateOwnerProfileDto

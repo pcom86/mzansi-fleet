@@ -38,12 +38,14 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
   // Booking modal state
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
+  const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Cart state
   const [passengerCart, setPassengerCart] = useState([]);
+  const [bookingForSelf, setBookingForSelf] = useState(false);
   const [currentPassenger, setCurrentPassenger] = useState({
     name: '',
     contactNumber: '',
@@ -53,6 +55,10 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
 
   // UI state
   const [step, setStep] = useState('add'); // 'add' | 'payment' | 'confirmation'
+  const [bookingConfirmation, setBookingConfirmation] = useState(null);
+  
+  // Destination dropdown state
+  const [destinationModalVisible, setDestinationModalVisible] = useState(false);
 
   // ===== DATA LOADING =====
   const loadData = useCallback(async (silent = false) => {
@@ -99,7 +105,8 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
           date: dateStr 
         }
       });
-      setScheduledTrips(resp.data || []);
+      const trips = resp.data || [];
+      setScheduledTrips(trips);
     } catch (err) {
       console.warn('Load scheduled trips error:', err?.message);
       setScheduledTrips([]);
@@ -145,19 +152,52 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
   };
 
   const getTripRoute = (trip) => {
-    return scheduledTrips.find(r => r.id === (trip.routeId || trip.RouteId || trip.tripScheduleId));
+    // Try to get route information from the trip object itself
+    if (trip.route) return trip.route;
+    if (trip.Route) return trip.Route;
+    if (trip.routeSchedule) return trip.routeSchedule;
+    if (trip.RouteSchedule) return trip.RouteSchedule;
+    
+    // Try to get route information from nested properties
+    if (trip.routeId && trip.routeId === trip.id) return trip;
+    if (trip.RouteId && trip.RouteId === trip.id) return trip;
+    
+    // Return the trip itself as fallback (it contains route info)
+    return trip;
   };
 
   // ===== FARE CALCULATION =====
   const calculateFareForDestination = (destination) => {
     if (!selectedTrip) return 0;
     
-    const route = getTripRoute(selectedTrip);
+    const baseRoute = getTripRoute(selectedTrip);
+    const route = selectedRoute || baseRoute;
     const baseFare = route?.standardFare || 0;
     
-    // Different destinations have different fares
+    // If destination is the final destination, use base fare
+    if (destination === route?.destinationStation) {
+      return baseFare;
+    }
+    
+    // Check stops fetched from API - use FareFromOrigin directly
+    const stops = selectedRoute?.stops || [];
+    const matchedStop = stops.find(stop => 
+      (stop.stopName || stop.StopName || stop.name) === destination
+    );
+    
+    if (matchedStop) {
+      // Use FareFromOrigin directly from the stop data
+      const stopFare = matchedStop.fareFromOrigin || matchedStop.FareFromOrigin || matchedStop.fare;
+      if (stopFare) return stopFare;
+      
+      // Otherwise calculate proportionally based on stop position
+      const stopIndex = stops.indexOf(matchedStop);
+      const stopProgress = (stopIndex + 1) / (stops.length + 1);
+      return Math.round(baseFare * stopProgress * 100) / 100;
+    }
+    
+    // For destinations not on the route, use multipliers
     const destinationMultipliers = {
-      [route?.destinationStation]: 1.0, // Default route destination
       // Major cities might have higher fares
       'Johannesburg': 1.5,
       'Pretoria': 1.3,
@@ -188,6 +228,78 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
 
   const getCartSize = () => passengerCart.length;
 
+  // ===== ROUTE STOPS & DESTINATIONS =====
+  const getRouteStopsAndDestinations = () => {
+    if (!selectedTrip) return [];
+    
+    const baseRoute = getTripRoute(selectedTrip);
+    const route = selectedRoute || baseRoute;
+    if (!route) return [];
+    
+    const destinations = [];
+    const departureStation = (route.departureStation || '').trim().toLowerCase();
+    
+    // Use actual stops from the fetched route (StopName from API)
+    // Filter out the departure station since passenger is already there
+    const stops = selectedRoute?.stops || [];
+    stops.forEach(stop => {
+      const stopName = stop.stopName || stop.StopName || stop.name;
+      const normalizedStopName = (stopName || '').trim().toLowerCase();
+      if (stopName && !destinations.includes(stopName) && normalizedStopName !== departureStation) {
+        destinations.push(stopName);
+      }
+    });
+    
+    // Always include the final destination (if it's not the departure station)
+    const finalDestination = route.destinationStation || 'Route Destination';
+    if (!destinations.includes(finalDestination) && finalDestination !== departureStation) {
+      destinations.push(finalDestination);
+    }
+    
+    // If no actual stops are available, use fallback destinations
+    if (destinations.length <= 1) {
+      const commonDestinations = [
+        // Major cities (ordered by likely importance)
+        'Johannesburg',
+        'Pretoria', 
+        'Durban',
+        'Cape Town',
+        'Port Elizabeth',
+        'Bloemfontein',
+        'Polokwane',
+        'Nelspruit',
+        'Kimberley',
+        
+        // Smaller towns and stops
+        'Middelburg',
+        'Witbank', 
+        'Secunda',
+        'Standerton',
+        'Belfast',
+        'Middelburg (Mpumalanga)',
+        'Hendrina',
+        'Kriel',
+        'Ermelo',
+        'Carolina',
+        'Badplaas',
+        'Barberton',
+        'Malelane',
+        'Komatiepoort',
+        'Matsulu',
+        'Kanyamazane',
+        'Kaapmuiden',
+        'Nelspruit Plaza',
+        'Riverside Mall',
+        'Ilanga Mall',
+      ];
+      
+      destinations.push(...commonDestinations);
+    }
+    
+    // Remove duplicates and filter out empty values
+    return [...new Set(destinations.filter(Boolean))];
+  };
+
   const addMinutesToTime = (timeStr, minutesToAdd) => {
     if (!timeStr || !Number.isFinite(minutesToAdd)) return null;
     const parts = String(timeStr).split(':');
@@ -202,8 +314,9 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
   };
 
   // ===== BOOKING HANDLERS =====
-  const openBookingModal = (trip) => {
+  const openBookingModal = async (trip) => {
     setSelectedTrip(trip);
+    setSelectedRoute(null);
     setSelectedSeats([]);
     setPassengerCart([]);
     setCurrentPassenger({
@@ -215,11 +328,29 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
     setPaymentMethod('');
     setStep('add');
     setBookingModalVisible(true);
+    // Fetch full route with stops
+    const routeId = trip.routeId || trip.RouteId;
+    if (routeId) {
+      try {
+        const resp = await client.get(`/Routes/${routeId}`);
+        setSelectedRoute(resp.data);
+      } catch (err) {
+        console.warn('Failed to load route stops:', err?.message);
+      }
+    }
   };
 
   const closeBookingModal = () => {
     setBookingModalVisible(false);
     setSelectedTrip(null);
+    setSelectedRoute(null);
+    setSelectedSeats([]);
+    setPassengerCart([]);
+    setCurrentPassenger({ name: '', contactNumber: '', email: '', destination: '' });
+    setPaymentMethod('');
+    setBookingForSelf(false);
+    setBookingConfirmation(null);
+    setStep('add');
   };
 
   const toggleSeat = (seatNumber) => {
@@ -246,25 +377,28 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
       Alert.alert('Validation Error', 'Contact number is required');
       return;
     }
-    if (selectedSeats.length === 0) {
-      Alert.alert('Validation Error', 'Please select at least one seat');
+
+    const maxPassengers = getTripRoute(selectedTrip)?.maxPassengers || 16;
+    if (passengerCart.length >= maxPassengers) {
+      Alert.alert('Validation Error', 'Maximum passengers reached for this trip');
       return;
     }
 
-    // Check if there are enough seats
-    if (passengerCart.length >= selectedSeats.length) {
-      Alert.alert('Validation Error', 'You have more passengers than selected seats');
-      return;
+    // Auto-assign next available seat
+    const nextSeat = passengerCart.length + 1;
+    if (!selectedSeats.includes(nextSeat)) {
+      setSelectedSeats(prev => [...prev, nextSeat].sort((a, b) => a - b));
     }
 
     // Add to cart
     const newPassenger = {
       ...currentPassenger,
-      id: Date.now().toString(), // Simple unique ID
+      id: Date.now().toString(),
       name: currentPassenger.name.trim(),
       contactNumber: currentPassenger.contactNumber.trim(),
       email: currentPassenger.email.trim() || '',
       destination: currentPassenger.destination.trim() || getTripRoute(selectedTrip)?.destinationStation || '',
+      seatNumber: nextSeat,
     };
 
     setPassengerCart(prev => [...prev, newPassenger]);
@@ -277,7 +411,10 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
       destination: ''
     });
 
-    Alert.alert('Success', `${newPassenger.name} added to cart`);
+    if (getCartSize() > 0 && bookingForSelf) {
+      // Reset the toggle after adding self to cart
+      setBookingForSelf(false);
+    }
   }
 
   function removePassengerFromCart(passengerId) {
@@ -309,6 +446,12 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
     setStep('add');
   }
 
+  // ===== DESTINATION SELECTION =====
+  function selectDestination(destination) {
+    updateCurrentPassenger('destination', destination);
+    setDestinationModalVisible(false);
+  }
+
   const handleBooking = async () => {
     if (!selectedTrip) return;
     if (!paymentMethod) return Alert.alert('Validation', 'Please select payment method');
@@ -318,44 +461,53 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
 
     setSubmitting(true);
     try {
+      const routeId = selectedRoute?.id || selectedTrip.routeId || selectedTrip.RouteId;
       const bookingData = {
         userId: user.id,
-        routeId: getTripRoute(selectedTrip)?.id,
-        travelDate: selectedTrip.scheduledDate,
-        seatsBooked: selectedSeats.length,
-        seatNumbers: selectedSeats,
+        routeId,
+        scheduledTripId: selectedTrip.id,
+        travelDate: (() => {
+          // Extract date part to avoid timezone shift (e.g. 2026-03-13T00:00:00 local -> 2026-03-12T22:00:00Z)
+          const d = new Date(selectedTrip.scheduledDate);
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}T12:00:00Z`;
+        })(),
+        seatsBooked: passengerCart.length,
+        seatNumbers: selectedSeats.slice(0, passengerCart.length),
         totalFare: calculateTotalFare(),
         passengers: passengerCart.map(p => ({
           name: p.name,
           contactNumber: p.contactNumber,
           email: p.email || null,
-          destination: p.destination || getTripRoute(selectedTrip)?.destinationStation,
+          destination: p.destination || selectedRoute?.destinationStation || getTripRoute(selectedTrip)?.destinationStation || '',
         })),
         paymentMethod,
-        notes: `Seats: ${selectedSeats.join(', ')}`
+        notes: `Seats: ${selectedSeats.slice(0, passengerCart.length).join(', ')}`
       };
 
-      await createTripBooking(bookingData);
+      const result = await createTripBooking(bookingData);
       
-      Alert.alert(
-        'Booking Successful!',
-        `${passengerCart.length} passenger(s) booked successfully! Seats: ${selectedSeats.join(', ')}`,
-        [
-          { 
-            text: 'View My Bookings', 
-            onPress: () => {
-              closeBookingModal();
-              navigation.navigate('MyBookings');
-            }
-          },
-          { 
-            text: 'Continue Browsing', 
-            onPress: closeBookingModal 
-          }
-        ]
-      );
+      // Store confirmation details and switch to confirmation step
+      const route = selectedRoute || getTripRoute(selectedTrip);
+      setBookingConfirmation({
+        reference: (result?.id || '').toString().substring(0, 8).toUpperCase(),
+        routeName: route?.routeName || `${route?.departureStation} → ${route?.destinationStation}`,
+        departure: route?.departureStation || '',
+        destination: route?.destinationStation || '',
+        date: new Date(selectedTrip.scheduledDate).toLocaleDateString('en-ZA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        time: selectedTrip.scheduledTime || '',
+        seats: selectedSeats.slice(0, passengerCart.length),
+        passengers: [...passengerCart],
+        totalFare: calculateTotalFare(),
+        paymentMethod,
+      });
+      setStep('confirmation');
     } catch (err) {
-      Alert.alert('Booking Failed', err?.response?.data?.message || err?.message || 'Failed to create booking');
+      const serverMsg = err?.response?.data?.message || err?.response?.data?.title || JSON.stringify(err?.response?.data);
+      console.warn('Booking error:', serverMsg, 'Status:', err?.response?.status);
+      Alert.alert('Booking Failed', serverMsg || err?.message || 'Failed to create booking');
     } finally {
       setSubmitting(false);
     }
@@ -378,14 +530,14 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color="#fff" />
+          <View><Ionicons name="arrow-back" size={22} color="#fff" /></View>
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, marginLeft: 4 }}>
           <Text style={styles.headerTitle}>Book a Trip</Text>
           <Text style={styles.headerSub}>Find and book available taxis</Text>
         </View>
         <TouchableOpacity onPress={() => navigation.navigate('MyBookings')} style={styles.bookingsBtn}>
-          <Ionicons name="ticket-outline" size={20} color="#fff" />
+          <View><Ionicons name="ticket-outline" size={20} color={GOLD} /></View>
         </TouchableOpacity>
       </View>
 
@@ -397,11 +549,13 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
             style={[styles.filterBtn, { backgroundColor: c.background, borderColor: c.border, flex: 2 }]}
             onPress={() => setRankPickerVisible(true)}
           >
-            <Ionicons name="business-outline" size={16} color={GOLD} />
-            <Text style={[styles.filterText, { color: selectedRankId ? c.text : c.textMuted, flex: 1 }]} numberOfLines={1}>
-              {selectedRank?.name || 'Select Rank'}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Ionicons name="business-outline" size={16} color={GOLD} />
+              <Text style={[styles.filterText, { color: selectedRankId ? c.text : c.textMuted, flex: 1, marginLeft: 8 }]} numberOfLines={1}>
+                {selectedRank?.name || 'Select Rank'}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+            </View>
           </TouchableOpacity>
 
           {/* Date Selector */}
@@ -409,10 +563,12 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
             style={[styles.filterBtn, { backgroundColor: c.background, borderColor: c.border }]}
             onPress={() => setDatePickerVisible(true)}
           >
-            <Ionicons name="calendar-outline" size={16} color={GOLD} />
-            <Text style={[styles.filterText, { color: c.text }]}>
-              {DAYS[selectedDate.getDay()]}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Ionicons name="calendar-outline" size={16} color={GOLD} />
+              <Text style={[styles.filterText, { color: c.text, marginLeft: 8 }]}>
+                {DAYS[selectedDate.getDay()]}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -428,8 +584,8 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                 style={[styles.dateChip, isSelected && { backgroundColor: GOLD }]}
                 onPress={() => setSelectedDate(date)}
               >
-                <Text style={[styles.dateChipDay, isSelected && { color: '#000' }]}>{DAYS[date.getDay()]}</Text>
-                <Text style={[styles.dateChipDate, isSelected && { color: '#000' }]}>{date.getDate()}</Text>
+                <Text style={[styles.dateChipDay, { color: isSelected ? '#000' : c.textMuted }]}>{DAYS[date.getDay()]}</Text>
+                <Text style={[styles.dateChipDate, { color: isSelected ? '#000' : c.text }]}>{date.getDate()}</Text>
               </TouchableOpacity>
             );
           })}
@@ -444,14 +600,16 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadData(true)} colors={[GOLD]} />}
         ListEmptyComponent={(
           <View style={styles.emptyWrap}>
-            <Ionicons name="bus-outline" size={64} color={c.textMuted} />
-            <Text style={[styles.emptyTitle, { color: c.text }]}>No Trips Available</Text>
-            <Text style={[styles.emptySubtitle, { color: c.textMuted }]}>
-              {selectedRankId 
-                ? `No scheduled trips for ${selectedDate.toLocaleDateString()}`
-                : 'Please select a taxi rank to see available trips'
-              }
-            </Text>
+            <View style={{ alignItems: 'center' }}>
+              <Ionicons name="bus-outline" size={64} color={c.textMuted} />
+              <Text style={[styles.emptyTitle, { color: c.text }]}>No Trips Available</Text>
+              <Text style={[styles.emptySubtitle, { color: c.textMuted }]}>
+                {selectedRankId 
+                  ? `No scheduled trips for ${selectedDate.toLocaleDateString()}`
+                  : 'Please select a taxi rank to see available trips'
+                }
+              </Text>
+            </View>
           </View>
         )}
         renderItem={({ item: trip }) => {
@@ -488,33 +646,61 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
 
               {/* Route Info */}
               <View style={styles.routeInfo}>
+                <View style={styles.routeHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="map-outline" size={16} color={GOLD} />
+                    <Text style={[styles.routeName, { color: c.text, marginLeft: 8 }]}>
+                      {schedule?.routeName || `${schedule?.departureStation || 'Departure'} → ${schedule?.destinationStation || 'Destination'}`}
+                    </Text>
+                  </View>
+                </View>
+                
                 <View style={styles.stationRow}>
-                  <Ionicons name="location" size={14} color={GREEN} />
-                  <Text style={[styles.stationText, { color: c.text }]}>
-                    {schedule?.departureStation || 'Departure Station'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="location" size={14} color={GREEN} />
+                    <Text style={[styles.stationText, { color: c.text, marginLeft: 8 }]}>
+                      {schedule?.departureStation || 'Departure Station'}
+                    </Text>
+                  </View>
                 </View>
                 <View style={styles.stationRow}>
-                  <Ionicons name="flag" size={14} color={RED} />
-                  <Text style={[styles.stationText, { color: c.text }]}>
-                    {schedule?.destinationStation || 'Destination Station'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="flag" size={14} color={RED} />
+                    <Text style={[styles.stationText, { color: c.text, marginLeft: 8 }]}>
+                      {schedule?.destinationStation || 'Destination Station'}
+                    </Text>
+                  </View>
                 </View>
+                
+                {schedule?.stops && schedule.stops.length > 0 && (
+                  <View style={styles.stopsRow}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <Ionicons name="swap-horizontal" size={14} color={c.textMuted} />
+                      <Text style={[styles.stopsText, { color: c.textMuted, marginLeft: 8 }]}>
+                        {schedule.stops.length} stops available
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </View>
 
               {/* Vehicle & Seats */}
               <View style={styles.vehicleInfo}>
                 <View style={styles.vehicleRow}>
-                  <Ionicons name="bus-outline" size={16} color={GOLD} />
-                  <Text style={[styles.vehicleText, { color: c.textMuted }]}>
-                    {vehicle.registration || vehicle.make || 'Standard Taxi'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="bus-outline" size={16} color={GOLD} />
+                    <Text style={[styles.vehicleText, { color: c.textMuted, marginLeft: 8 }]}>
+                      {vehicle.registration || vehicle.make || 'Standard Taxi'}
+                    </Text>
+                  </View>
                 </View>
                 <View style={styles.seatsRow}>
-                  <Ionicons name="people-outline" size={16} color={isFull ? RED : GREEN} />
-                  <Text style={[styles.seatsText, { color: isFull ? RED : c.textMuted }]}>
-                    {isFull ? 'Fully Booked' : `${availableSeats} seats available`}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="people-outline" size={16} color={isFull ? RED : GREEN} />
+                    <Text style={[styles.seatsText, { color: isFull ? RED : c.textMuted, marginLeft: 8 }]}>
+                      {isFull ? 'Fully Booked' : `${availableSeats} seats available`}
+                    </Text>
+                  </View>
                 </View>
               </View>
 
@@ -559,12 +745,14 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                   style={[styles.rankPickerItem, { borderColor: c.border }, selectedRankId === rank.id && { backgroundColor: GOLD_LIGHT }]}
                   onPress={() => { setSelectedRankId(rank.id); setRankPickerVisible(false); }}
                 >
-                  <Ionicons name="business-outline" size={18} color={selectedRankId === rank.id ? GOLD : c.textMuted} />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.rankPickerName, { color: c.text }]}>{rank.name}</Text>
-                    {rank.city ? <Text style={{ color: c.textMuted, fontSize: 12 }}>{rank.city}</Text> : null}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons name="business-outline" size={18} color={selectedRankId === rank.id ? GOLD : c.textMuted} />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.rankPickerName, { color: c.text }]}>{rank.name}</Text>
+                      {rank.city ? <Text style={{ color: c.textMuted, fontSize: 12 }}>{rank.city}</Text> : null}
+                    </View>
+                    {selectedRankId === rank.id && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
                   </View>
-                  {selectedRankId === rank.id && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
                 </TouchableOpacity>
               )}
             />
@@ -598,7 +786,7 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: c.text }]}>Book Your Trip</Text>
               <TouchableOpacity onPress={closeBookingModal}>
-                <Ionicons name="close" size={24} color={c.textMuted} />
+                <View><Ionicons name="close" size={24} color={c.textMuted} /></View>
               </TouchableOpacity>
             </View>
 
@@ -708,10 +896,54 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                     <View>
                       {/* Add Passenger Form */}
                       <View style={[styles.passengerCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                        {/* Toggle: Booking for self vs someone else */}
+                        <TouchableOpacity
+                          style={[styles.selfBookingToggle, { backgroundColor: bookingForSelf ? GOLD_LIGHT : c.background, borderColor: bookingForSelf ? GOLD : c.border }]}
+                          onPress={() => {
+                            const newValue = !bookingForSelf;
+                            setBookingForSelf(newValue);
+                            if (newValue && user) {
+                              // Auto-fill with logged-in user details
+                              setCurrentPassenger({
+                                name: user.fullName || (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : ''),
+                                contactNumber: user.phone || '',
+                                email: user.email || '',
+                                destination: currentPassenger.destination || ''
+                              });
+                            } else if (!newValue) {
+                              // Clear to allow manual entry
+                              setCurrentPassenger({
+                                name: '',
+                                contactNumber: '',
+                                email: '',
+                                destination: currentPassenger.destination || ''
+                              });
+                            }
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Ionicons
+                              name={bookingForSelf ? 'checkbox-outline' : 'square-outline'}
+                              size={22}
+                              color={bookingForSelf ? GOLD : c.textMuted}
+                            />
+                            <View style={{ marginLeft: 12, flex: 1 }}>
+                              <Text style={[styles.selfBookingTitle, { color: c.text }]}>
+                                This is for me
+                              </Text>
+                              <Text style={[styles.selfBookingSubtitle, { color: c.textMuted }]}>
+                                {bookingForSelf ? 'Using my profile details' : 'Tap to auto-fill my details'}
+                              </Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+
                         <View style={styles.passengerHeader}>
                           <View style={styles.passengerHeaderLeft}>
-                            <Ionicons name="person-add-outline" size={20} color={GOLD} />
-                            <Text style={[styles.passengerTitle, { color: c.text, marginLeft: 8 }]}>Add Passenger</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                              <Ionicons name="person-add-outline" size={20} color={GOLD} />
+                              <Text style={[styles.passengerTitle, { color: c.text, marginLeft: 8 }]}>Add Passenger</Text>
+                            </View>
                           </View>
                           <View style={styles.cartBadge}>
                             <Text style={styles.cartBadgeText}>{getCartSize()}</Text>
@@ -754,32 +986,61 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                         />
                         
                         <Text style={[styles.label, { color: c.textMuted }]}>Destination</Text>
-                        <TextInput
-                          style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                          placeholder={`Different destination? (Default: ${getTripRoute(selectedTrip)?.destinationStation || 'route destination'})`}
-                          placeholderTextColor={c.textMuted}
-                          value={currentPassenger.destination}
-                          onChangeText={(value) => updateCurrentPassenger('destination', value)}
-                        />
+                        <TouchableOpacity 
+                          style={[styles.input, { backgroundColor: c.background, borderColor: c.border, justifyContent: 'center' }]} 
+                          onPress={() => setDestinationModalVisible(true)}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Text style={[styles.pickerText, { color: currentPassenger.destination ? c.text : c.textMuted }]}>
+                              {currentPassenger.destination || 'Select destination...'}
+                            </Text>
+                            <Ionicons name="chevron-down" size={16} color={c.textMuted} style={styles.pickerIcon} />
+                          </View>
+                        </TouchableOpacity>
                         
                         {/* Show fare for this passenger's destination */}
                         {currentPassenger.destination && (
                           <View style={[styles.fareHint, { backgroundColor: GOLD_LIGHT, borderColor: GOLD }]}>
-                            <Ionicons name="cash-outline" size={14} color={GOLD} />
-                            <Text style={[styles.fareHintText, { color: GOLD }]}>
-                              Fare for {currentPassenger.destination}: R{calculateFareForDestination(currentPassenger.destination).toFixed(2)}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                              <Ionicons name="cash-outline" size={14} color={GOLD} />
+                              <Text style={[styles.fareHintText, { color: GOLD, marginLeft: 8 }]}>
+                                Fare for {currentPassenger.destination}: R{calculateFareForDestination(currentPassenger.destination).toFixed(2)}
+                              </Text>
+                            </View>
                           </View>
                         )}
                         
                         <View style={styles.formActions}>
+                          {(currentPassenger.name || currentPassenger.contactNumber || currentPassenger.email || currentPassenger.destination) && (
+                            <TouchableOpacity 
+                              style={[styles.clearFormBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
+                              onPress={() => {
+                                setCurrentPassenger({
+                                  name: '',
+                                  contactNumber: '',
+                                  email: '',
+                                  destination: ''
+                                });
+                                setBookingForSelf(false);
+                              }}
+                              activeOpacity={0.85}
+                            >
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+                                <Ionicons name="close-circle-outline" size={18} color={c.textMuted} />
+                                <Text style={[styles.clearFormBtnText, { color: c.textMuted }]}>Clear</Text>
+                              </View>
+                            </TouchableOpacity>
+                          )}
+                          
                           <TouchableOpacity 
                             style={[styles.addToCartBtn, { backgroundColor: GOLD }]} 
                             onPress={addPassengerToCart}
                             activeOpacity={0.85}
                           >
-                            <Ionicons name="cart-outline" size={18} color="#000" />
-                            <Text style={styles.addToCartBtnText}>Add to Cart</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+                              <Ionicons name="cart-outline" size={18} color="#000" />
+                              <Text style={styles.addToCartBtnText}>Add to Cart</Text>
+                            </View>
                           </TouchableOpacity>
                           
                           {getCartSize() > 0 && (
@@ -799,17 +1060,21 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                         <Text style={[styles.cartTitle, { color: c.text }]}>Shopping Cart ({getCartSize()} passengers)</Text>
                         {getCartSize() > 0 && (
                           <TouchableOpacity onPress={clearCart} style={styles.clearCartBtn}>
-                            <Ionicons name="trash-outline" size={16} color={RED} />
-                            <Text style={[styles.clearCartText, { color: RED }]}>Clear All</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                              <Ionicons name="trash-outline" size={16} color={RED} />
+                              <Text style={[styles.clearCartText, { color: RED, marginLeft: 8 }]}>Clear All</Text>
+                            </View>
                           </TouchableOpacity>
                         )}
                       </View>
                       
                       {getCartSize() === 0 ? (
                         <View style={[styles.emptyCart, { backgroundColor: c.surface, borderColor: c.border }]}>
-                          <Ionicons name="cart-outline" size={48} color={c.textMuted} />
-                          <Text style={[styles.emptyCartText, { color: c.textMuted }]}>Your cart is empty</Text>
-                          <Text style={[styles.emptyCartSubText, { color: c.textMuted }]}>Add passengers to get started</Text>
+                          <View style={{ alignItems: 'center' }}>
+                            <Ionicons name="cart-outline" size={48} color={c.textMuted} />
+                            <Text style={[styles.emptyCartText, { color: c.textMuted }]}>Your cart is empty</Text>
+                            <Text style={[styles.emptyCartSubText, { color: c.textMuted }]}>Add passengers to get started</Text>
+                          </View>
                         </View>
                       ) : (
                         <View>
@@ -818,7 +1083,7 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                               <View style={styles.cartItemHeader}>
                                 <Text style={[styles.cartItemTitle, { color: c.text }]}>Passenger {index + 1} (Seat {selectedSeats[index]})</Text>
                                 <TouchableOpacity onPress={() => removePassengerFromCart(passenger.id)}>
-                                  <Ionicons name="remove-circle-outline" size={20} color={RED} />
+                                  <View><Ionicons name="remove-circle-outline" size={20} color={RED} /></View>
                                 </TouchableOpacity>
                               </View>
                               <Text style={[styles.cartItemDetail, { color: c.text }]}>Name: {passenger.name}</Text>
@@ -872,7 +1137,7 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                       {/* Payment Method */}
                       <Text style={[styles.sectionLabel, { color: c.text }]}>Payment Method</Text>
                       <View style={styles.paymentOptions}>
-                        {['EFT', 'Card', 'Cash', 'Wallet'].map(method => (
+                        {['EFT', 'Wallet'].map(method => (
                           <TouchableOpacity
                             key={method}
                             style={[
@@ -882,22 +1147,24 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                             ]}
                             onPress={() => setPaymentMethod(method)}
                           >
-                            <Ionicons
-                              name={
-                                method === 'EFT' ? 'swap-horizontal-outline' :
-                                method === 'Card' ? 'card-outline' :
-                                method === 'Cash' ? 'cash-outline' :
-                                'wallet-outline'
-                              }
-                              size={20}
-                              color={paymentMethod === method ? '#000' : c.textMuted}
-                            />
-                            <Text style={[
-                              styles.paymentOptionText,
-                              { color: paymentMethod === method ? '#000' : c.text }
-                            ]}>
-                              {method}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+                              <Ionicons
+                                name={
+                                  method === 'EFT' ? 'swap-horizontal-outline' :
+                                  method === 'Card' ? 'card-outline' :
+                                  method === 'Cash' ? 'cash-outline' :
+                                  'wallet-outline'
+                                }
+                                size={20}
+                                color={paymentMethod === method ? '#000' : c.textMuted}
+                              />
+                              <Text style={[
+                                styles.paymentOptionText,
+                                { color: paymentMethod === method ? '#000' : c.text, marginLeft: 6 }
+                              ]}>
+                                {method}
+                              </Text>
+                            </View>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -908,8 +1175,10 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                           style={[styles.backBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
                           onPress={goBackToAddPassengers}
                         >
-                          <Ionicons name="arrow-back" size={18} color={c.text} />
-                          <Text style={[styles.backBtnText, { color: c.text }]}>Back</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Ionicons name="arrow-back" size={18} color={c.text} />
+                            <Text style={[styles.backBtnText, { color: c.text, marginLeft: 8 }]}>Back</Text>
+                          </View>
                         </TouchableOpacity>
                         
                         <TouchableOpacity 
@@ -930,24 +1199,179 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
                       </View>
                     </View>
                   )}
-                  <TouchableOpacity
-                    style={[styles.submitBtn, { backgroundColor: GOLD }, selectedSeats.length === 0 && { opacity: 0.5 }]}
-                    onPress={handleBooking}
-                    disabled={selectedSeats.length === 0 || submitting}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator color="#000" />
-                    ) : (
-                      <Text style={styles.submitBtnText}>
-                        Confirm Booking ({selectedSeats.length} seat{selectedSeats.length !== 1 ? 's' : ''})
-                      </Text>
-                    )}
-                  </TouchableOpacity>
+
+                  {step !== 'confirmation' && (
+                    <TouchableOpacity
+                      style={[styles.submitBtn, { backgroundColor: GOLD }, selectedSeats.length === 0 && { opacity: 0.5 }]}
+                      onPress={handleBooking}
+                      disabled={selectedSeats.length === 0 || submitting}
+                    >
+                      {submitting ? (
+                        <ActivityIndicator color="#000" />
+                      ) : (
+                        <Text style={styles.submitBtnText}>
+                          Confirm Booking ({selectedSeats.length} seat{selectedSeats.length !== 1 ? 's' : ''})
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Confirmation Step */}
+                  {step === 'confirmation' && bookingConfirmation && (
+                    <View style={{ marginTop: 8 }}>
+                      {/* Success Icon */}
+                      <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                        <View style={{ backgroundColor: '#E8F5E9', borderRadius: 50, width: 80, height: 80, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                          <View><Ionicons name="checkmark-circle" size={56} color={GREEN} /></View>
+                        </View>
+                        <Text style={{ fontSize: 22, fontWeight: '900', color: GREEN, textAlign: 'center' }}>Booking Confirmed!</Text>
+                        <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', marginTop: 4 }}>
+                          A confirmation has been sent to your inbox
+                        </Text>
+                      </View>
+
+                      {/* Booking Reference */}
+                      <View style={[styles.confirmationCard, { backgroundColor: GOLD_LIGHT, borderColor: GOLD }]}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Booking Reference</Text>
+                        <Text style={{ fontSize: 28, fontWeight: '900', color: GOLD, marginTop: 4, letterSpacing: 2 }}>
+                          {bookingConfirmation.reference || 'N/A'}
+                        </Text>
+                      </View>
+
+                      {/* Trip Details */}
+                      <View style={[styles.confirmationCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                        <Text style={[styles.confirmationSectionTitle, { color: c.text }]}>Trip Details</Text>
+                        <View style={styles.confirmationRow}>
+                          <Text style={[styles.confirmationLabel, { color: c.textMuted }]}>Route</Text>
+                          <Text style={[styles.confirmationValue, { color: c.text }]}>{bookingConfirmation.routeName}</Text>
+                        </View>
+                        <View style={styles.confirmationRow}>
+                          <Text style={[styles.confirmationLabel, { color: c.textMuted }]}>From</Text>
+                          <Text style={[styles.confirmationValue, { color: c.text }]}>{bookingConfirmation.departure}</Text>
+                        </View>
+                        <View style={styles.confirmationRow}>
+                          <Text style={[styles.confirmationLabel, { color: c.textMuted }]}>To</Text>
+                          <Text style={[styles.confirmationValue, { color: c.text }]}>{bookingConfirmation.destination}</Text>
+                        </View>
+                        <View style={styles.confirmationRow}>
+                          <Text style={[styles.confirmationLabel, { color: c.textMuted }]}>Date</Text>
+                          <Text style={[styles.confirmationValue, { color: c.text }]}>{bookingConfirmation.date}</Text>
+                        </View>
+                        {bookingConfirmation.time ? (
+                          <View style={styles.confirmationRow}>
+                            <Text style={[styles.confirmationLabel, { color: c.textMuted }]}>Time</Text>
+                            <Text style={[styles.confirmationValue, { color: c.text }]}>{bookingConfirmation.time}</Text>
+                          </View>
+                        ) : null}
+                        <View style={styles.confirmationRow}>
+                          <Text style={[styles.confirmationLabel, { color: c.textMuted }]}>Seats</Text>
+                          <Text style={[styles.confirmationValue, { color: c.text }]}>{bookingConfirmation.seats.join(', ')}</Text>
+                        </View>
+                        <View style={styles.confirmationRow}>
+                          <Text style={[styles.confirmationLabel, { color: c.textMuted }]}>Payment</Text>
+                          <Text style={[styles.confirmationValue, { color: c.text }]}>{bookingConfirmation.paymentMethod}</Text>
+                        </View>
+                      </View>
+
+                      {/* Passengers */}
+                      <View style={[styles.confirmationCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                        <Text style={[styles.confirmationSectionTitle, { color: c.text }]}>Passengers</Text>
+                        {bookingConfirmation.passengers.map((p, i) => (
+                          <View key={i} style={[styles.confirmationRow, { paddingVertical: 8 }]}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: c.text }}>{p.name}</Text>
+                              <Text style={{ fontSize: 12, color: c.textMuted }}>{p.contactNumber}{p.destination ? ` → ${p.destination}` : ''}</Text>
+                            </View>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: GOLD }}>Seat {bookingConfirmation.seats[i]}</Text>
+                          </View>
+                        ))}
+                      </View>
+
+                      {/* Total */}
+                      <View style={[styles.confirmationCard, { backgroundColor: GOLD_LIGHT, borderColor: GOLD }]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 16, fontWeight: '700', color: c.text }}>Total Fare</Text>
+                          <Text style={{ fontSize: 24, fontWeight: '900', color: GOLD }}>R{bookingConfirmation.totalFare.toFixed(2)}</Text>
+                        </View>
+                      </View>
+
+                      {/* Action Buttons */}
+                      <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+                        <TouchableOpacity
+                          style={{ flex: 1, padding: 16, borderRadius: 10, borderWidth: 1, borderColor: GOLD, alignItems: 'center' }}
+                          onPress={() => {
+                            setBookingConfirmation(null);
+                            closeBookingModal();
+                          }}
+                        >
+                          <Text style={{ fontSize: 15, fontWeight: '700', color: GOLD }}>Done</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={{ flex: 2, padding: 16, borderRadius: 10, backgroundColor: GOLD, alignItems: 'center' }}
+                          onPress={() => {
+                            setBookingConfirmation(null);
+                            closeBookingModal();
+                            navigation.navigate('MyBookings');
+                          }}
+                        >
+                          <Text style={{ fontSize: 15, fontWeight: '700', color: '#000' }}>View My Bookings</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
                 </>
               )}
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* Destination Dropdown Modal */}
+      <Modal visible={destinationModalVisible} transparent animationType="fade" onRequestClose={() => setDestinationModalVisible(false)}>
+        <TouchableOpacity style={[styles.modalOverlay, { justifyContent: 'center' }]} activeOpacity={1} onPress={() => setDestinationModalVisible(false)}>
+          <View style={[styles.destinationPickerContent, { backgroundColor: c.background }]}>
+            <View style={styles.destinationPickerHeader}>
+              <Text style={[styles.destinationPickerTitle, { color: c.text }]}>Select Destination</Text>
+              <TouchableOpacity onPress={() => setDestinationModalVisible(false)}>
+                <View><Ionicons name="close" size={24} color={c.textMuted} /></View>
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={getRouteStopsAndDestinations()}
+              keyExtractor={(item, index) => `destination-${index}`}
+              ListEmptyComponent={<Text style={{ color: c.textMuted, textAlign: 'center', padding: 20 }}>No destinations available</Text>}
+              renderItem={({ item: destination }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.destinationPickerItem, 
+                    { borderColor: c.border },
+                    currentPassenger.destination === destination && { backgroundColor: GOLD_LIGHT }
+                  ]}
+                  onPress={() => selectDestination(destination)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons 
+                      name="location-outline" 
+                      size={18} 
+                      color={currentPassenger.destination === destination ? GOLD : c.textMuted} 
+                    />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.destinationPickerName, { color: c.text }]}>{destination}</Text>
+                      <Text style={[styles.destinationPickerFare, { color: GOLD }]}>
+                        Fare: R{calculateFareForDestination(destination).toFixed(2)}
+                      </Text>
+                    </View>
+                    {currentPassenger.destination === destination && (
+                      <Ionicons name="checkmark-circle" size={20} color={GOLD} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+              style={{ maxHeight: 400 }}
+            />
+          </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -967,10 +1391,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12
   },
-  backBtn: { padding: 4 },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  headerSub: { color: GOLD, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
-  bookingsBtn: { padding: 8 },
+  backBtn: { padding: 6, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  headerSub: { color: GOLD, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 2 },
+  bookingsBtn: { padding: 6, justifyContent: 'center', alignItems: 'center' },
 
   filterSection: {
     padding: 16,
@@ -1001,10 +1425,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginRight: 8,
     borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: 'rgba(128,128,128,0.12)',
   },
-  dateChipDay: { fontSize: 11, color: '#666', fontWeight: '600' },
-  dateChipDate: { fontSize: 16, color: '#333', fontWeight: '800', marginTop: 2 },
+  dateChipDay: { fontSize: 11, fontWeight: '600' },
+  dateChipDate: { fontSize: 16, fontWeight: '800', marginTop: 2 },
 
   tripList: { padding: 16, paddingBottom: 32 },
 
@@ -1047,8 +1471,20 @@ const styles = StyleSheet.create({
   durationText: { fontSize: 12, marginVertical: 4, fontWeight: '600' },
 
   routeInfo: { gap: 8, marginBottom: 16 },
+  routeHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8, 
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)'
+  },
+  routeName: { fontSize: 16, fontWeight: '700', flex: 1 },
   stationRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   stationText: { fontSize: 15, fontWeight: '600' },
+  stopsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  stopsText: { fontSize: 13, fontWeight: '500' },
 
   vehicleInfo: {
     flexDirection: 'row',
@@ -1184,14 +1620,24 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   cartBadgeText: { fontSize: 12, fontWeight: 'bold', color: '#000' },
-  formActions: { marginTop: 16 },
-  addToCartBtn: { 
+  formActions: { marginTop: 16, flexDirection: 'row', gap: 12 },
+  clearFormBtn: { 
+    flex: 1,
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'center',
     padding: 14, 
     borderRadius: 8,
-    marginBottom: 8
+    borderWidth: 1
+  },
+  clearFormBtnText: { fontSize: 16, fontWeight: '600', marginLeft: 8 },
+  addToCartBtn: { 
+    flex: 2,
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    padding: 14, 
+    borderRadius: 8
   },
   addToCartBtnText: { fontSize: 16, fontWeight: '600', color: '#000', marginLeft: 8 },
   proceedBtn: { 
@@ -1360,5 +1806,106 @@ const styles = StyleSheet.create({
   rankPickerName: {
     fontSize: 15,
     fontWeight: '700',
+  },
+
+  // Destination Picker Styles
+  destinationPickerContent: {
+    borderRadius: 16,
+    marginHorizontal: 24,
+    marginVertical: 'auto',
+    maxHeight: '70%',
+    paddingBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  destinationPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  destinationPickerTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  destinationPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+  },
+  destinationPickerName: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  destinationPickerFare: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+
+  // Picker Button Styles
+  pickerText: {
+    fontSize: 16,
+    flex: 1,
+  },
+  pickerIcon: {
+    position: 'absolute',
+    right: 12,
+  },
+
+  // Self booking toggle styles
+  selfBookingToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    marginBottom: 16,
+  },
+  selfBookingTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  selfBookingSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  // Confirmation styles
+  confirmationCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  confirmationSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  confirmationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  confirmationLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  confirmationValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'right',
+    flex: 1,
+    marginLeft: 16,
   },
 });

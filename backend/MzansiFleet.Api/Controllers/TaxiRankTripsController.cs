@@ -682,6 +682,193 @@ namespace MzansiFleet.Api.Controllers
             return Ok(trip);
         }
 
+        // PUT: api/TaxiRankTrips/{id}/complete
+        // Completes a trip, finalizes vehicle earnings, and notifies the vehicle owner
+        [HttpPut("{id:guid}/complete")]
+        public async Task<ActionResult> CompleteTrip(Guid id, [FromBody] CompleteTripDto dto)
+        {
+            try
+            {
+                var trip = await _context.TaxiRankTrips
+                    .Include(t => t.Vehicle)
+                    .FirstOrDefaultAsync(t => t.Id == id);
+
+                if (trip == null)
+                    return NotFound(new { message = "Trip not found" });
+
+                if (trip.Status == "Completed")
+                    return BadRequest(new { message = "Trip is already completed" });
+
+                // Update trip status and arrival time
+                trip.Status = "Completed";
+                trip.ArrivalTime = DateTime.UtcNow;
+                trip.Notes = string.IsNullOrEmpty(dto.Notes) ? trip.Notes : dto.Notes;
+                trip.UpdatedAt = DateTime.UtcNow;
+                await _tripRepository.UpdateAsync(trip);
+
+                // Get actual passengers and totals
+                var passengers = await _context.TripPassengers
+                    .Where(p => p.TaxiRankTripId == id)
+                    .ToListAsync();
+
+                var cashTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Cash").Sum(p => p.Amount);
+                var cardTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Card").Sum(p => p.Amount);
+                var totalEarnings = passengers.Sum(p => p.Amount);
+
+                // Ensure the vehicle earnings record is finalized
+                var routeName = $"{trip.DepartureStation} → {trip.DestinationStation}";
+                var earnings = await _context.VehicleEarnings
+                    .Where(e => e.VehicleId == trip.VehicleId &&
+                               e.Date.Date == trip.DepartureTime.Date &&
+                               e.Source == routeName)
+                    .OrderByDescending(e => e.CreatedAt)
+                    .FirstOrDefaultAsync();
+
+                if (earnings != null)
+                {
+                    earnings.Amount = totalEarnings;
+                    earnings.Description = $"Completed trip: {routeName} | {passengers.Count} passengers | Cash: R{cashTotal}, Card: R{cardTotal}";
+                    _context.VehicleEarnings.Update(earnings);
+                }
+                else
+                {
+                    // Create earnings record if it doesn't exist
+                    var newEarnings = new VehicleEarnings
+                    {
+                        Id = Guid.NewGuid(),
+                        VehicleId = trip.VehicleId,
+                        Date = trip.DepartureTime,
+                        Amount = totalEarnings,
+                        Source = routeName,
+                        Description = $"Completed trip: {routeName} | {passengers.Count} passengers | Cash: R{cashTotal}, Card: R{cardTotal}",
+                        Period = "Daily",
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.VehicleEarnings.Add(newEarnings);
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Find and notify the vehicle owner
+                string ownerNotified = "none";
+                try
+                {
+                    if (trip.Vehicle != null)
+                    {
+                        // Find owner profiles linked to the same tenant as the vehicle
+                        var ownerProfiles = await _context.OwnerProfiles
+                            .Include(op => op.User)
+                            .Where(op => op.User != null && op.User.TenantId == trip.Vehicle.TenantId && op.User.IsActive)
+                            .ToListAsync();
+
+                        // Also check OwnerAssignments for the taxi rank
+                        if (!ownerProfiles.Any() && trip.TaxiRankId != Guid.Empty)
+                        {
+                            var ownerAssignments = await _context.OwnerAssignments
+                                .Where(oa => oa.TaxiRankId == trip.TaxiRankId && oa.Status == "Active")
+                                .ToListAsync();
+
+                            var ownerIds = ownerAssignments.Select(oa => oa.OwnerId).ToList();
+                            if (ownerIds.Any())
+                            {
+                                ownerProfiles = await _context.OwnerProfiles
+                                    .Include(op => op.User)
+                                    .Where(op => ownerIds.Contains(op.Id) && op.User != null)
+                                    .ToListAsync();
+                            }
+                        }
+
+                        // Get the sender user ID (marshal/admin completing the trip)
+                        var senderIdClaim = User.FindFirst("userId")?.Value
+                            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                        var senderId = Guid.TryParse(senderIdClaim, out var sid) ? sid : Guid.Empty;
+
+                        var vehicleReg = trip.Vehicle?.Registration ?? "Unknown";
+                        foreach (var owner in ownerProfiles)
+                        {
+                            if (owner.User == null) continue;
+
+                            var message = new Message
+                            {
+                                Id = Guid.NewGuid(),
+                                SenderType = "System",
+                                SenderId = senderId,
+                                SenderName = "Mzansi Fleet",
+                                RecipientType = "Owner",
+                                RecipientId = owner.UserId,
+                                Subject = $"Trip Completed – {vehicleReg}",
+                                Content = $"A trip has been completed for your vehicle {vehicleReg}.\n\n" +
+                                         $"Route: {trip.DepartureStation} → {trip.DestinationStation}\n" +
+                                         $"Passengers: {passengers.Count}\n" +
+                                         $"Total Earnings: R{totalEarnings:F2}\n" +
+                                         $"Cash: R{cashTotal:F2} | Card: R{cardTotal:F2}\n" +
+                                         $"Completed: {DateTime.UtcNow.AddHours(2):yyyy-MM-dd HH:mm} (SAST)",
+                                CreatedAt = DateTime.UtcNow,
+                                IsRead = false,
+                                RelatedEntityType = "Trip",
+                                RelatedEntityId = trip.Id
+                            };
+                            _context.Messages.Add(message);
+                            ownerNotified = owner.User.Email ?? owner.ContactName ?? "yes";
+                        }
+
+                        await _context.SaveChangesAsync();
+                    }
+                }
+                catch (Exception notifEx)
+                {
+                    Console.WriteLine($"[CompleteTrip] Owner notification failed: {notifEx.Message}");
+                    ownerNotified = $"error: {notifEx.Message}";
+                }
+
+                return Ok(new
+                {
+                    message = "Trip completed successfully",
+                    tripId = trip.Id,
+                    status = trip.Status,
+                    passengerCount = passengers.Count,
+                    totalEarnings,
+                    cashTotal,
+                    cardTotal,
+                    vehicleRegistration = trip.Vehicle?.Registration,
+                    ownerNotified
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CompleteTrip] Error: {ex.Message}");
+                return StatusCode(500, new
+                {
+                    error = "Failed to complete trip",
+                    message = ex.Message,
+                    inner = ex.InnerException?.Message
+                });
+            }
+        }
+
+        // PUT: api/TaxiRankTrips/{id}
+        // General update for trip details (vehicle, driver, marshal, time, notes)
+        [HttpPut("{id:guid}")]
+        public async Task<ActionResult> UpdateTrip(Guid id, [FromBody] UpdateTripDto dto)
+        {
+            var trip = await _tripRepository.GetByIdAsync(id);
+            if (trip == null)
+                return NotFound(new { message = "Trip not found" });
+
+            if (dto.VehicleId.HasValue) trip.VehicleId = dto.VehicleId.Value;
+            if (dto.DriverId.HasValue) trip.DriverId = dto.DriverId;
+            if (dto.MarshalId.HasValue) trip.MarshalId = dto.MarshalId;
+            if (!string.IsNullOrEmpty(dto.DepartureStation)) trip.DepartureStation = dto.DepartureStation;
+            if (!string.IsNullOrEmpty(dto.DestinationStation)) trip.DestinationStation = dto.DestinationStation;
+            if (dto.DepartureTime.HasValue) trip.DepartureTime = dto.DepartureTime.Value;
+            if (!string.IsNullOrEmpty(dto.Status)) trip.Status = dto.Status;
+            if (dto.Notes != null) trip.Notes = dto.Notes;
+            trip.UpdatedAt = DateTime.UtcNow;
+
+            await _tripRepository.UpdateAsync(trip);
+            return Ok(trip);
+        }
+
         // DELETE: api/TaxiRankTrips/{id}
         [HttpDelete("{id:guid}")]
         public async Task<ActionResult> Delete(Guid id)
@@ -771,6 +958,23 @@ namespace MzansiFleet.Api.Controllers
     public class UpdateTripStatusDto
     {
         public string Status { get; set; } = string.Empty;
+    }
+
+    public class CompleteTripDto
+    {
+        public string Notes { get; set; } = string.Empty;
+    }
+
+    public class UpdateTripDto
+    {
+        public Guid? VehicleId { get; set; }
+        public Guid? DriverId { get; set; }
+        public Guid? MarshalId { get; set; }
+        public string DepartureStation { get; set; }
+        public string DestinationStation { get; set; }
+        public DateTime? DepartureTime { get; set; }
+        public string Status { get; set; }
+        public string Notes { get; set; }
     }
 
     public class AvailableTripDto

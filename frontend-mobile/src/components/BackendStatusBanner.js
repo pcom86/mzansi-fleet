@@ -11,7 +11,7 @@ export default function BackendStatusBanner() {
     Animated.timing(slideAnim, {
       toValue: isBackendReachable ? -60 : 0,
       duration: 300,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [isBackendReachable]);
 

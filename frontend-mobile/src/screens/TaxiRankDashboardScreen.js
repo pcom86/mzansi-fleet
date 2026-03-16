@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  StyleSheet, Alert, RefreshControl, Dimensions, Platform, Modal, TextInput,
+  StyleSheet, Alert, RefreshControl, Platform, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,7 +13,6 @@ import ThemeToggle from '../components/ThemeToggle';
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
 const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
-const { width: SCREEN_W } = Dimensions.get('window');
 
 export default function TaxiRankDashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
@@ -319,10 +318,22 @@ export default function TaxiRankDashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('VehicleRouteAssignment')}
           />
           <ActionCard
+            icon="list-outline" title="Queue Management"
+            desc="FIFO vehicle queue per route"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('QueueManagement', { rank: activeRank })}
+          />
+          <ActionCard
             icon="document-text-outline" title="Trip Capture"
             desc="Record trips, view history & analytics"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
             onPress={() => navigation.navigate('AdminTripDetails')}
+          />
+          <ActionCard
+            icon="checkmark-done-outline" title="Complete Trip"
+            desc="Finalize trip, record earnings & notify owner"
+            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
+            onPress={() => navigation.navigate('CreateTripSchedule')}
           />
         </View>
 
@@ -534,7 +545,6 @@ function SectionHeader({ icon, title, color }) {
 /* ===== Styles ===== */
 
 const CARD_GAP = 10;
-const CARD_W = (SCREEN_W - 32 - CARD_GAP) / 2;
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -560,7 +570,7 @@ const styles = StyleSheet.create({
 
   /* Stats */
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, marginBottom: 18 },
-  statCard: { width: CARD_W, borderWidth: 1, borderRadius: 14, padding: 12, alignItems: 'center', gap: 4 },
+  statCard: { width: '48%', flexGrow: 1, borderWidth: 1, borderRadius: 14, padding: 12, alignItems: 'center', gap: 4 },
   statValue: { fontSize: 22, fontWeight: '900' },
   statLabel: { fontSize: 11, fontWeight: '600' },
 
@@ -570,7 +580,7 @@ const styles = StyleSheet.create({
 
   /* Action cards */
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, marginBottom: 18 },
-  actionCard: { width: CARD_W, borderWidth: 1, borderRadius: 14, padding: 14, gap: 6 },
+  actionCard: { width: '48%', flexGrow: 1, borderWidth: 1, borderRadius: 14, padding: 14, gap: 6 },
   actionIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   actionTitle: { fontSize: 14, fontWeight: '800' },
   actionDesc: { fontSize: 11, lineHeight: 16 },

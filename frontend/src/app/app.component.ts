@@ -14,7 +14,10 @@ import { CommonModule } from '@angular/common';
   `,
   styles: [`
     main {
-      margin-top: 2rem;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: block;
     }
   `]
 })

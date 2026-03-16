@@ -28,21 +28,19 @@ namespace MzansiFleet.Api.Controllers
         [AllowAnonymous]
         public async Task<ActionResult<IEnumerable<object>>> GetByRank([FromQuery] Guid taxiRankId, [FromQuery] DateTime? date = null)
         {
+          try
+          {
             if (taxiRankId == Guid.Empty)
                 return BadRequest(new { message = "TaxiRankId is required" });
 
-            var targetDate = date ?? DateTime.UtcNow.Date;
+            var targetDate = DateTime.SpecifyKind((date ?? DateTime.UtcNow).Date, DateTimeKind.Utc);
             
-            var query = _context.ScheduledTrips
+            var scheduledTrips = await _context.ScheduledTrips
                 .Include(st => st.Route)
                 .Include(st => st.Vehicle)
-                .Include(st => st.Driver)
-                .Include(st => st.Marshal)
                 .Where(st => st.TaxiRankId == taxiRankId 
-                    && st.ScheduledDate.Date == targetDate.Date
-                    && st.Status != "Cancelled");
-
-            var scheduledTrips = await query
+                    && st.ScheduledDate == targetDate
+                    && st.Status != "Cancelled")
                 .OrderBy(st => st.ScheduledTime)
                 .ToListAsync();
 
@@ -91,22 +89,17 @@ namespace MzansiFleet.Api.Controllers
                         st.Vehicle.Make,
                         st.Vehicle.Model
                     },
-                    Driver = st.Driver == null ? null : new
-                    {
-                        st.Driver.Id,
-                        Name = st.Driver.Name ?? "Unknown Driver"
-                    },
-                    Marshal = st.Marshal == null ? null : new
-                    {
-                        st.Marshal.Id,
-                        st.Marshal.FullName
-                    },
                     AvailableSeats = maxPassengers - bookedSeats,
                     BookedSeats = bookedSeatNumbers
                 };
             });
 
             return Ok(result);
+          }
+          catch (Exception ex)
+          {
+            return StatusCode(500, new { message = ex.Message, inner = ex.InnerException?.Message });
+          }
         }
 
         // GET: api/ScheduledTrips/by-schedule/{scheduleId}

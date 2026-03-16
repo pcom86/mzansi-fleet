@@ -51,6 +51,7 @@ export default function RiderBookingScreen({ navigation }) {
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [destinationModalVisible, setDestinationModalVisible] = useState(false);
 
   // ===== DATA LOADING =====
   const loadData = useCallback(async () => {
@@ -79,15 +80,33 @@ export default function RiderBookingScreen({ navigation }) {
 
   // ===== FARE CALCULATION =====
   const calculateFareForDestination = (destination) => {
-    if (!selectedSchedule || !destination) return selectedSchedule?.standardFare || 0;
+    if (!selectedSchedule) return 0;
     
-    // Different destinations have different fares
-    // This could be enhanced with a proper fare matrix from the API
-    const baseFare = selectedSchedule.standardFare;
+    const baseFare = selectedSchedule.standardFare || 0;
     
-    // Example fare multipliers for different destinations
+    // If destination is the final destination, use base fare
+    if (destination === selectedSchedule.destinationStation) {
+      return baseFare;
+    }
+    
+    // Calculate fare based on stops along the route
+    const stops = selectedSchedule.stops || [];
+    const destinationIndex = stops.findIndex(stop => 
+      stop.name === destination || stop.station === destination
+    );
+    
+    if (destinationIndex >= 0) {
+      // Use fare from the specific stop if available
+      const stopFare = stops[destinationIndex].fare;
+      if (stopFare) return stopFare;
+      
+      // Otherwise calculate proportionally based on stop position
+      const stopProgress = (destinationIndex + 1) / (stops.length + 1);
+      return Math.round(baseFare * stopProgress * 100) / 100;
+    }
+    
+    // For destinations not on the route, use multipliers
     const destinationMultipliers = {
-      [selectedSchedule.destinationStation]: 1.0, // Default route destination
       // Major cities might have higher fares
       'Johannesburg': 1.5,
       'Pretoria': 1.3,
@@ -118,6 +137,72 @@ export default function RiderBookingScreen({ navigation }) {
 
   const getCartSize = () => passengerCart.length;
 
+  // ===== ROUTE STOPS & DESTINATIONS =====
+  const getRouteStopsAndDestinations = () => {
+    if (!selectedSchedule) return [];
+    
+    const destinations = [];
+    
+    // Add actual route stops if available - these should be the primary destinations
+    if (selectedSchedule.stops && selectedSchedule.stops.length > 0) {
+      selectedSchedule.stops.forEach(stop => {
+        const stopName = stop.name || stop.station || stop.destination;
+        if (stopName && !destinations.includes(stopName)) {
+          destinations.push(stopName);
+        }
+      });
+    }
+    
+    // Always include the final destination
+    const finalDestination = selectedSchedule.destinationStation || 'Route Destination';
+    if (!destinations.includes(finalDestination)) {
+      destinations.push(finalDestination);
+    }
+    
+    // If no actual stops are available, use fallback destinations
+    if (destinations.length <= 1) {
+      const commonDestinations = [
+        // Major cities (ordered by likely importance)
+        'Johannesburg',
+        'Pretoria', 
+        'Durban',
+        'Cape Town',
+        'Port Elizabeth',
+        'Bloemfontein',
+        'Polokwane',
+        'Nelspruit',
+        'Kimberley',
+        
+        // Smaller towns and stops
+        'Middelburg',
+        'Witbank', 
+        'Secunda',
+        'Standerton',
+        'Belfast',
+        'Middelburg (Mpumalanga)',
+        'Hendrina',
+        'Kriel',
+        'Ermelo',
+        'Carolina',
+        'Badplaas',
+        'Barberton',
+        'Malelane',
+        'Komatiepoort',
+        'Matsulu',
+        'Kanyamazane',
+        'Kaapmuiden',
+        'Nelspruit Plaza',
+        'Riverside Mall',
+        'Ilanga Mall',
+      ];
+      
+      destinations.push(...commonDestinations);
+    }
+    
+    // Remove duplicates and filter out empty values
+    return [...new Set(destinations.filter(Boolean))];
+  };
+
   // ===== FORM HANDLERS =====
   function selectSchedule(schedule) {
     setSelectedSchedule(schedule);
@@ -127,6 +212,12 @@ export default function RiderBookingScreen({ navigation }) {
   function selectPayment(method) {
     setPaymentMethod(method);
     setPaymentModalVisible(false);
+  }
+
+  // ===== DESTINATION SELECTION =====
+  function selectDestination(destination) {
+    updateCurrentPassenger('destination', destination);
+    setDestinationModalVisible(false);
   }
 
   // ===== CART MANAGEMENT =====
@@ -328,13 +419,17 @@ export default function RiderBookingScreen({ navigation }) {
           />
           
           <Text style={[styles.label, { color: c.textMuted }]}>Destination</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-            placeholder={`Different destination? (Default: ${selectedSchedule?.destinationStation || 'route destination'})`}
-            placeholderTextColor={c.textMuted}
-            value={currentPassenger.destination}
-            onChangeText={(value) => updateCurrentPassenger('destination', value)}
-          />
+          <TouchableOpacity 
+            style={[styles.input, { backgroundColor: c.background, borderColor: c.border, justifyContent: 'center' }]} 
+            onPress={() => setDestinationModalVisible(true)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Text style={[styles.pickerText, { color: currentPassenger.destination ? c.text : c.textMuted }]}>
+                {currentPassenger.destination || 'Select destination...'}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={c.textMuted} style={styles.pickerIcon} />
+            </View>
+          </TouchableOpacity>
           
           {/* Show fare for this passenger's destination */}
           {currentPassenger.destination && (
@@ -657,6 +752,54 @@ export default function RiderBookingScreen({ navigation }) {
           }}
         />
       )}
+
+      {/* Destination Dropdown Modal */}
+      <Modal visible={destinationModalVisible} transparent animationType="fade" onRequestClose={() => setDestinationModalVisible(false)}>
+        <TouchableOpacity style={[styles.modalOverlay, { justifyContent: 'center' }]} activeOpacity={1} onPress={() => setDestinationModalVisible(false)}>
+          <View style={[styles.destinationPickerContent, { backgroundColor: c.background }]}>
+            <View style={styles.destinationPickerHeader}>
+              <Text style={[styles.destinationPickerTitle, { color: c.text }]}>Select Destination</Text>
+              <TouchableOpacity onPress={() => setDestinationModalVisible(false)}>
+                <Ionicons name="close" size={24} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={getRouteStopsAndDestinations()}
+              keyExtractor={(item, index) => `destination-${index}`}
+              ListEmptyComponent={<Text style={{ color: c.textMuted, textAlign: 'center', padding: 20 }}>No destinations available</Text>}
+              renderItem={({ item: destination }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.destinationPickerItem, 
+                    { borderColor: c.border },
+                    currentPassenger.destination === destination && { backgroundColor: GOLD_LIGHT }
+                  ]}
+                  onPress={() => selectDestination(destination)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Ionicons 
+                      name="location-outline" 
+                      size={18} 
+                      color={currentPassenger.destination === destination ? GOLD : c.textMuted} 
+                    />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.destinationPickerName, { color: c.text }]}>{destination}</Text>
+                      <Text style={[styles.destinationPickerFare, { color: GOLD }]}>
+                        Fare: R{calculateFareForDestination(destination).toFixed(2)}
+                      </Text>
+                    </View>
+                    {currentPassenger.destination === destination && (
+                      <Ionicons name="checkmark-circle" size={20} color={GOLD} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+              style={{ maxHeight: 400 }}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -853,4 +996,57 @@ const styles = StyleSheet.create({
   paymentOption: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 8, borderWidth: 1, marginBottom: 12 },
   paymentTitle: { fontSize: 16, fontWeight: '600' },
   paymentSub: { fontSize: 14, marginTop: 2 },
+
+  // Destination Picker Styles
+  destinationPickerContent: {
+    borderRadius: 16,
+    marginHorizontal: 24,
+    marginVertical: 'auto',
+    maxHeight: '70%',
+    paddingBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  destinationPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  destinationPickerTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  destinationPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+  },
+  destinationPickerName: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  destinationPickerFare: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+
+  // Picker Button Styles
+  pickerText: {
+    fontSize: 16,
+    flex: 1,
+  },
+  pickerIcon: {
+    position: 'absolute',
+    right: 12,
+  },
 });

@@ -191,7 +191,7 @@ export default function OwnerVehicleFinancialEntryScreen({ route, navigation }) 
       <Text style={styles.label}>Date</Text>
       {Platform.OS === 'web' ? (
         <View style={{ position: 'relative' }}>
-          <View style={styles.dateBtn} pointerEvents="none">
+          <View style={[styles.dateBtn, { pointerEvents: 'none' }]}>
             <Text style={styles.dateBtnText}>{date}</Text>
             <Text style={styles.dateIcon}>📅</Text>
           </View>

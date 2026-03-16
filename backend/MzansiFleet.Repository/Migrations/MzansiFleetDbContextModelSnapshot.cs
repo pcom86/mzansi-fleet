@@ -52,44 +52,82 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AuditLogs", (string)null);
+                    b.ToTable("AuditLogs");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.BookingPassenger", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Address")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContactNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Destination")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text");
+
+                    b.Property<string>("IdNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.ToTable("BookingPassengers");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.DailyTaxiQueue", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("AssignedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("AssignedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("AssignedTripId")
-                        .HasColumnType("uuid");
-
-                    b.Property<TimeSpan>("AvailableFrom")
-                        .HasColumnType("interval");
-
-                    b.Property<TimeSpan?>("AvailableUntil")
-                        .HasColumnType("interval");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DepartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DispatchedByUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("DriverId")
                         .HasColumnType("uuid");
+
+                    b.Property<TimeSpan>("JoinedAt")
+                        .HasColumnType("interval");
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
-                    b.Property<int>("Priority")
+                    b.Property<int?>("PassengerCount")
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("QueueDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("QueuePosition")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("RouteId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -109,11 +147,11 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AssignedByUserId");
-
-                    b.HasIndex("AssignedTripId");
+                    b.HasIndex("DispatchedByUserId");
 
                     b.HasIndex("DriverId");
+
+                    b.HasIndex("RouteId");
 
                     b.HasIndex("TaxiRankId");
 
@@ -121,7 +159,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("DailyTaxiQueue", (string)null);
+                    b.ToTable("DailyTaxiQueues");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.DisputeCase", b =>
@@ -149,7 +187,76 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DisputeCases", (string)null);
+                    b.ToTable("DisputeCases");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.DriverBehaviorEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("EventDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EvidenceUrl")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsResolved")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Location")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<int>("PointsImpact")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ReportedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Resolution")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("DriverBehaviorEvents");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.DriverProfile", b =>
@@ -189,6 +296,13 @@ namespace MzansiFleet.Repository.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("LicenseExpiryDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LicenseNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -196,6 +310,9 @@ namespace MzansiFleet.Repository.Migrations
                     b.Property<string>("PdpCopy")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("PdpExpiryDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Phone")
                         .IsRequired()
@@ -212,7 +329,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("DriverProfiles", (string)null);
+                    b.ToTable("DriverProfiles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Inventory", b =>
@@ -229,7 +346,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Inventories", (string)null);
+                    b.ToTable("Inventories");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.LedgerEntry", b =>
@@ -257,7 +374,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("LedgerEntries", (string)null);
+                    b.ToTable("LedgerEntries");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.MaintenanceEvent", b =>
@@ -294,7 +411,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("MaintenanceEvents", (string)null);
+                    b.ToTable("MaintenanceEvents");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.MaintenanceHistory", b =>
@@ -365,7 +482,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MaintenanceHistories", (string)null);
+                    b.ToTable("MaintenanceHistories");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.MechanicProfile", b =>
@@ -409,7 +526,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("MechanicProfiles", (string)null);
+                    b.ToTable("MechanicProfiles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.MechanicalRequest", b =>
@@ -483,7 +600,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MechanicalRequests", (string)null);
+                    b.ToTable("MechanicalRequests");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Message", b =>
@@ -499,6 +616,9 @@ namespace MzansiFleet.Repository.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("IsDeletedByReceiver")
                         .HasColumnType("boolean");
 
@@ -508,14 +628,28 @@ namespace MzansiFleet.Repository.Migrations
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("ParentMessageId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime?>("ReadAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("ReceiverId")
+                    b.Property<Guid?>("RecipientDriverId")
                         .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RecipientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RecipientMarshalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RecipientType")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("RelatedEntityId")
                         .HasColumnType("uuid");
@@ -523,16 +657,29 @@ namespace MzansiFleet.Repository.Migrations
                     b.Property<string>("RelatedEntityType")
                         .HasColumnType("text");
 
-                    b.Property<Guid>("SenderId")
+                    b.Property<Guid?>("SenderId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SenderType")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("Subject")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid>("TaxiRankId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
-                    b.ToTable("Messages", (string)null);
+                    b.HasIndex("TaxiRankId");
+
+                    b.ToTable("Messages");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Order", b =>
@@ -559,7 +706,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Orders", (string)null);
+                    b.ToTable("Orders");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.OrderItem", b =>
@@ -582,7 +729,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("OrderItems", (string)null);
+                    b.ToTable("OrderItems");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.OwnerAssignment", b =>
@@ -613,7 +760,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TaxiRankId");
 
-                    b.ToTable("OwnerAssignments", (string)null);
+                    b.ToTable("OwnerAssignments");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.OwnerProfile", b =>
@@ -648,7 +795,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("OwnerProfiles", (string)null);
+                    b.ToTable("OwnerProfiles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PartRule", b =>
@@ -674,7 +821,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("PartRules", (string)null);
+                    b.ToTable("PartRules");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Passenger", b =>
@@ -711,7 +858,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TripId");
 
-                    b.ToTable("Passengers", (string)null);
+                    b.ToTable("Passengers");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PassengerProfile", b =>
@@ -738,7 +885,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("PassengerProfiles", (string)null);
+                    b.ToTable("PassengerProfiles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PaymentIntent", b =>
@@ -765,7 +912,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PaymentIntents", (string)null);
+                    b.ToTable("PaymentIntents");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PaymentTransaction", b =>
@@ -792,7 +939,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PaymentTransactions", (string)null);
+                    b.ToTable("PaymentTransactions");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PayoutBatch", b =>
@@ -809,7 +956,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PayoutBatches", (string)null);
+                    b.ToTable("PayoutBatches");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PayoutItem", b =>
@@ -833,7 +980,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PayoutItems", (string)null);
+                    b.ToTable("PayoutItems");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.PoolingGroup", b =>
@@ -847,7 +994,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PoolingGroups", (string)null);
+                    b.ToTable("PoolingGroups");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Product", b =>
@@ -893,7 +1040,63 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Products", (string)null);
+                    b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.QueueMarshal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EmergencyContact")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Experience")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("IdNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MarshalCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TaxiRankId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaxiRankId");
+
+                    b.ToTable("QueueMarshals");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Quote", b =>
@@ -929,7 +1132,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Quotes", (string)null);
+                    b.ToTable("Quotes");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.RentalOffer", b =>
@@ -991,7 +1194,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("RentalOffers", (string)null);
+                    b.ToTable("RentalOffers");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Review", b =>
@@ -1021,7 +1224,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Reviews", (string)null);
+                    b.ToTable("Reviews");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.RoadsideAssistanceRequest", b =>
@@ -1130,7 +1333,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("RoadsideAssistanceRequests", (string)null);
+                    b.ToTable("RoadsideAssistanceRequests");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Route", b =>
@@ -1139,43 +1342,47 @@ namespace MzansiFleet.Repository.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Destination")
+                    b.Property<string>("DaysOfWeek")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<decimal>("Distance")
-                        .HasColumnType("numeric");
+                    b.Property<string>("DepartureStation")
+                        .IsRequired()
+                        .HasColumnType("text");
 
-                    b.Property<int>("EstimatedDuration")
+                    b.Property<TimeSpan>("DepartureTime")
+                        .HasColumnType("interval");
+
+                    b.Property<string>("DestinationStation")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ExpectedDurationMinutes")
                         .HasColumnType("integer");
 
-                    b.Property<decimal>("FareAmount")
+                    b.Property<int>("FrequencyMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("MaxPassengers")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RouteName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("StandardFare")
                         .HasColumnType("numeric");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Origin")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.PrimitiveCollection<List<string>>("Stops")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
-                    b.Property<Guid?>("TaxiRankId")
+                    b.Property<Guid>("TaxiRankId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("TenantId")
@@ -1186,7 +1393,234 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Routes", (string)null);
+                    b.HasIndex("TaxiRankId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("Routes");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.RouteStop", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("EstimatedMinutesFromDeparture")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("FareFromOrigin")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StopName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StopNotes")
+                        .HasColumnType("text");
+
+                    b.Property<int>("StopOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RouteId");
+
+                    b.ToTable("RouteStops");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.RouteVehicle", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RouteId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("RouteVehicles");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.ScheduledTrip", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ActualArrivalTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ActualDepartureTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("ActualFareCollected")
+                        .HasColumnType("numeric");
+
+                    b.Property<int?>("ActualPassengerCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CancellationReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CancelledBy")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DriverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("MarshalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ScheduledDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<TimeSpan>("ScheduledTime")
+                        .HasColumnType("interval");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TaxiRankId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId");
+
+                    b.HasIndex("MarshalId");
+
+                    b.HasIndex("RouteId");
+
+                    b.HasIndex("TaxiRankId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("ScheduledTrips");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.ScheduledTripBooking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CancellationReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentReference")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ScheduledTripId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<int>>("SeatNumbers")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<int>("SeatsBooked")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TaxiRankId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("TotalFare")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("TravelDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RouteId");
+
+                    b.HasIndex("ScheduledTripId");
+
+                    b.HasIndex("TaxiRankId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ScheduledTripBookings");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceBooking", b =>
@@ -1215,7 +1649,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ServiceBookings", (string)null);
+                    b.ToTable("ServiceBookings");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceHistory", b =>
@@ -1270,7 +1704,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ServiceHistories", (string)null);
+                    b.ToTable("ServiceHistories");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceProvider", b =>
@@ -1356,7 +1790,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ServiceProviders", (string)null);
+                    b.ToTable("ServiceProviders");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceProviderProfile", b =>
@@ -1450,7 +1884,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ServiceProviderProfiles", (string)null);
+                    b.ToTable("ServiceProviderProfiles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceRule", b =>
@@ -1476,7 +1910,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("ServiceRules", (string)null);
+                    b.ToTable("ServiceRules");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ShopProfile", b =>
@@ -1514,7 +1948,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ShopProfiles", (string)null);
+                    b.ToTable("ShopProfiles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.StaffProfile", b =>
@@ -1533,7 +1967,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("StaffProfiles", (string)null);
+                    b.ToTable("StaffProfiles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.StuffQuote", b =>
@@ -1580,7 +2014,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("StuffRequestId");
 
-                    b.ToTable("StuffQuotes", (string)null);
+                    b.ToTable("StuffQuotes");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.StuffRequest", b =>
@@ -1655,7 +2089,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("StuffRequests", (string)null);
+                    b.ToTable("StuffRequests");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiMarshalProfile", b =>
@@ -1714,7 +2148,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TaxiMarshalProfiles", (string)null);
+                    b.ToTable("TaxiMarshalProfiles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiRank", b =>
@@ -1775,7 +2209,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("TaxiRanks", (string)null);
+                    b.ToTable("TaxiRanks");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiRankAdminProfile", b =>
@@ -1847,7 +2281,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TaxiRankAdmins", (string)null);
+                    b.ToTable("TaxiRankAdmins");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiRankAssociation", b =>
@@ -1878,7 +2312,7 @@ namespace MzansiFleet.Repository.Migrations
                     b.HasIndex("TaxiRankId", "TenantId")
                         .IsUnique();
 
-                    b.ToTable("TaxiRankAssociations", (string)null);
+                    b.ToTable("TaxiRankAssociations");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TaxiRankTrip", b =>
@@ -1950,7 +2384,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("TaxiRankTrips", (string)null);
+                    b.ToTable("TaxiRankTrips");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Tenant", b =>
@@ -1980,7 +2414,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Tenants", (string)null);
+                    b.ToTable("Tenants");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Tender", b =>
@@ -2063,7 +2497,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenderPublisherId");
 
-                    b.ToTable("Tenders", (string)null);
+                    b.ToTable("Tenders");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TenderApplication", b =>
@@ -2130,7 +2564,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenderId");
 
-                    b.ToTable("TenderApplications", (string)null);
+                    b.ToTable("TenderApplications");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TrackingDeviceOffer", b =>
@@ -2207,7 +2641,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TrackingDeviceRequestId");
 
-                    b.ToTable("TrackingDeviceOffers", (string)null);
+                    b.ToTable("TrackingDeviceOffers");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TrackingDeviceRequest", b =>
@@ -2280,7 +2714,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("TrackingDeviceRequests", (string)null);
+                    b.ToTable("TrackingDeviceRequests");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Trip", b =>
@@ -2331,7 +2765,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Trips", (string)null);
+                    b.ToTable("Trips");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripBooking", b =>
@@ -2368,7 +2802,64 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("PoolingGroupId");
 
-                    b.ToTable("TripBookings", (string)null);
+                    b.ToTable("TripBookings");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.TripCapture", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CapturedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("FareCollected")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("MarshalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PassengerCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PhotoUri")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TaxiRankId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MarshalId");
+
+                    b.HasIndex("RouteId");
+
+                    b.HasIndex("TaxiRankId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("TripCaptures");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripCost", b =>
@@ -2405,7 +2896,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TaxiRankTripId");
 
-                    b.ToTable("TripCosts", (string)null);
+                    b.ToTable("TripCosts");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripOffer", b =>
@@ -2431,7 +2922,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("TripOffers", (string)null);
+                    b.ToTable("TripOffers");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripPassenger", b =>
@@ -2453,6 +2944,12 @@ namespace MzansiFleet.Repository.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("NextOfKinContact")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NextOfKinName")
+                        .HasColumnType("text");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
@@ -2460,6 +2957,13 @@ namespace MzansiFleet.Repository.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("PassengerPhone")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentReference")
                         .HasColumnType("text");
 
                     b.Property<int?>("SeatNumber")
@@ -2477,7 +2981,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("TripPassengers", (string)null);
+                    b.ToTable("TripPassengers");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripRequest", b =>
@@ -2518,71 +3022,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("TripRequests", (string)null);
-                });
-
-            modelBuilder.Entity("MzansiFleet.Domain.Entities.TripSchedule", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DaysOfWeek")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("DepartureStation")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<TimeSpan>("DepartureTime")
-                        .HasColumnType("interval");
-
-                    b.Property<string>("DestinationStation")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int?>("ExpectedDurationMinutes")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("FrequencyMinutes")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<int?>("MaxPassengers")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text");
-
-                    b.Property<string>("RouteName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("StandardFare")
-                        .HasColumnType("numeric");
-
-                    b.Property<Guid>("TaxiRankId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TaxiRankId");
-
-                    b.HasIndex("TenantId");
-
-                    b.ToTable("TripSchedules", (string)null);
+                    b.ToTable("TripRequests");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripStop", b =>
@@ -2607,7 +3047,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("TripStops", (string)null);
+                    b.ToTable("TripStops");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.User", b =>
@@ -2617,6 +3057,9 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FullName")
                         .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
@@ -2641,7 +3084,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.Vehicle", b =>
@@ -2706,6 +3149,9 @@ namespace MzansiFleet.Repository.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("TaxiRankId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -2722,7 +3168,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Vehicles", (string)null);
+                    b.ToTable("Vehicles");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleDocument", b =>
@@ -2748,7 +3194,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleDocuments", (string)null);
+                    b.ToTable("VehicleDocuments");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleEarning", b =>
@@ -2778,7 +3224,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("VehicleEarningRecords", (string)null);
+                    b.ToTable("VehicleEarningRecords");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleEarnings", b =>
@@ -2814,7 +3260,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleEarnings", (string)null);
+                    b.ToTable("VehicleEarnings");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleExpense", b =>
@@ -2852,7 +3298,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleExpenses", (string)null);
+                    b.ToTable("VehicleExpenses");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleRentalBooking", b =>
@@ -2927,7 +3373,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleRentalBookings", (string)null);
+                    b.ToTable("VehicleRentalBookings");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleRentalRequest", b =>
@@ -2997,38 +3443,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("VehicleRentalRequests", (string)null);
-                });
-
-            modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleRouteAssignment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("AssignedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("RouteId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("VehicleId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RouteId");
-
-                    b.HasIndex("VehicleId");
-
-                    b.ToTable("VehicleRouteAssignments", (string)null);
+                    b.ToTable("VehicleRentalRequests");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleTaxiRank", b =>
@@ -3061,22 +3476,85 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.HasIndex("VehicleId");
 
-                    b.ToTable("VehicleTaxiRanks", (string)null);
+                    b.ToTable("VehicleTaxiRanks");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleTaxiRankRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RejectionReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedByName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReviewedByName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TaxiRankId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TaxiRankName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("VehicleRegistration")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("VehicleTaxiRankRequests");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.BookingPassenger", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.ScheduledTripBooking", "Booking")
+                        .WithMany("Passengers")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.DailyTaxiQueue", b =>
                 {
-                    b.HasOne("MzansiFleet.Domain.Entities.User", "AssignedByUser")
+                    b.HasOne("MzansiFleet.Domain.Entities.User", "DispatchedByUser")
                         .WithMany()
-                        .HasForeignKey("AssignedByUserId");
-
-                    b.HasOne("MzansiFleet.Domain.Entities.Trip", "AssignedTrip")
-                        .WithMany()
-                        .HasForeignKey("AssignedTripId");
+                        .HasForeignKey("DispatchedByUserId");
 
                     b.HasOne("MzansiFleet.Domain.Entities.DriverProfile", "Driver")
                         .WithMany()
-                        .HasForeignKey("DriverId");
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MzansiFleet.Domain.Entities.Route", "Route")
+                        .WithMany()
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
                         .WithMany("DailyQueues")
@@ -3096,15 +3574,33 @@ namespace MzansiFleet.Repository.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("AssignedByUser");
-
-                    b.Navigation("AssignedTrip");
+                    b.Navigation("DispatchedByUser");
 
                     b.Navigation("Driver");
+
+                    b.Navigation("Route");
 
                     b.Navigation("TaxiRank");
 
                     b.Navigation("Tenant");
+
+                    b.Navigation("Vehicle");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.DriverBehaviorEvent", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.DriverProfile", "Driver")
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Driver");
 
                     b.Navigation("Vehicle");
                 });
@@ -3140,6 +3636,17 @@ namespace MzansiFleet.Repository.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.Message", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
+                        .WithMany()
+                        .HasForeignKey("TaxiRankId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TaxiRank");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.OwnerAssignment", b =>
@@ -3203,6 +3710,69 @@ namespace MzansiFleet.Repository.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.QueueMarshal", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
+                        .WithMany()
+                        .HasForeignKey("TaxiRankId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.OwnsOne("MzansiFleet.Domain.Entities.MarshalPermissions", "Permissions", b1 =>
+                        {
+                            b1.Property<Guid>("QueueMarshalId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<bool>("CanCaptureTrips")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanCaptureTrips");
+
+                            b1.Property<bool>("CanDeleteData")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanDeleteData");
+
+                            b1.Property<bool>("CanManageDrivers")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanManageDrivers");
+
+                            b1.Property<bool>("CanManageSchedules")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanManageSchedules");
+
+                            b1.Property<bool>("CanManageVehicles")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanManageVehicles");
+
+                            b1.Property<bool>("CanReceiveMessages")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanReceiveMessages");
+
+                            b1.Property<bool>("CanSendMessages")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanSendMessages");
+
+                            b1.Property<bool>("CanViewReports")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanViewReports");
+
+                            b1.Property<bool>("CanViewSchedules")
+                                .HasColumnType("boolean")
+                                .HasColumnName("Permissions_CanViewSchedules");
+
+                            b1.HasKey("QueueMarshalId");
+
+                            b1.ToTable("QueueMarshals");
+
+                            b1.WithOwner()
+                                .HasForeignKey("QueueMarshalId");
+                        });
+
+                    b.Navigation("Permissions")
+                        .IsRequired();
+
+                    b.Navigation("TaxiRank");
+                });
+
             modelBuilder.Entity("MzansiFleet.Domain.Entities.RentalOffer", b =>
                 {
                     b.HasOne("MzansiFleet.Domain.Entities.OwnerProfile", "Owner")
@@ -3245,6 +3815,125 @@ namespace MzansiFleet.Repository.Migrations
                     b.Navigation("ServiceProvider");
 
                     b.Navigation("Vehicle");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.Route", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
+                        .WithMany("Routes")
+                        .HasForeignKey("TaxiRankId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TaxiRank");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.RouteStop", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.Route", "Route")
+                        .WithMany("Stops")
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Route");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.RouteVehicle", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.Route", "Route")
+                        .WithMany("RouteVehicles")
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Route");
+
+                    b.Navigation("Vehicle");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.ScheduledTrip", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.DriverProfile", "Driver")
+                        .WithMany()
+                        .HasForeignKey("DriverId");
+
+                    b.HasOne("MzansiFleet.Domain.Entities.TaxiMarshalProfile", "Marshal")
+                        .WithMany()
+                        .HasForeignKey("MarshalId");
+
+                    b.HasOne("MzansiFleet.Domain.Entities.Route", "Route")
+                        .WithMany()
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
+                        .WithMany()
+                        .HasForeignKey("TaxiRankId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId");
+
+                    b.Navigation("Driver");
+
+                    b.Navigation("Marshal");
+
+                    b.Navigation("Route");
+
+                    b.Navigation("TaxiRank");
+
+                    b.Navigation("Vehicle");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.ScheduledTripBooking", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.Route", "Route")
+                        .WithMany()
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.ScheduledTrip", "ScheduledTrip")
+                        .WithMany()
+                        .HasForeignKey("ScheduledTripId");
+
+                    b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
+                        .WithMany()
+                        .HasForeignKey("TaxiRankId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Route");
+
+                    b.Navigation("ScheduledTrip");
+
+                    b.Navigation("TaxiRank");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("MzansiFleet.Domain.Entities.ServiceProviderProfile", b =>
@@ -3500,6 +4189,41 @@ namespace MzansiFleet.Repository.Migrations
                         .HasForeignKey("PoolingGroupId");
                 });
 
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.TripCapture", b =>
+                {
+                    b.HasOne("MzansiFleet.Domain.Entities.QueueMarshal", "Marshal")
+                        .WithMany()
+                        .HasForeignKey("MarshalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.Route", "Route")
+                        .WithMany()
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
+                        .WithMany()
+                        .HasForeignKey("TaxiRankId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MzansiFleet.Domain.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Marshal");
+
+                    b.Navigation("Route");
+
+                    b.Navigation("TaxiRank");
+
+                    b.Navigation("Vehicle");
+                });
+
             modelBuilder.Entity("MzansiFleet.Domain.Entities.TripCost", b =>
                 {
                     b.HasOne("MzansiFleet.Domain.Entities.DriverProfile", "AddedByDriver")
@@ -3538,30 +4262,12 @@ namespace MzansiFleet.Repository.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MzansiFleet.Domain.Entities.TripSchedule", b =>
-                {
-                    b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
-                        .WithMany("Schedules")
-                        .HasForeignKey("TaxiRankId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("MzansiFleet.Domain.Entities.Tenant", "Tenant")
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("TaxiRank");
-
-                    b.Navigation("Tenant");
-                });
-
             modelBuilder.Entity("MzansiFleet.Domain.Entities.User", b =>
                 {
                     b.HasOne("MzansiFleet.Domain.Entities.Tenant", "Tenant")
                         .WithMany("Users")
-                        .HasForeignKey("TenantId");
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Tenant");
                 });
@@ -3653,25 +4359,6 @@ namespace MzansiFleet.Repository.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleRouteAssignment", b =>
-                {
-                    b.HasOne("MzansiFleet.Domain.Entities.Route", "Route")
-                        .WithMany()
-                        .HasForeignKey("RouteId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("MzansiFleet.Domain.Entities.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Route");
-
-                    b.Navigation("Vehicle");
-                });
-
             modelBuilder.Entity("MzansiFleet.Domain.Entities.VehicleTaxiRank", b =>
                 {
                     b.HasOne("MzansiFleet.Domain.Entities.TaxiRank", "TaxiRank")
@@ -3696,6 +4383,18 @@ namespace MzansiFleet.Repository.Migrations
                     b.Navigation("TripBookings");
                 });
 
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.Route", b =>
+                {
+                    b.Navigation("RouteVehicles");
+
+                    b.Navigation("Stops");
+                });
+
+            modelBuilder.Entity("MzansiFleet.Domain.Entities.ScheduledTripBooking", b =>
+                {
+                    b.Navigation("Passengers");
+                });
+
             modelBuilder.Entity("MzansiFleet.Domain.Entities.StuffRequest", b =>
                 {
                     b.Navigation("Quotes");
@@ -3713,7 +4412,7 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.Navigation("Marshals");
 
-                    b.Navigation("Schedules");
+                    b.Navigation("Routes");
 
                     b.Navigation("Trips");
                 });

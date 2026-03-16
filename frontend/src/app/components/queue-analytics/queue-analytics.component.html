@@ -1,0 +1,217 @@
+<div class="queue-analytics-container">
+  <mat-toolbar color="primary" class="toolbar">
+    <mat-icon class="toolbar-icon">analytics</mat-icon>
+    <span class="toolbar-title">Queue Analytics & Reporting</span>
+    <span class="toolbar-spacer"></span>
+    <button mat-raised-button color="accent" (click)="exportAnalytics()" [disabled]="!analyticsData">
+      <mat-icon>download</mat-icon>
+      Export Report
+    </button>
+  </mat-toolbar>
+
+  <div class="main-content">
+    <!-- Date Range Selection -->
+    <mat-card class="date-range-card">
+      <mat-card-content>
+        <div class="date-range-container">
+          <mat-form-field appearance="outline" class="date-field">
+            <mat-label>Start Date</mat-label>
+            <input matInput [matDatepicker]="startPicker" [(ngModel)]="startDate" (dateChange)="onDateRangeChange()">
+            <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+            <mat-datepicker #startPicker></mat-datepicker>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="date-field">
+            <mat-label>End Date</mat-label>
+            <input matInput [matDatepicker]="endPicker" [(ngModel)]="endDate" (dateChange)="onDateRangeChange()">
+            <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+            <mat-datepicker #endPicker></mat-datepicker>
+          </mat-form-field>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Loading State -->
+    <div class="loading-state" *ngIf="loading">
+      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+      <p>Loading analytics data...</p>
+    </div>
+
+    <!-- Analytics Content -->
+    <div class="analytics-content" *ngIf="!loading && analyticsData">
+      <!-- Summary Cards -->
+      <div class="summary-section">
+        <div class="summary-grid">
+          <mat-card class="summary-card">
+            <mat-card-content>
+              <div class="summary-icon">
+                <mat-icon>directions_car</mat-icon>
+              </div>
+              <div class="summary-details">
+                <h3>{{ analyticsData.totalVehiclesProcessed }}</h3>
+                <p>Total Vehicles Processed</p>
+              </div>
+            </mat-card-content>
+          </mat-card>
+
+          <mat-card class="summary-card">
+            <mat-card-content>
+              <div class="summary-icon">
+                <mat-icon>people</mat-icon>
+              </div>
+              <div class="summary-details">
+                <h3>{{ analyticsData.averageQueueLength | number:'1.1' }}</h3>
+                <p>Average Queue Length</p>
+              </div>
+            </mat-card-content>
+          </mat-card>
+
+          <mat-card class="summary-card">
+            <mat-card-content>
+              <div class="summary-icon">
+                <mat-icon>schedule</mat-icon>
+              </div>
+              <div class="summary-details">
+                <h3>{{ analyticsData.averageWaitTime | number:'1.1' }} min</h3>
+                <p>Average Wait Time</p>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        </div>
+      </div>
+
+      <!-- Analytics Tabs -->
+      <mat-tab-group class="analytics-tabs">
+        <!-- Peak Hours Tab -->
+        <mat-tab label="Peak Hours Analysis">
+          <div class="peak-hours-section">
+            <mat-card>
+              <mat-card-header>
+                <mat-card-title>Peak Hours</mat-card-title>
+                <mat-card-subtitle>Busiest hours and dispatch patterns</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <div class="peak-hours-grid" *ngIf="analyticsData.peakHours.length > 0">
+                  <div class="peak-hour-item" 
+                       *ngFor="let hour of analyticsData.peakHours" 
+                       [ngClass]="getPeakHourColor(hour.dispatchCount)">
+                    <div class="hour-display">{{ hour.hour }}:00</div>
+                    <div class="dispatch-count">{{ hour.dispatchCount }} dispatches</div>
+                    <div class="wait-time">{{ hour.averageWaitTime | number:'1.1' }} min avg</div>
+                  </div>
+                </div>
+                <div class="empty-state" *ngIf="analyticsData.peakHours.length === 0">
+                  <mat-icon class="empty-icon">schedule</mat-icon>
+                  <p>No peak hour data available for the selected period</p>
+                </div>
+              </mat-card-content>
+            </mat-card>
+          </div>
+        </mat-tab>
+
+        <!-- Route Performance Tab -->
+        <mat-tab label="Route Performance">
+          <div class="route-performance-section">
+            <mat-card>
+              <mat-card-header>
+                <mat-card-title>Route Performance Metrics</mat-card-title>
+                <mat-card-subtitle>Efficiency and utilization by route</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <div class="route-performance-list" *ngIf="analyticsData.routePerformance.length > 0">
+                  <div class="route-performance-item" 
+                       *ngFor="let route of analyticsData.routePerformance">
+                    <div class="route-header">
+                      <h4>{{ route.routeName || 'Unknown Route' }}</h4>
+                      <mat-chip [color]="getUtilizationColor(route.utilizationRate)" selected>
+                        {{ route.utilizationRate | number:'1.1' }}% utilization
+                      </mat-chip>
+                    </div>
+                    <div class="route-metrics">
+                      <div class="metric">
+                        <span class="metric-label">Total Dispatches:</span>
+                        <span class="metric-value">{{ route.totalDispatches }}</span>
+                      </div>
+                      <div class="metric">
+                        <span class="metric-label">Average Wait Time:</span>
+                        <span class="metric-value" [ngClass]="getWaitTimeColor(route.averageWaitTime)">
+                          {{ route.averageWaitTime | number:'1.1' }} min
+                        </span>
+                      </div>
+                    </div>
+                    <div class="utilization-bar">
+                      <div class="utilization-fill" 
+                           [style.width.%]="route.utilizationRate"
+                           [ngClass]="getUtilizationColor(route.utilizationRate)">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="empty-state" *ngIf="analyticsData.routePerformance.length === 0">
+                  <mat-icon class="empty-icon">route</mat-icon>
+                  <p>No route performance data available for the selected period</p>
+                </div>
+              </mat-card-content>
+            </mat-card>
+          </div>
+        </mat-tab>
+
+        <!-- Daily Trends Tab -->
+        <mat-tab label="Daily Trends">
+          <div class="daily-trends-section">
+            <mat-card>
+              <mat-card-header>
+                <mat-card-title>Daily Trends</mat-card-title>
+                <mat-card-subtitle>Queue patterns over time</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <div class="trends-chart-placeholder">
+                  <h4>Trend Chart Coming Soon</h4>
+                  <p>Daily trends visualization will be implemented with charting library</p>
+                </div>
+                
+                <div class="daily-trends-list" *ngIf="analyticsData.dailyTrends.length > 0">
+                  <div class="trend-item" *ngFor="let trend of analyticsData.dailyTrends">
+                    <div class="trend-date">{{ trend.date | date:'shortDate' }}</div>
+                    <div class="trend-metrics">
+                      <div class="trend-metric">
+                        <span class="metric-label">Total:</span>
+                        <span class="metric-value">{{ trend.totalVehicles }}</span>
+                      </div>
+                      <div class="trend-metric">
+                        <span class="metric-label">Dispatched:</span>
+                        <span class="metric-value dispatched">{{ trend.dispatchedVehicles }}</span>
+                      </div>
+                      <div class="trend-metric">
+                        <span class="metric-label">Avg Queue:</span>
+                        <span class="metric-value">{{ trend.averageQueueLength }}</span>
+                      </div>
+                      <div class="trend-metric">
+                        <span class="metric-label">Peak Wait:</span>
+                        <span class="metric-value" [ngClass]="getWaitTimeColor(trend.peakWaitTime)">
+                          {{ trend.peakWaitTime | number:'1.1' }} min
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="empty-state" *ngIf="analyticsData.dailyTrends.length === 0">
+                  <mat-icon class="empty-icon">trending_up</mat-icon>
+                  <p>No daily trend data available for the selected period</p>
+                </div>
+              </mat-card-content>
+            </mat-card>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="!loading && !analyticsData">
+      <mat-icon class="empty-icon">analytics</mat-icon>
+      <h3>No Analytics Data Available</h3>
+      <p>Select a date range to view queue analytics and performance metrics.</p>
+    </div>
+  </div>
+</div>

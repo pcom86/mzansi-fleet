@@ -1,3 +1,4 @@
+#nullable enable
 using Microsoft.AspNetCore.Mvc;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.Interfaces.IRepositories;
@@ -94,9 +95,15 @@ namespace MzansiFleet.Api.Controllers
                 if (dto.TravelDate.Date < DateTime.UtcNow.Date)
                     return BadRequest(new { message = "Travel date cannot be in the past" });
 
-                var dayName = dto.TravelDate.DayOfWeek.ToString().Substring(0, 3);
-                if (!string.IsNullOrEmpty(schedule.DaysOfWeek) && !schedule.DaysOfWeek.Contains(dayName))
-                    return BadRequest(new { message = $"This route does not operate on {dto.TravelDate.DayOfWeek}" });
+                if (!string.IsNullOrEmpty(schedule.DaysOfWeek))
+                {
+                    var dayName = dto.TravelDate.DayOfWeek.ToString().Substring(0, 3); // e.g. "Fri"
+                    var dayNumber = ((int)dto.TravelDate.DayOfWeek).ToString(); // e.g. "5"
+                    var days = schedule.DaysOfWeek.Split(',').Select(d => d.Trim()).ToList();
+                    var isAllowed = days.Any(d => d.Equals(dayName, StringComparison.OrdinalIgnoreCase) || d == dayNumber);
+                    if (!isAllowed)
+                        return BadRequest(new { message = $"This route does not operate on {dto.TravelDate.DayOfWeek}" });
+                }
 
                 // Validate passenger count matches passengers provided
                 if (dto.Passengers.Count != dto.SeatsBooked)
@@ -128,6 +135,7 @@ namespace MzansiFleet.Api.Controllers
                     UserId = dto.UserId,
                     RouteId = dto.RouteId,
                     TaxiRankId = schedule.TaxiRankId,
+                    ScheduledTripId = dto.ScheduledTripId,
                     TravelDate = dto.TravelDate,
                     SeatsBooked = dto.SeatsBooked,
                     SeatNumbers = dto.SeatNumbers ?? new List<int>(),
@@ -231,6 +239,39 @@ Passengers:
                     });
                 }
 
+                // Send confirmation to the passenger (booking user)
+                var passengerSubject = $"Booking Confirmed: {schedule.RouteName}";
+                var passengerBody = $@"Your booking has been confirmed!
+
+Route: {schedule.RouteName}
+From: {schedule.DepartureStation} → To: {schedule.DestinationStation}
+Date: {booking.TravelDate:yyyy-MM-dd}
+Seats: {booking.SeatsBooked}
+Seat Numbers: {string.Join(", ", booking.SeatNumbers ?? new List<int>())}
+Total Fare: R{booking.TotalFare:N2}
+Payment Method: {booking.PaymentMethod}
+Status: {booking.Status}
+Booking Reference: {booking.Id.ToString().Substring(0, 8).ToUpper()}
+
+Passengers:
+{string.Join("\n", booking.Passengers.Select(p => $"- {p.Name} → {p.Destination}"))}
+
+Thank you for booking with MzansiFleet!";
+
+                await _context.Messages.AddAsync(new Message
+                {
+                    Id = Guid.NewGuid(),
+                    SenderType = "System",
+                    SenderId = Guid.Empty,
+                    SenderName = "MzansiFleet Bookings",
+                    RecipientType = "Customer",
+                    RecipientId = booking.UserId,
+                    Subject = passengerSubject,
+                    Content = passengerBody,
+                    IsRead = false,
+                    CreatedAt = DateTime.UtcNow
+                });
+
                 await _context.SaveChangesAsync();
             }
             catch (Exception ex)
@@ -257,6 +298,110 @@ Passengers:
             if (booking == null)
                 return NotFound(new { message = "Booking not found" });
             return Ok(booking);
+        }
+
+        // PUT: api/ScheduledTripBookings/{id}
+        // Update a booking: edit existing passengers, add new passengers, update seats
+        [HttpPut("{id}")]
+        public async Task<ActionResult> UpdateBooking(Guid id, [FromBody] UpdateBookingDto dto)
+        {
+            try
+            {
+                var booking = await _bookingRepository.GetByIdAsync(id);
+                if (booking == null)
+                    return NotFound(new { message = "Booking not found" });
+
+                if (booking.Status == "Cancelled")
+                    return BadRequest(new { message = "Cannot edit a cancelled booking" });
+
+                if (booking.Status == "Completed")
+                    return BadRequest(new { message = "Cannot edit a completed booking" });
+
+                // Get route for seat validation
+                var schedule = await _context.Routes.FirstOrDefaultAsync(r => r.Id == booking.RouteId);
+
+                // Update existing passengers
+                if (dto.UpdatedPassengers != null)
+                {
+                    foreach (var up in dto.UpdatedPassengers)
+                    {
+                        var existing = booking.Passengers.FirstOrDefault(p => p.Id == up.Id);
+                        if (existing != null)
+                        {
+                            existing.Name = up.Name;
+                            existing.ContactNumber = up.ContactNumber;
+                            existing.Email = up.Email;
+                            existing.Destination = up.Destination;
+                        }
+                    }
+                }
+
+                // Add new passengers
+                if (dto.NewPassengers != null && dto.NewPassengers.Count > 0)
+                {
+                    // Validate seat availability
+                    var totalAfter = booking.SeatsBooked + dto.NewPassengers.Count;
+                    if (schedule?.MaxPassengers.HasValue == true)
+                    {
+                        var existingBookings = await _bookingRepository.GetByRouteAndDateAsync(booking.RouteId, booking.TravelDate);
+                        var otherBookedSeats = existingBookings.Where(b => b.Id != booking.Id).Sum(b => b.SeatsBooked);
+                        if (otherBookedSeats + totalAfter > schedule.MaxPassengers.Value)
+                            return BadRequest(new { message = $"Only {schedule.MaxPassengers.Value - otherBookedSeats - booking.SeatsBooked} additional seat(s) available" });
+                    }
+
+                    // Add new seat numbers
+                    var newSeatNumbers = dto.NewSeatNumbers ?? new List<int>();
+                    if (newSeatNumbers.Count > 0)
+                    {
+                        // Validate new seats aren't already taken
+                        var existingBookings = await _bookingRepository.GetByRouteAndDateAsync(booking.RouteId, booking.TravelDate);
+                        var allBookedSeatNumbers = existingBookings
+                            .Where(b => b.Id != booking.Id)
+                            .SelectMany(b => b.SeatNumbers ?? new List<int>())
+                            .ToList();
+                        allBookedSeatNumbers.AddRange(booking.SeatNumbers ?? new List<int>());
+                        var conflicting = newSeatNumbers.Where(s => allBookedSeatNumbers.Contains(s)).ToList();
+                        if (conflicting.Any())
+                            return BadRequest(new { message = $"Seat(s) {string.Join(", ", conflicting)} are already booked" });
+
+                        booking.SeatNumbers = (booking.SeatNumbers ?? new List<int>()).Concat(newSeatNumbers).ToList();
+                    }
+
+                    foreach (var np in dto.NewPassengers)
+                    {
+                        booking.Passengers.Add(new BookingPassenger
+                        {
+                            Id = Guid.NewGuid(),
+                            BookingId = booking.Id,
+                            Name = np.Name,
+                            ContactNumber = np.ContactNumber,
+                            Email = np.Email,
+                            Destination = np.Destination
+                        });
+                    }
+
+                    booking.SeatsBooked = totalAfter;
+
+                    // Recalculate fare if provided
+                    if (dto.TotalFare.HasValue)
+                        booking.TotalFare = dto.TotalFare.Value;
+                }
+
+                // Update payment method if provided
+                if (!string.IsNullOrEmpty(dto.PaymentMethod))
+                    booking.PaymentMethod = dto.PaymentMethod;
+
+                booking.UpdatedAt = DateTime.UtcNow;
+                await _bookingRepository.UpdateAsync(booking);
+
+                // Re-fetch with includes
+                var updated = await _bookingRepository.GetByIdAsync(id);
+                return Ok(updated);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // PUT: api/ScheduledTripBookings/{id}/cancel
@@ -309,6 +454,24 @@ Passengers:
         public string? Email { get; set; }
         public string? IdNumber { get; set; }
         public string? Address { get; set; }
+        public string Destination { get; set; } = string.Empty;
+    }
+
+    public class UpdateBookingDto
+    {
+        public List<UpdatePassengerDto>? UpdatedPassengers { get; set; }
+        public List<BookingPassengerDto>? NewPassengers { get; set; }
+        public List<int>? NewSeatNumbers { get; set; }
+        public decimal? TotalFare { get; set; }
+        public string? PaymentMethod { get; set; }
+    }
+
+    public class UpdatePassengerDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string ContactNumber { get; set; } = string.Empty;
+        public string? Email { get; set; }
         public string Destination { get; set; } = string.Empty;
     }
 
