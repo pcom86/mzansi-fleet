@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../api/client';
 import { useAppTheme } from '../theme';
-import { createStyles } from '../styles';
 
 export default function DispatchedItemsScreen({ navigation }) {
   const { c } = useAppTheme();
@@ -38,7 +37,7 @@ export default function DispatchedItemsScreen({ navigation }) {
     );
   };
 
-  const styles = createStyles(c);
+  const styles = styles(c);
 
   if (loading) {
     return (
@@ -125,7 +124,7 @@ export default function DispatchedItemsScreen({ navigation }) {
   );
 }
 
-const styles = (c) => ({
+const styles = (c) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: c.background,
