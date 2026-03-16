@@ -209,7 +209,11 @@ namespace MzansiFleet.Api.Controllers
                 entry.Status = "Dispatched";
                 entry.DepartedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
                 entry.DispatchedByUserId = dto?.DispatchedByUserId;
-                entry.PassengerCount = dto?.PassengerCount ?? 0;
+                
+                // Auto-calculate passenger count from list if provided, otherwise use explicit count
+                var passengerList = dto?.Passengers;
+                entry.PassengerCount = passengerList?.Count > 0 ? passengerList.Count : (dto?.PassengerCount ?? 0);
+                
                 entry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
                 _logger.LogInformation($"[Queue] Updated entry: PassengerCount={entry.PassengerCount}, DispatchedByUserId={entry.DispatchedByUserId}");

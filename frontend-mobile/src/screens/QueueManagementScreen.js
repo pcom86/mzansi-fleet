@@ -53,6 +53,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const [dispatchModalVisible, setDispatchModalVisible] = useState(false);
   const [dispatchEntry, setDispatchEntry] = useState(null);
   const [dispatchPax, setDispatchPax] = useState('');
+  const [dispatchPassengers, setDispatchPassengers] = useState([]);
   const [dispatchBusy, setDispatchBusy] = useState(false);
 
   // â”€â”€ Data Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -163,6 +164,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       setDispatchModalVisible(false);
       setDispatchEntry(null);
       setDispatchPax('');
+      setDispatchPassengers([]);
       return;
     }
     
@@ -172,14 +174,20 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       setDispatchModalVisible(false);
       setDispatchEntry(null);
       setDispatchPax('');
+      setDispatchPassengers([]);
       loadData(true);
       return;
     }
     
     setDispatchBusy(true);
     try {
+      // Build passenger list with only valid entries
+      const validPassengers = dispatchPassengers.filter(p => p.name && p.name.trim());
+      
       const dispatchData = {
-        passengerCount: dispatchPax ? parseInt(dispatchPax, 10) : undefined,
+        // Auto-calculate from passenger list, fallback to manual input, default to 0
+        passengerCount: validPassengers.length > 0 ? validPassengers.length : (dispatchPax ? parseInt(dispatchPax, 10) : 0),
+        passengers: validPassengers.length > 0 ? validPassengers : undefined,
       };
       
       // Only add dispatchedByUserId if it's a valid GUID format
@@ -192,6 +200,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       setDispatchModalVisible(false);
       setDispatchEntry(null);
       setDispatchPax('');
+      setDispatchPassengers([]);
       loadData(true);
     } catch (err) {
       console.error('Dispatch error:', err);
@@ -246,6 +255,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   function openDispatch(entry) {
     setDispatchEntry(entry);
     setDispatchPax('');
+    setDispatchPassengers([]);
     setDispatchModalVisible(true);
   }
 
@@ -602,20 +612,94 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
               <TextInput
                 style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
                 value={dispatchPax}
-                onChangeText={setDispatchPax}
+                onChangeText={(text) => {
+                  setDispatchPax(text);
+                  // Clear passenger list when manual count is entered
+                  if (text && dispatchPassengers.length > 0) {
+                    setDispatchPassengers([]);
+                  }
+                }}
                 keyboardType="numeric"
-                placeholder="e.g. 15"
+                placeholder={dispatchPassengers.length > 0 ? `${dispatchPassengers.length} (from list)` : "e.g. 15"}
                 placeholderTextColor={c.textMuted}
               />
               <Text style={[styles.fieldHint, { color: c.textMuted }]}>
-                Enter the number of passengers boarding this trip
+                Enter number manually OR use passenger list below
               </Text>
+
+              {/* Passenger List Section */}
+              <View style={{ marginTop: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={[styles.fieldLabel, { color: c.textMuted }]}>
+                    Passenger List ({dispatchPassengers.length})
+                  </Text>
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', padding: 6 }}
+                    onPress={() => {
+                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '' }]);
+                      // Clear manual count when adding passengers
+                      setDispatchPax('');
+                    }}
+                  >
+                    <Ionicons name="add-circle" size={18} color="#22c55e" />
+                    <Text style={{ color: '#22c55e', fontSize: 13, marginLeft: 4 }}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                {dispatchPassengers.map((passenger, index) => (
+                  <View key={index} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <TextInput
+                        style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.background, fontSize: 14 }]}
+                        value={passenger.name}
+                        onChangeText={(text) => {
+                          const updated = [...dispatchPassengers];
+                          updated[index].name = text;
+                          setDispatchPassengers(updated);
+                          setDispatchPax('');
+                        }}
+                        placeholder="Name"
+                        placeholderTextColor={c.textMuted}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <TextInput
+                        style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.background, fontSize: 14 }]}
+                        value={passenger.contact}
+                        onChangeText={(text) => {
+                          const updated = [...dispatchPassengers];
+                          updated[index].contact = text;
+                          setDispatchPassengers(updated);
+                        }}
+                        placeholder="Contact (optional)"
+                        placeholderTextColor={c.textMuted}
+                        keyboardType="phone-pad"
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={{ padding: 8 }}
+                      onPress={() => {
+                        const updated = dispatchPassengers.filter((_, i) => i !== index);
+                        setDispatchPassengers(updated);
+                      }}
+                    >
+                      <Ionicons name="trash" size={18} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                
+                {dispatchPassengers.length === 0 && (
+                  <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 8, fontStyle: 'italic' }}>
+                    No passengers added yet. Tap "Add" to create a passenger list.
+                  </Text>
+                )}
+              </View>
             </ScrollView>
 
             <View style={[styles.modalFooter, { borderTopColor: c.border }]}>
               <TouchableOpacity
                 style={[styles.footerBtn, { borderColor: c.border }]}
-                onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); setDispatchPax(''); }}
+                onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); setDispatchPax(''); setDispatchPassengers([]); }}
               >
                 <Text style={[styles.footerBtnTxt, { color: c.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
