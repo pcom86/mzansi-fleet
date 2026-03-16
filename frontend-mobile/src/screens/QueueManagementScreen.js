@@ -846,6 +846,20 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                     No passengers added yet. Tap "Add Passenger" to create a passenger list.
                   </Text>
                 )}
+
+                {/* Running Total */}
+                {dispatchPassengers.length > 0 && (
+                  <View style={{ marginTop: 16, padding: 12, backgroundColor: '#22c55e15', borderRadius: 12, borderWidth: 2, borderColor: '#22c55e40' }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: c.text, fontSize: 14, fontWeight: '600' }}>
+                        Total Passengers: {dispatchPassengers.length}
+                      </Text>
+                      <Text style={{ color: '#22c55e', fontSize: 20, fontWeight: '800' }}>
+                        Total: R{dispatchPassengers.reduce((sum, p) => sum + (p.amount || 0), 0).toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </View>
             </ScrollView>
 

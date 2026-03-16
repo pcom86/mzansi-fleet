@@ -279,10 +279,30 @@ namespace MzansiFleet.Api.Controllers
 
                         await _context.SaveChangesAsync();
                         _logger.LogInformation($"[Queue] Stored {passengerList.Count} passengers for trip {trip.Id}");
+
+                        // Add vehicle earnings from trip fare
+                        var totalFare = passengerList.Sum(p => p.Amount);
+                        if (totalFare > 0)
+                        {
+                            var earnings = new VehicleEarnings
+                            {
+                                Id = Guid.NewGuid(),
+                                VehicleId = entry.VehicleId,
+                                Date = DateTime.UtcNow,
+                                Amount = totalFare,
+                                Source = "Trip",
+                                Description = $"Taxi rank trip from {taxiRank?.Name} to {route?.DestinationStation} - {passengerList.Count} passengers",
+                                Period = "Daily",
+                                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                            };
+                            _context.VehicleEarnings.Add(earnings);
+                            await _context.SaveChangesAsync();
+                            _logger.LogInformation($"[Queue] Added vehicle earnings: R{totalFare} for vehicle {entry.VehicleId}");
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, $"[Queue] Error creating trip/passengers: {ex.Message}");
+                        _logger.LogError(ex, $"[Queue] Error creating trip/passengers/earnings: {ex.Message}");
                         // Don't fail the dispatch if passenger storage fails
                     }
                 }
