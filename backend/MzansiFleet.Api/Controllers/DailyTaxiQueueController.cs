@@ -271,7 +271,7 @@ namespace MzansiFleet.Api.Controllers
                                 DepartureStation = taxiRank?.Name ?? "Unknown",
                                 ArrivalStation = passengerDto.Destination ?? route?.DestinationStation ?? "Unknown",
                                 Amount = passengerDto.Amount,
-                                PaymentMethod = "Cash",
+                                PaymentMethod = passengerDto.PaymentMethod ?? "Cash",
                                 BoardedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
                             };
                             _context.TripPassengers.Add(passenger);
@@ -500,6 +500,7 @@ namespace MzansiFleet.Api.Controllers
         public string? NextOfKinContact { get; set; }
         public string? Destination { get; set; }
         public decimal Amount { get; set; }
+        public string? PaymentMethod { get; set; } = "Cash";
     }
 
     public class ReorderDto

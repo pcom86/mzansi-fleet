@@ -135,6 +135,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function handleAddToQueue() {
     if (!addVehicleId) return Alert.alert('Required', 'Please select a vehicle');
+    if (!addRouteId) return Alert.alert('Required', 'Please select a route');
     setAddBusy(true);
     try {
       await addToQueue({
@@ -255,6 +256,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   }
 
   async function openDispatch(entry) {
+    console.log('[Dispatch] Opening dispatch modal for entry:', entry);
     setDispatchEntry(entry);
     setDispatchPax('');
     setDispatchPassengers([]);
@@ -262,12 +264,25 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
     
     // Load route stops if route is assigned
     if (entry.routeId) {
+      console.log('[Dispatch] Loading stops for routeId:', entry.routeId);
       try {
         const stops = await getRouteStops(entry.routeId);
+        // Add final destination if not already in stops
+        if (entry.routeDestination && !stops.find(s => s.stopName === entry.routeDestination)) {
+          stops.push({
+            stopName: entry.routeDestination,
+            stopOrder: stops.length + 1,
+            fareFromOrigin: stops[stops.length - 1]?.fareFromOrigin || 0,
+            isFinalDestination: true
+          });
+        }
+        console.log('[Dispatch] Loaded stops:', stops);
         setRouteStops(stops);
       } catch (err) {
-        console.warn('Failed to load route stops:', err);
+        console.error('[Dispatch] Failed to load route stops:', err);
       }
+    } else {
+      console.warn('[Dispatch] No routeId in entry:', entry);
     }
     
     setDispatchModalVisible(true);
@@ -513,14 +528,8 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
             </View>
 
             <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
-              <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Route (optional)</Text>
+              <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Route *</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingBottom: 16 }}>
-                <TouchableOpacity
-                  style={[styles.chip, { borderColor: !addRouteId ? c.primary : c.border, backgroundColor: !addRouteId ? c.primary : 'transparent' }]}
-                  onPress={() => setAddRouteId(null)}
-                >
-                  <Text style={[styles.chipTxt, { color: !addRouteId ? '#fff' : c.text }]}>No Route</Text>
-                </TouchableOpacity>
                 {routes.filter(r => r.isActive !== false).map(r => (
                   <TouchableOpacity key={r.id}
                     style={[styles.chip, { borderColor: addRouteId === r.id ? c.primary : c.border, backgroundColor: addRouteId === r.id ? c.primary : 'transparent' }]}
@@ -650,7 +659,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                   <TouchableOpacity
                     style={{ flexDirection: 'row', alignItems: 'center', padding: 6 }}
                     onPress={() => {
-                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '', nextOfKinName: '', nextOfKinContact: '', destination: '', amount: 0 }]);
+                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '', nextOfKinName: '', nextOfKinContact: '', destination: '', amount: 0, paymentMethod: 'Cash' }]);
                       setDispatchPax('');
                     }}
                   >
@@ -717,40 +726,44 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                       keyboardType="phone-pad"
                     />
                     {routeStops.length > 0 ? (
-                      <TouchableOpacity
-                        style={[styles.passengerInput, { backgroundColor: p.destination ? '#22c55e10' : c.background, borderColor: p.destination ? '#22c55e' : c.border }]}
-                        onPress={() => {
-                          Alert.alert(
-                            'Select Destination',
-                            '',
-                            routeStops.map(stop => ({
-                              text: `${stop.stopName} (R${stop.fareFromOrigin?.toFixed(2) || '0.00'})`,
-                              onPress: () => {
+                      <View style={{ marginTop: 4 }}>
+                        <Text style={{ color: c.textMuted, fontSize: 11, marginBottom: 6 }}>Select Destination:</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                          {routeStops.map((stop, idx) => (
+                            <TouchableOpacity
+                              key={idx}
+                              style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderRadius: 20,
+                                borderWidth: 1,
+                                borderColor: p.destination === stop.stopName ? '#22c55e' : c.border,
+                                backgroundColor: p.destination === stop.stopName ? '#22c55e20' : c.background,
+                              }}
+                              onPress={() => {
                                 const updated = [...dispatchPassengers];
                                 updated[i].destination = stop.stopName;
                                 updated[i].amount = stop.fareFromOrigin || 0;
                                 setDispatchPassengers(updated);
                                 setDispatchPax('');
-                              }
-                            })).concat([
-                              { 
-                                text: 'Other (Manual)', 
-                                onPress: () => {
-                                  const updated = [...dispatchPassengers];
-                                  updated[i].destination = 'Other';
-                                  updated[i].amount = 0;
-                                  setDispatchPassengers(updated);
-                                }
-                              },
-                              { text: 'Cancel', style: 'cancel' }
-                            ])
-                          );
-                        }}
-                      >
-                        <Text style={{ color: p.destination ? '#22c55e' : c.textMuted, fontSize: 14 }}>
-                          {p.destination ? `Destination: ${p.destination} (R${p.amount?.toFixed(2)})` : 'Select Destination...'}
-                        </Text>
-                      </TouchableOpacity>
+                              }}
+                            >
+                              <Text style={{ 
+                                color: p.destination === stop.stopName ? '#22c55e' : c.text, 
+                                fontSize: 13,
+                                fontWeight: p.destination === stop.stopName ? '600' : '400'
+                              }}>
+                                {stop.stopName}
+                              </Text>
+                              {stop.fareFromOrigin > 0 && (
+                                <Text style={{ color: c.textMuted, fontSize: 11 }}>
+                                  R{stop.fareFromOrigin.toFixed(2)}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
                     ) : (
                       <TextInput
                         style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
@@ -763,6 +776,67 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                           setDispatchPassengers(updated);
                         }}
                       />
+                    )}
+                    {/* Payment Method Selection */}
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={{ color: c.textMuted, fontSize: 11, marginBottom: 6 }}>Payment Method:</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {['Cash', 'Card', 'Mzansi Wallet'].map((method) => (
+                          <TouchableOpacity
+                            key={method}
+                            style={{
+                              paddingHorizontal: 14,
+                              paddingVertical: 8,
+                              borderRadius: 20,
+                              borderWidth: 1,
+                              borderColor: p.paymentMethod === method ? '#22c55e' : c.border,
+                              backgroundColor: p.paymentMethod === method ? '#22c55e20' : c.background,
+                            }}
+                            onPress={() => {
+                              const updated = [...dispatchPassengers];
+                              updated[i].paymentMethod = method;
+                              setDispatchPassengers(updated);
+                              // If Card selected, show POS payment UI
+                              if (method === 'Card') {
+                                Alert.alert(
+                                  'Card Payment',
+                                  'Please use the POS device to process card payment.',
+                                  [
+                                    { text: 'Payment Complete', onPress: () => console.log('[Payment] Card payment processed via POS') },
+                                    { text: 'Cancel', style: 'cancel', onPress: () => {
+                                      const reset = [...dispatchPassengers];
+                                      reset[i].paymentMethod = 'Cash';
+                                      setDispatchPassengers(reset);
+                                    }}
+                                  ]
+                                );
+                              }
+                            }}
+                          >
+                            <Text style={{ 
+                              color: p.paymentMethod === method ? '#22c55e' : c.text, 
+                              fontSize: 13,
+                              fontWeight: p.paymentMethod === method ? '600' : '400'
+                            }}>
+                              {method === 'Mzansi Wallet' ? 'Wallet' : method}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                    {/* Fare Display */}
+                    {p.amount > 0 && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, padding: 10, backgroundColor: '#22c55e10', borderRadius: 8, borderWidth: 1, borderColor: '#22c55e30' }}>
+                        <Ionicons name="cash-outline" size={18} color="#22c55e" />
+                        <View style={{ marginLeft: 8, flex: 1 }}>
+                          <Text style={{ color: '#22c55e', fontSize: 16, fontWeight: '700' }}>
+                            Fare: R{p.amount.toFixed(2)}
+                          </Text>
+                          <Text style={{ color: c.textMuted, fontSize: 12 }}>
+                            Payment: {p.paymentMethod || 'Cash'}
+                          </Text>
+                        </View>
+                      </View>
                     )}
                   </View>
                 ))}
