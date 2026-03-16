@@ -221,6 +221,70 @@ namespace MzansiFleet.Api.Controllers
                 await _context.SaveChangesAsync();
                 _logger.LogInformation($"[Queue] Saved entry status changes");
 
+                // Create TaxiRankTrip and store passengers if passenger list provided
+                if (passengerList?.Count > 0)
+                {
+                    try
+                    {
+                        // Get route details for departure/destination
+                        var route = entry.RouteId.HasValue 
+                            ? await _context.Routes.FindAsync(entry.RouteId.Value) 
+                            : null;
+
+                        var taxiRank = await _context.TaxiRanks.FindAsync(entry.TaxiRankId);
+
+                        // Create the trip record
+                        var trip = new TaxiRankTrip
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = entry.TenantId,
+                            VehicleId = entry.VehicleId,
+                            DriverId = entry.DriverId,
+                            TaxiRankId = entry.TaxiRankId,
+                            MarshalId = dto?.DispatchedByUserId, // Marshal who dispatched
+                            DepartureStation = taxiRank?.Name ?? "Unknown",
+                            DestinationStation = route?.DestinationStation ?? "Unknown",
+                            DepartureTime = DateTime.UtcNow,
+                            TotalAmount = passengerList.Sum(p => p.Amount),
+                            TotalCosts = 0,
+                            NetAmount = passengerList.Sum(p => p.Amount),
+                            Status = "Departed",
+                            PassengerCount = passengerList.Count,
+                            CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                        };
+
+                        _context.TaxiRankTrips.Add(trip);
+                        _logger.LogInformation($"[Queue] Created TaxiRankTrip: {trip.Id}");
+
+                        // Add passengers to the trip
+                        foreach (var passengerDto in passengerList.Where(p => !string.IsNullOrWhiteSpace(p.Name)))
+                        {
+                            var passenger = new TripPassenger
+                            {
+                                Id = Guid.NewGuid(),
+                                TaxiRankTripId = trip.Id,
+                                UserId = dto?.DispatchedByUserId ?? Guid.Empty, // Marshal as placeholder
+                                PassengerName = passengerDto.Name,
+                                PassengerPhone = passengerDto.Contact,
+                                DepartureStation = taxiRank?.Name ?? "Unknown",
+                                ArrivalStation = passengerDto.Destination ?? route?.DestinationStation ?? "Unknown",
+                                Amount = passengerDto.Amount,
+                                PaymentMethod = "Cash",
+                                BoardedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                            };
+                            _context.TripPassengers.Add(passenger);
+                        }
+
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation($"[Queue] Stored {passengerList.Count} passengers for trip {trip.Id}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"[Queue] Error creating trip/passengers: {ex.Message}");
+                        // Don't fail the dispatch if passenger storage fails
+                    }
+                }
+
                 // Shift remaining vehicles up by 1 - handle null RouteId and QueueDate gracefully
                 var remaining = await _context.DailyTaxiQueues
                     .Where(q => q.TaxiRankId == entry.TaxiRankId
@@ -430,6 +494,8 @@ namespace MzansiFleet.Api.Controllers
     {
         public string? Name { get; set; }
         public string? Contact { get; set; }
+        public string? Destination { get; set; }
+        public decimal Amount { get; set; }
     }
 
     public class ReorderDto

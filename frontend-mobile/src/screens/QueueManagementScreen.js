@@ -11,6 +11,7 @@ import { useAppTheme } from '../theme';
 import {
   getQueueByRank, getQueueStats, addToQueue,
   dispatchVehicle, reorderVehicle, removeFromQueue,
+  getRouteStops,
 } from '../api/queueManagement';
 import { fetchVehiclesByRankId, fetchTaxiRanks } from '../api/taxiRanks';
 import client from '../api/client';
@@ -55,6 +56,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const [dispatchPax, setDispatchPax] = useState('');
   const [dispatchPassengers, setDispatchPassengers] = useState([]);
   const [dispatchBusy, setDispatchBusy] = useState(false);
+  const [routeStops, setRouteStops] = useState([]);
 
   // â”€â”€ Data Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadData = useCallback(async (silent = false) => {
@@ -252,10 +254,22 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
     catch { Alert.alert('Error', 'Failed to reorder'); }
   }
 
-  function openDispatch(entry) {
+  async function openDispatch(entry) {
     setDispatchEntry(entry);
     setDispatchPax('');
     setDispatchPassengers([]);
+    setRouteStops([]);
+    
+    // Load route stops if route is assigned
+    if (entry.routeId) {
+      try {
+        const stops = await getRouteStops(entry.routeId);
+        setRouteStops(stops);
+      } catch (err) {
+        console.warn('Failed to load route stops:', err);
+      }
+    }
+    
     setDispatchModalVisible(true);
   }
 
@@ -636,7 +650,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                   <TouchableOpacity
                     style={{ flexDirection: 'row', alignItems: 'center', padding: 6 }}
                     onPress={() => {
-                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '' }]);
+                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '', destination: '', amount: 0 }]);
                       // Clear manual count when adding passengers
                       setDispatchPax('');
                     }}
@@ -647,44 +661,87 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                 </View>
                 
                 {dispatchPassengers.map((passenger, index) => (
-                  <View key={index} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <TextInput
-                        style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.background, fontSize: 14 }]}
-                        value={passenger.name}
-                        onChangeText={(text) => {
-                          const updated = [...dispatchPassengers];
-                          updated[index].name = text;
+                  <View key={index} style={{ marginTop: 12, padding: 12, backgroundColor: c.background, borderRadius: 8, borderWidth: 1, borderColor: c.border }}>
+                    {/* Name and Contact row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <TextInput
+                          style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.surface, fontSize: 14 }]}
+                          value={passenger.name}
+                          onChangeText={(text) => {
+                            const updated = [...dispatchPassengers];
+                            updated[index].name = text;
+                            setDispatchPassengers(updated);
+                            setDispatchPax('');
+                          }}
+                          placeholder="Name"
+                          placeholderTextColor={c.textMuted}
+                        />
+                      </View>
+                      <TouchableOpacity
+                        style={{ padding: 8 }}
+                        onPress={() => {
+                          const updated = dispatchPassengers.filter((_, i) => i !== index);
                           setDispatchPassengers(updated);
-                          setDispatchPax('');
                         }}
-                        placeholder="Name"
-                        placeholderTextColor={c.textMuted}
-                      />
+                      >
+                        <Ionicons name="trash" size={18} color="#ef4444" />
+                      </TouchableOpacity>
                     </View>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <TextInput
-                        style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.background, fontSize: 14 }]}
-                        value={passenger.contact}
-                        onChangeText={(text) => {
-                          const updated = [...dispatchPassengers];
-                          updated[index].contact = text;
-                          setDispatchPassengers(updated);
-                        }}
-                        placeholder="Contact (optional)"
-                        placeholderTextColor={c.textMuted}
-                        keyboardType="phone-pad"
-                      />
-                    </View>
-                    <TouchableOpacity
-                      style={{ padding: 8 }}
-                      onPress={() => {
-                        const updated = dispatchPassengers.filter((_, i) => i !== index);
-                        setDispatchPassengers(updated);
-                      }}
-                    >
-                      <Ionicons name="trash" size={18} color="#ef4444" />
-                    </TouchableOpacity>
+                    
+                    {/* Destination dropdown - only show if route has stops */}
+                    {routeStops.length > 0 && (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={{ color: c.textMuted, fontSize: 12, marginBottom: 4 }}>Destination</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                          {routeStops.map((stop, stopIndex) => (
+                            <TouchableOpacity
+                              key={stopIndex}
+                              style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                marginRight: 8,
+                                marginBottom: 8,
+                                borderRadius: 16,
+                                borderWidth: 1,
+                                borderColor: passenger.destination === stop.stopName ? '#22c55e' : c.border,
+                                backgroundColor: passenger.destination === stop.stopName ? '#22c55e20' : c.surface,
+                              }}
+                              onPress={() => {
+                                const updated = [...dispatchPassengers];
+                                updated[index].destination = stop.stopName;
+                                updated[index].amount = stop.fareFromOrigin || 0;
+                                setDispatchPassengers(updated);
+                                setDispatchPax('');
+                              }}
+                            >
+                              <Text style={{ 
+                                color: passenger.destination === stop.stopName ? '#22c55e' : c.text, 
+                                fontSize: 13,
+                                fontWeight: passenger.destination === stop.stopName ? '600' : '400'
+                              }}>
+                                {stop.stopName}
+                              </Text>
+                              {stop.fareFromOrigin > 0 && (
+                                <Text style={{ color: c.textMuted, fontSize: 11 }}>
+                                  R{stop.fareFromOrigin.toFixed(2)}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                    
+                    {/* Fare display */}
+                    {passenger.amount > 0 && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                        <Ionicons name="cash-outline" size={14} color="#22c55e" />
+                        <Text style={{ color: '#22c55e', fontSize: 14, marginLeft: 4, fontWeight: '600' }}>
+                          Fare: R{passenger.amount.toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 ))}
                 
@@ -699,7 +756,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
             <View style={[styles.modalFooter, { borderTopColor: c.border }]}>
               <TouchableOpacity
                 style={[styles.footerBtn, { borderColor: c.border }]}
-                onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); setDispatchPax(''); setDispatchPassengers([]); }}
+                onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); setDispatchPax(''); setDispatchPassengers([]); setRouteStops([]); }}
               >
                 <Text style={[styles.footerBtnTxt, { color: c.textMuted }]}>Cancel</Text>
               </TouchableOpacity>

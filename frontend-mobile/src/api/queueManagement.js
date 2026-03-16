@@ -53,6 +53,12 @@ export async function getQueueStats(rankId, date) {
   return resp.data;
 }
 
+// Get route stops for destination selection
+export async function getRouteStops(routeId) {
+  const resp = await client.get(`/Routes/${routeId}`);
+  return resp.data?.stops || [];
+}
+
 // ── Enhanced Queue Management API ─────────────────────────────────────
 
 // Get comprehensive queue overview with route breakdown
