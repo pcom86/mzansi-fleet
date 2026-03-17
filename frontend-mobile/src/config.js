@@ -32,5 +32,9 @@ const hostUriCandidates = [
 const expoHost = hostUriCandidates.map(extractHost).find(Boolean) || null;
 const defaultHost = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
 const host = Platform.OS === 'web' ? 'localhost' : (expoHost || defaultHost);
+const computedApiUrl = `http://${host}:5000/api`;
 
-export const API_URL = extraApiUrl || envApiUrl || `http://${host}:5000/api`;
+// For web dev, prefer localhost unless explicitly overridden by env.
+export const API_URL = Platform.OS === 'web'
+  ? (envApiUrl || computedApiUrl)
+  : (envApiUrl || extraApiUrl || computedApiUrl);

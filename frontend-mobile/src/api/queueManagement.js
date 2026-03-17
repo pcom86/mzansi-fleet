@@ -46,6 +46,12 @@ export async function removeFromQueue(queueEntryId) {
   return resp.data;
 }
 
+// Assign or change route for a queue entry
+export async function updateQueueRoute(queueEntryId, routeId) {
+  const resp = await client.put(`/DailyTaxiQueue/${queueEntryId}/assign-route`, { routeId });
+  return resp.data;
+}
+
 // Get queue statistics for a rank
 export async function getQueueStats(rankId, date) {
   const params = date ? `?date=${date}` : '';

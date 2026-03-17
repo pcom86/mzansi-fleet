@@ -323,7 +323,7 @@ namespace MzansiFleet.Domain.Entities
         // Dispatch Details
         public DateTime? DepartedAt { get; set; } // When the vehicle was dispatched
         public Guid? DispatchedByUserId { get; set; } // Marshal/Admin who dispatched
-        public int? PassengerCount { get; set; } // Number of passengers when dispatched
+        public int PassengerCount { get; set; } // Number of passengers when dispatched
         
         // Metadata
         public string? Notes { get; set; }

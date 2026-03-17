@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   StyleSheet, Alert, RefreshControl, Modal, TextInput, Platform,
-  useWindowDimensions,
+  Dimensions, StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,30 +10,22 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import {
   getQueueByRank, getQueueStats, addToQueue,
-  dispatchVehicle, reorderVehicle, removeFromQueue,
-  getRouteStops,
+  dispatchVehicle, reorderVehicle, removeFromQueue, updateQueueRoute,
 } from '../api/queueManagement';
 import { fetchVehiclesByRankId, fetchTaxiRanks } from '../api/taxiRanks';
 import client from '../api/client';
 
 const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// QUEUE MANAGEMENT SCREEN â€” Full redesign
-// Single-scroll, card-based, mobile-first. No tabs.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const { user } = useAuth();
   const { theme } = useAppTheme();
   const c = theme.colors;
   const insets = useSafeAreaInsets();
-  const { width: winW, height: winH } = useWindowDimensions();
   const styles = useMemo(() => createStyles(c), [c]);
 
   const passedRank = navRoute?.params?.rank;
 
-  // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rank, setRank] = useState(passedRank || null);
@@ -42,23 +34,33 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const [queue, setQueue] = useState([]);
   const [stats, setStats] = useState(null);
   const [vehicles, setVehicles] = useState([]);
-  const [showDispatched, setShowDispatched] = useState(false);
 
-  // â”€â”€ Modal State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const [activeView, setActiveView] = useState('queue');
+  const [showFilters, setShowFilters] = useState(true);
+
+  // Add modal
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [addRouteId, setAddRouteId] = useState(null);
   const [addVehicleId, setAddVehicleId] = useState(null);
+  const [addDriverId, setAddDriverId] = useState(null);
   const [addNotes, setAddNotes] = useState('');
   const [addBusy, setAddBusy] = useState(false);
 
+  // Route assign modal
+  const [routeModalVisible, setRouteModalVisible] = useState(false);
+  const [routeModalEntry, setRouteModalEntry] = useState(null);
+  const [routeModalBusy, setRouteModalBusy] = useState(false);
+
+  // Dispatch modal
   const [dispatchModalVisible, setDispatchModalVisible] = useState(false);
   const [dispatchEntry, setDispatchEntry] = useState(null);
   const [dispatchPax, setDispatchPax] = useState('');
-  const [dispatchPassengers, setDispatchPassengers] = useState([]);
   const [dispatchBusy, setDispatchBusy] = useState(false);
-  const [routeStops, setRouteStops] = useState([]);
+  const [includePassengerList, setIncludePassengerList] = useState(false);
+  const [passengerList, setPassengerList] = useState([{ name: '', contact: '' }]);
 
-  // â”€â”€ Data Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Data Loading ──────────────────────────────────────────────────────
+
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -84,16 +86,23 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       const allRoutes = routesResp?.data || routesResp || [];
       const rankName = (activeRank?.name || '').trim().toLowerCase();
       const rankAddress = (activeRank?.address || '').trim().toLowerCase();
-      const matchRank = (dep, str) => dep && str && (dep.includes(str) || str.includes(dep));
+      const matchRank = (departure, rankStr) => {
+        if (!departure || !rankStr) return false;
+        return departure.includes(rankStr) || rankStr.includes(departure);
+      };
 
-      const filteredRoutes = Array.isArray(allRoutes) ? allRoutes.filter(r => {
-        if (r?.taxiRankId || r?.rankId) {
-          return r.taxiRankId === activeRank.id || r.rankId === activeRank.id;
-        }
-        const dep = String(r?.departureStation || '').trim().toLowerCase();
-        if (!dep) return true;
-        return matchRank(dep, rankName) || matchRank(dep, rankAddress);
-      }) : allRoutes;
+      const filteredRoutes = Array.isArray(allRoutes)
+        ? allRoutes.filter(r => {
+            if (r?.taxiRankId || r?.rankId) {
+              return r.taxiRankId === activeRank.id || r.rankId === activeRank.id;
+            }
+            return true;
+          }).filter(r => {
+            const departure = String(r?.departureStation || '').trim().toLowerCase();
+            if (!departure) return true;
+            return matchRank(departure, rankName) || matchRank(departure, rankAddress);
+          })
+        : allRoutes;
 
       setRoutes(filteredRoutes);
       setVehicles(vehiclesResp.data || vehiclesResp || []);
@@ -107,47 +116,40 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   }, [rank, user]);
 
   useEffect(() => { loadData(); }, [loadData]);
-  
-  // Clear dispatch modal if the selected entry no longer exists in queue
-  useEffect(() => {
-    if (dispatchEntry && !queue.find(item => item.id === dispatchEntry.id)) {
-      setDispatchModalVisible(false);
-      setDispatchEntry(null);
-      setDispatchPax('');
-    }
-  }, [queue, dispatchEntry]);
-  
   const onRefresh = () => { setRefreshing(true); loadData(true); };
 
-  // â”€â”€ Derived State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Derived data ──────────────────────────────────────────────────────
+
   const filteredQueue = useMemo(() => {
-    const base = queue.filter(q => q.status !== 'Removed');
-    if (!selectedRouteId) return base;
-    return base.filter(q => q.routeId === selectedRouteId);
+    if (!selectedRouteId) return queue.filter(q => q.status !== 'Removed');
+    return queue.filter(q => (q.routeId === selectedRouteId || !q.routeId) && q.status !== 'Removed');
   }, [queue, selectedRouteId]);
 
   const activeQueue = filteredQueue.filter(q => q.status !== 'Dispatched');
   const dispatchedQueue = filteredQueue.filter(q => q.status === 'Dispatched');
+
   const queuedVehicleIds = new Set(
     queue.filter(q => q.status !== 'Dispatched' && q.status !== 'Removed').map(q => q.vehicleId)
   );
 
-  // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Handlers ──────────────────────────────────────────────────────────
+
   async function handleAddToQueue() {
     if (!addVehicleId) return Alert.alert('Required', 'Please select a vehicle');
-    if (!addRouteId) return Alert.alert('Required', 'Please select a route');
     setAddBusy(true);
     try {
       await addToQueue({
         taxiRankId: rank.id,
         routeId: addRouteId,
         vehicleId: addVehicleId,
+        driverId: addDriverId,
         tenantId: user?.tenantId,
         notes: addNotes || undefined,
       });
       setAddModalVisible(false);
       setAddVehicleId(null);
       setAddRouteId(null);
+      setAddDriverId(null);
       setAddNotes('');
       loadData(true);
     } catch (err) {
@@ -159,67 +161,28 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
 
   async function handleDispatch() {
     if (!dispatchEntry) return;
-    
-    // Verify the entry still exists in the current queue data
-    const currentEntry = queue.find(item => item.id === dispatchEntry.id);
-    if (!currentEntry) {
-      Alert.alert('Error', 'Vehicle no longer exists in queue. Please refresh.');
-      setDispatchModalVisible(false);
-      setDispatchEntry(null);
-      setDispatchPax('');
-      setDispatchPassengers([]);
-      return;
-    }
-    
-    // Check if already dispatched
-    if (currentEntry.status === 'Dispatched') {
-      Alert.alert('Info', 'Vehicle has already been dispatched.');
-      setDispatchModalVisible(false);
-      setDispatchEntry(null);
-      setDispatchPax('');
-      setDispatchPassengers([]);
-      loadData(true);
-      return;
-    }
-    
     setDispatchBusy(true);
     try {
-      // Build passenger list with only valid entries
-      const validPassengers = dispatchPassengers.filter(p => p.name && p.name.trim());
-      
-      const dispatchData = {
-        // Auto-calculate from passenger list, fallback to manual input, default to 0
-        passengerCount: validPassengers.length > 0 ? validPassengers.length : (dispatchPax ? parseInt(dispatchPax, 10) : 0),
+      const validPassengers = includePassengerList
+        ? passengerList.filter(p => p.name.trim() || p.contact.trim())
+        : [];
+      const finalPassengerCount = includePassengerList
+        ? validPassengers.length
+        : (dispatchPax ? parseInt(dispatchPax, 10) : undefined);
+
+      await dispatchVehicle(dispatchEntry.id, {
+        dispatchedByUserId: user?.userId || user?.id,
+        passengerCount: finalPassengerCount,
         passengers: validPassengers.length > 0 ? validPassengers : undefined,
-      };
-      
-      // Only add dispatchedByUserId if it's a valid GUID format
-      const userId = user?.userId || user?.id;
-      if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)) {
-        dispatchData.dispatchedByUserId = userId;
-      }
-      
-      await dispatchVehicle(dispatchEntry.id, dispatchData);
+      });
       setDispatchModalVisible(false);
       setDispatchEntry(null);
       setDispatchPax('');
-      setDispatchPassengers([]);
+      setIncludePassengerList(false);
+      setPassengerList([{ name: '', contact: '' }]);
       loadData(true);
     } catch (err) {
-      console.error('Dispatch error:', err);
-      let errorMessage = 'Failed to dispatch vehicle';
-      
-      if (err?.response?.status === 404) {
-        errorMessage = 'Vehicle not found in queue. Please refresh the queue.';
-      } else if (err?.response?.status === 400) {
-        errorMessage = err?.response?.data?.message || 'Invalid dispatch request';
-      } else if (err?.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err?.message) {
-        errorMessage = err.message;
-      }
-      
-      Alert.alert('Error', errorMessage);
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to dispatch');
     } finally {
       setDispatchBusy(false);
     }
@@ -237,249 +200,81 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
     if (Platform.OS === 'web') {
       if (window.confirm(`Remove ${entry.vehicleRegistration || 'this vehicle'} from queue?`)) doRemove();
     } else {
-      Alert.alert('Remove', `Remove ${entry.vehicleRegistration || 'this vehicle'}?`, [
+      Alert.alert('Remove', `Remove ${entry.vehicleRegistration || 'this vehicle'} from queue?`, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: doRemove },
       ]);
     }
   }
 
+  async function handleAssignRoute(entry, routeId) {
+    setRouteModalBusy(true);
+    try {
+      await updateQueueRoute(entry.id, routeId || null);
+      setRouteModalVisible(false);
+      setRouteModalEntry(null);
+      loadData(true);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to assign route');
+    } finally {
+      setRouteModalBusy(false);
+    }
+  }
+
   async function handleMoveUp(entry) {
     if (entry.queuePosition <= 1) return;
-    try { await reorderVehicle(entry.id, entry.queuePosition - 1); loadData(true); }
-    catch { Alert.alert('Error', 'Failed to reorder'); }
+    try {
+      await reorderVehicle(entry.id, entry.queuePosition - 1);
+      loadData(true);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to reorder');
+    }
   }
 
   async function handleMoveDown(entry) {
-    try { await reorderVehicle(entry.id, entry.queuePosition + 1); loadData(true); }
-    catch { Alert.alert('Error', 'Failed to reorder'); }
-  }
-
-  async function openDispatch(entry) {
-    console.log('[Dispatch] Opening dispatch modal for entry:', entry);
-    setDispatchEntry(entry);
-    setDispatchPax('');
-    setDispatchPassengers([]);
-    setRouteStops([]);
-    
-    // Load route stops if route is assigned
-    if (entry.routeId) {
-      console.log('[Dispatch] Loading stops for routeId:', entry.routeId);
-      try {
-        const stops = await getRouteStops(entry.routeId);
-        // Add final destination if not already in stops
-        if (entry.routeDestination && !stops.find(s => s.stopName === entry.routeDestination)) {
-          stops.push({
-            stopName: entry.routeDestination,
-            stopOrder: stops.length + 1,
-            fareFromOrigin: stops[stops.length - 1]?.fareFromOrigin || 0,
-            isFinalDestination: true
-          });
-        }
-        console.log('[Dispatch] Loaded stops:', stops);
-        setRouteStops(stops);
-      } catch (err) {
-        console.error('[Dispatch] Failed to load route stops:', err);
-      }
-    } else {
-      console.warn('[Dispatch] No routeId in entry:', entry);
+    try {
+      await reorderVehicle(entry.id, entry.queuePosition + 1);
+      loadData(true);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to reorder');
     }
-    
-    setDispatchModalVisible(true);
   }
 
-  // â”€â”€ Modal dimensions (reactive) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const modalW = Math.min(winW - 32, 520);
-  const modalMaxH = winH * 0.85;
+  // ── Sub-Views ─────────────────────────────────────────────────────────
 
-  // â”€â”€ Loading / Error â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  if (loading) {
+  function QueueView() {
     return (
-      <View style={[styles.center, { backgroundColor: c.background, paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={c.primary} />
-        <Text style={[styles.loadingText, { color: c.textMuted }]}>Loading queueâ€¦</Text>
-      </View>
-    );
-  }
-
-  if (!rank) {
-    return (
-      <View style={[styles.center, { backgroundColor: c.background, paddingTop: insets.top }]}>
-        <Ionicons name="alert-circle-outline" size={48} color={c.textMuted} />
-        <Text style={[styles.emptyTitle, { color: c.text, marginTop: 12 }]}>No Taxi Rank</Text>
-        <Text style={[styles.emptySubText, { color: c.textMuted }]}>No rank found for your account</Text>
-      </View>
-    );
-  }
-
-  const nextInQueue = activeQueue[0];
-
-  // â”€â”€ Main Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  return (
-    <View style={[styles.root, { backgroundColor: c.background }]}>
-
-      {/* â”€â”€ Header â”€â”€ */}
-      <View style={[styles.header, {
-        paddingTop: Math.max(insets.top, 16),
-        backgroundColor: c.surface,
-        borderBottomColor: c.border,
-      }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={c.text} />
-        </TouchableOpacity>
-        <View style={{ flex: 1, marginHorizontal: 12 }}>
-          <Text style={[styles.headerTitle, { color: c.text }]}>Queue Management</Text>
-          <Text style={[styles.headerSub, { color: c.textMuted }]} numberOfLines={1}>{rank.name}</Text>
-        </View>
-        <TouchableOpacity 
-          style={styles.headerBtn} 
-          onPress={() => navigation.navigate('DispatchedItems')}
-        >
-          <Ionicons name="list-outline" size={20} color={c.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: c.primary }]}
-          onPress={() => setAddModalVisible(true)}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add" size={18} color="#fff" style={{ marginRight: 4 }} />
-          <Text style={styles.addBtnTxt}>Add</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* â”€â”€ Stats Bar â”€â”€ */}
-      {stats && (
-        <View style={[styles.statsBar, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
-          <StatChip label="Waiting" value={stats.waiting} color="#f59e0b" icon="time-outline" />
-          <StatChip label="Dispatched" value={stats.dispatched} color="#22c55e" icon="checkmark-circle-outline" />
-          <StatChip label="Passengers" value={stats.totalPassengers} color="#3b82f6" icon="people-outline" />
-          <StatChip label="Avg Wait" value={`${stats.avgWaitMinutes}m`} color="#8b5cf6" icon="hourglass-outline" />
-        </View>
-      )}
-
-      {/* â”€â”€ Route Filter Pills â”€â”€ */}
-      {routes.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={[styles.pillRow, { backgroundColor: c.surface, borderBottomColor: c.border }]}
-          contentContainerStyle={styles.pillContent}
-        >
-          <TouchableOpacity
-            style={[styles.pill, { borderColor: !selectedRouteId ? c.primary : c.border, backgroundColor: !selectedRouteId ? c.primary : 'transparent' }]}
-            onPress={() => setSelectedRouteId(null)}
-          >
-            <Text style={[styles.pillTxt, { color: !selectedRouteId ? '#fff' : c.text }]}>All</Text>
-            <View style={[styles.pillBadge, { backgroundColor: !selectedRouteId ? 'rgba(255,255,255,0.25)' : c.border }]}>
-              <Text style={[styles.pillBadgeTxt, { color: !selectedRouteId ? '#fff' : c.text }]}>
-                {queue.filter(q => q.status !== 'Removed' && q.status !== 'Dispatched').length}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          {routes.filter(r => r.isActive !== false).map(r => {
-            const count = queue.filter(q => q.routeId === r.id && q.status !== 'Removed' && q.status !== 'Dispatched').length;
-            const active = selectedRouteId === r.id;
-            return (
-              <TouchableOpacity key={r.id}
-                style={[styles.pill, { borderColor: active ? c.primary : c.border, backgroundColor: active ? c.primary : 'transparent' }]}
-                onPress={() => setSelectedRouteId(r.id)}
-              >
-                <Text style={[styles.pillTxt, { color: active ? '#fff' : c.text }]} numberOfLines={1}>
-                  {r.destinationStation || r.routeName}
-                </Text>
-                {count > 0 && (
-                  <View style={[styles.pillBadge, { backgroundColor: active ? 'rgba(255,255,255,0.25)' : c.border }]}>
-                    <Text style={[styles.pillBadgeTxt, { color: active ? '#fff' : c.text }]}>{count}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-
-      {/* â”€â”€ Main Content â”€â”€ */}
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
       >
         {activeQueue.length === 0 && dispatchedQueue.length === 0 ? (
-
-          /* â”€â”€ Empty State â”€â”€ */
           <View style={styles.emptyState}>
-            <View style={[styles.emptyIconWrap, { backgroundColor: c.primary + '18' }]}>
-              <Ionicons name="car-outline" size={52} color={c.primary} />
+            <View style={[styles.emptyIcon, { backgroundColor: c.primary + '15' }]}>
+              <Ionicons name="car-outline" size={40} color={c.primary} />
             </View>
             <Text style={[styles.emptyTitle, { color: c.text }]}>Queue is Empty</Text>
-            <Text style={[styles.emptySubText, { color: c.textMuted }]}>No vehicles are waiting to be dispatched</Text>
+            <Text style={[styles.emptySubtitle, { color: c.textMuted }]}>
+              No vehicles waiting. Tap below to add one.
+            </Text>
             <TouchableOpacity
-              style={[styles.emptyAddBtn, { backgroundColor: c.primary }]}
+              style={[styles.emptyBtn, { backgroundColor: c.primary }]}
               onPress={() => setAddModalVisible(true)}
             >
               <Ionicons name="add" size={18} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Add First Vehicle</Text>
+              <Text style={styles.emptyBtnTxt}>Add Vehicle</Text>
             </TouchableOpacity>
           </View>
-
         ) : (
           <>
-            {/* â”€â”€ Next to Dispatch Hero Card â”€â”€ */}
-            {nextInQueue && (
-              <View style={[styles.heroCard, { backgroundColor: c.surface, borderColor: '#22c55e30' }]}>
-                <View style={styles.heroLabel}>
-                  <View style={[styles.heroDot, { backgroundColor: '#22c55e' }]} />
-                  <Text style={[styles.heroLabelTxt, { color: '#22c55e' }]}>NEXT TO DISPATCH</Text>
-                </View>
-                <View style={styles.heroBody}>
-                  <View style={[styles.heroIcon, { backgroundColor: c.primary + '18' }]}>
-                    <Ionicons name="car-sport" size={28} color={c.primary} />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 14 }}>
-                    <Text style={[styles.heroReg, { color: c.text }]}>{nextInQueue.vehicleRegistration || 'â€”'}</Text>
-                    <Text style={[styles.heroMeta, { color: c.textMuted }]} numberOfLines={1}>
-                      {[nextInQueue.vehicleMake, nextInQueue.vehicleModel].filter(Boolean).join(' ') || 'Vehicle'}
-                      {nextInQueue.vehicleCapacity ? ` Â· ${nextInQueue.vehicleCapacity} seats` : ''}
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 5, gap: 10 }}>
-                      {nextInQueue.driverName && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <Ionicons name="person-outline" size={12} color={c.textMuted} style={{ marginRight: 4 }} />
-                          <Text style={[styles.heroDetail, { color: c.textMuted }]}>{nextInQueue.driverName}</Text>
-                        </View>
-                      )}
-                      {(nextInQueue.routeDestination || nextInQueue.routeName) && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <Ionicons name="navigate-outline" size={12} color={c.textMuted} style={{ marginRight: 4 }} />
-                          <Text style={[styles.heroDetail, { color: c.textMuted }]}>{nextInQueue.routeDestination || nextInQueue.routeName}</Text>
-                        </View>
-                      )}
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Ionicons name="time-outline" size={12} color={c.textMuted} style={{ marginRight: 4 }} />
-                        <Text style={[styles.heroDetail, { color: c.textMuted }]}>Since {nextInQueue.joinedAt}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={[styles.heroDispatchBtn, { backgroundColor: '#22c55e' }]}
-                  onPress={() => openDispatch(nextInQueue)}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="send" size={18} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.heroDispatchTxt}>Dispatch Now</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* â”€â”€ Waiting Queue â”€â”€ */}
             {activeQueue.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: c.text }]}>Waiting Queue</Text>
-                  <View style={[styles.sectionBadge, { backgroundColor: '#f59e0b18' }]}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#f59e0b' }}>{activeQueue.length}</Text>
-                  </View>
+              <>
+                <View style={styles.listHeader}>
+                  <View style={[styles.listHeaderDot, { backgroundColor: '#f59e0b' }]} />
+                  <Text style={[styles.listHeaderTxt, { color: c.text }]}>
+                    Waiting ({activeQueue.length})
+                  </Text>
                 </View>
                 {activeQueue.map((entry, idx) => (
                   <QueueCard
@@ -488,60 +283,346 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                     isFirst={idx === 0}
                     isLast={idx === activeQueue.length - 1}
                     c={c}
-                    onDispatch={() => openDispatch(entry)}
+                    styles={styles}
+                    onDispatch={() => { setDispatchEntry(entry); setDispatchModalVisible(true); }}
                     onRemove={() => handleRemove(entry)}
                     onMoveUp={() => handleMoveUp(entry)}
                     onMoveDown={() => handleMoveDown(entry)}
+                    onAssignRoute={() => { setRouteModalEntry(entry); setRouteModalVisible(true); }}
                   />
                 ))}
-              </View>
+              </>
             )}
 
-            {/* â”€â”€ Dispatched Today â”€â”€ */}
             {dispatchedQueue.length > 0 && (
-              <View style={styles.section}>
-                <TouchableOpacity
-                  style={styles.sectionHeader}
-                  onPress={() => setShowDispatched(v => !v)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.sectionTitle, { color: c.text }]}>Dispatched Today</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={[styles.sectionBadge, { backgroundColor: '#22c55e18' }]}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#22c55e' }}>{dispatchedQueue.length}</Text>
-                    </View>
-                    <Ionicons name={showDispatched ? 'chevron-up' : 'chevron-down'} size={16} color={c.textMuted} />
-                  </View>
-                </TouchableOpacity>
-                {showDispatched && dispatchedQueue.map(entry => (
-                  <DispatchedCard key={entry.id} entry={entry} c={c} />
+              <>
+                <View style={[styles.listHeader, { marginTop: 20 }]}>
+                  <View style={[styles.listHeaderDot, { backgroundColor: '#22c55e' }]} />
+                  <Text style={[styles.listHeaderTxt, { color: c.text }]}>
+                    Dispatched ({dispatchedQueue.length})
+                  </Text>
+                </View>
+                {dispatchedQueue.map(entry => (
+                  <DispatchedCard key={entry.id} entry={entry} c={c} styles={styles} />
                 ))}
-              </View>
+              </>
             )}
           </>
         )}
       </ScrollView>
+    );
+  }
 
-      {/* â”€â”€ Add to Queue Modal â”€â”€ */}
+  function OverviewView() {
+    const nextVehicle = activeQueue[0];
+    return (
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
+      >
+        {/* Next to Dispatch */}
+        {nextVehicle && (
+          <View style={[styles.nextCard, { backgroundColor: c.surface }]}>
+            <View style={styles.nextCardTop}>
+              <View style={[styles.nextIcon, { backgroundColor: '#22c55e20' }]}>
+                <Ionicons name="flash" size={20} color="#22c55e" />
+              </View>
+              <Text style={[styles.nextLabel, { color: c.textMuted }]}>Next to Dispatch</Text>
+            </View>
+            <View style={styles.nextCardBody}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.nextReg, { color: c.text }]}>{nextVehicle.vehicleRegistration}</Text>
+                <Text style={[styles.nextMeta, { color: c.textMuted }]}>
+                  {nextVehicle.driverName || 'No driver'} {nextVehicle.routeName ? `· ${nextVehicle.routeName}` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.dispatchBtn}
+                onPress={() => { setDispatchEntry(nextVehicle); setDispatchModalVisible(true); }}
+              >
+                <Ionicons name="send" size={14} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.dispatchBtnTxt}>Dispatch</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity style={[styles.quickBtn, { backgroundColor: c.surface }]} onPress={() => setAddModalVisible(true)}>
+            <View style={[styles.quickBtnIcon, { backgroundColor: c.primary + '15' }]}>
+              <Ionicons name="add-circle" size={22} color={c.primary} />
+            </View>
+            <Text style={[styles.quickBtnLabel, { color: c.text }]}>Add Vehicle</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.quickBtn, { backgroundColor: c.surface }]} onPress={() => setActiveView('queue')}>
+            <View style={[styles.quickBtnIcon, { backgroundColor: '#3b82f615' }]}>
+              <Ionicons name="list" size={22} color="#3b82f6" />
+            </View>
+            <Text style={[styles.quickBtnLabel, { color: c.text }]}>View Queue</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.quickBtn, { backgroundColor: c.surface }]} onPress={() => setActiveView('analytics')}>
+            <View style={[styles.quickBtnIcon, { backgroundColor: '#8b5cf615' }]}>
+              <Ionicons name="stats-chart" size={22} color="#8b5cf6" />
+            </View>
+            <Text style={[styles.quickBtnLabel, { color: c.text }]}>Analytics</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Routes Summary */}
+        {routes.filter(r => r.isActive !== false).length > 0 && (
+          <View style={[styles.card, { backgroundColor: c.surface }]}>
+            <Text style={[styles.cardTitle, { color: c.text }]}>Routes</Text>
+            {routes.filter(r => r.isActive !== false).slice(0, 5).map(route => {
+              const count = queue.filter(q => q.routeId === route.id && q.status !== 'Removed' && q.status !== 'Dispatched').length;
+              return (
+                <TouchableOpacity
+                  key={route.id}
+                  style={[styles.routeRow, { borderBottomColor: c.border }]}
+                  onPress={() => { setSelectedRouteId(route.id); setActiveView('queue'); }}
+                >
+                  <View style={[styles.routeDot, { backgroundColor: count > 0 ? '#f59e0b' : '#22c55e' }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.routeRowName, { color: c.text }]} numberOfLines={1}>
+                      {route.routeName || route.destinationStation}
+                    </Text>
+                  </View>
+                  <View style={[styles.routeCount, { backgroundColor: count > 0 ? '#f59e0b15' : '#22c55e15' }]}>
+                    <Text style={[styles.routeCountTxt, { color: count > 0 ? '#f59e0b' : '#22c55e' }]}>{count}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={c.textMuted} style={{ marginLeft: 8 }} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
+    );
+  }
+
+  function AnalyticsView() {
+    const totalWaiting = activeQueue.length;
+    const totalDispatched = dispatchedQueue.length;
+    const totalPax = stats?.totalPassengers ?? 0;
+    const avgWait = stats?.averageWaitMinutes ?? 0;
+
+    return (
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
+      >
+        <View style={[styles.card, { backgroundColor: c.surface }]}>
+          <Text style={[styles.cardTitle, { color: c.text }]}>Today's Summary</Text>
+          <View style={styles.analyticsGrid}>
+            <View style={[styles.analyticsTile, { backgroundColor: '#f59e0b10' }]}>
+              <Ionicons name="time-outline" size={22} color="#f59e0b" />
+              <Text style={[styles.analyticsTileValue, { color: '#f59e0b' }]}>{totalWaiting}</Text>
+              <Text style={[styles.analyticsTileLabel, { color: c.textMuted }]}>Waiting</Text>
+            </View>
+            <View style={[styles.analyticsTile, { backgroundColor: '#22c55e10' }]}>
+              <Ionicons name="checkmark-circle-outline" size={22} color="#22c55e" />
+              <Text style={[styles.analyticsTileValue, { color: '#22c55e' }]}>{totalDispatched}</Text>
+              <Text style={[styles.analyticsTileLabel, { color: c.textMuted }]}>Dispatched</Text>
+            </View>
+            <View style={[styles.analyticsTile, { backgroundColor: '#3b82f610' }]}>
+              <Ionicons name="people-outline" size={22} color="#3b82f6" />
+              <Text style={[styles.analyticsTileValue, { color: '#3b82f6' }]}>{totalPax}</Text>
+              <Text style={[styles.analyticsTileLabel, { color: c.textMuted }]}>Passengers</Text>
+            </View>
+            <View style={[styles.analyticsTile, { backgroundColor: '#8b5cf610' }]}>
+              <Ionicons name="hourglass-outline" size={22} color="#8b5cf6" />
+              <Text style={[styles.analyticsTileValue, { color: '#8b5cf6' }]}>{avgWait}m</Text>
+              <Text style={[styles.analyticsTileLabel, { color: c.textMuted }]}>Avg Wait</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Route breakdown */}
+        <View style={[styles.card, { backgroundColor: c.surface }]}>
+          <Text style={[styles.cardTitle, { color: c.text }]}>Route Breakdown</Text>
+          {routes.filter(r => r.isActive !== false).length === 0 ? (
+            <Text style={[styles.cardEmpty, { color: c.textMuted }]}>No routes configured</Text>
+          ) : (
+            routes.filter(r => r.isActive !== false).map(route => {
+              const waiting = queue.filter(q => q.routeId === route.id && q.status !== 'Removed' && q.status !== 'Dispatched').length;
+              const dispatched = queue.filter(q => q.routeId === route.id && q.status === 'Dispatched').length;
+              const total = waiting + dispatched;
+              const pct = total > 0 ? Math.round((dispatched / total) * 100) : 0;
+              return (
+                <View key={route.id} style={[styles.breakdownRow, { borderBottomColor: c.border }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.breakdownName, { color: c.text }]} numberOfLines={1}>
+                      {route.routeName || route.destinationStation}
+                    </Text>
+                    <Text style={[styles.breakdownMeta, { color: c.textMuted }]}>
+                      {waiting} waiting · {dispatched} dispatched
+                    </Text>
+                  </View>
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, { width: `${pct}%`, backgroundColor: '#22c55e' }]} />
+                  </View>
+                  <Text style={[styles.breakdownPct, { color: c.textMuted }]}>{pct}%</Text>
+                </View>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  // ── Loading / Empty states ────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <View style={[styles.center, { backgroundColor: c.background }]}>
+        <ActivityIndicator size="large" color={c.primary} />
+        <Text style={[styles.loadingTxt, { color: c.textMuted }]}>Loading queue…</Text>
+      </View>
+    );
+  }
+
+  if (!rank) {
+    return (
+      <View style={[styles.center, { backgroundColor: c.background }]}>
+        <Ionicons name="alert-circle-outline" size={48} color={c.textMuted} />
+        <Text style={[styles.emptyTitle, { color: c.text, marginTop: 12 }]}>No Taxi Rank</Text>
+        <Text style={[styles.emptySubtitle, { color: c.textMuted }]}>No taxi rank found for your association</Text>
+      </View>
+    );
+  }
+
+  // ── Main Render ───────────────────────────────────────────────────────
+
+  return (
+    <View style={[styles.root, { backgroundColor: c.background }]}>
+      <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={c.background} />
+
+      {/* ── Header ── */}
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) + 4, backgroundColor: c.surface }]}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBack}>
+            <Ionicons name="chevron-back" size={22} color={c.primary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.headerTitle, { color: c.text }]}>Queue</Text>
+            <Text style={[styles.headerSubtitle, { color: c.textMuted }]}>{rank.name}</Text>
+          </View>
+          <TouchableOpacity onPress={() => setShowFilters(!showFilters)} style={[styles.headerAction, showFilters && { backgroundColor: c.primary + '15' }]}>
+            <Ionicons name="options-outline" size={18} color={showFilters ? c.primary : c.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Stats Strip ── */}
+        {stats && (
+          <View style={styles.statsStrip}>
+            <StatPill icon="time-outline" label="Waiting" value={stats.loading ?? 0} color="#f59e0b" c={c} styles={styles} />
+            <StatPill icon="checkmark-circle" label="Gone" value={stats.dispatched ?? 0} color="#22c55e" c={c} styles={styles} />
+            <StatPill icon="people" label="Pax" value={stats.totalPassengers ?? 0} color="#3b82f6" c={c} styles={styles} />
+            <StatPill icon="hourglass" label="Wait" value={`${stats.averageWaitMinutes ?? 0}m`} color="#8b5cf6" c={c} styles={styles} />
+          </View>
+        )}
+      </View>
+
+      {/* ── Tabs ── */}
+      <View style={[styles.tabs, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
+        {[
+          { key: 'overview', icon: 'grid-outline', label: 'Overview' },
+          { key: 'queue', icon: 'list-outline', label: 'Queue' },
+          { key: 'analytics', icon: 'stats-chart-outline', label: 'Analytics' },
+        ].map(tab => {
+          const active = activeView === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tab, active && styles.tabActive]}
+              onPress={() => setActiveView(tab.key)}
+            >
+              <Ionicons name={tab.icon} size={18} color={active ? c.primary : c.textMuted} />
+              <Text style={[styles.tabLabel, active && { color: c.primary, fontWeight: '700' }]}>{tab.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* ── Route Filter ── */}
+      {showFilters && (
+        <View style={[styles.filterBar, { backgroundColor: c.background, borderBottomColor: c.border }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+            <TouchableOpacity
+              style={[styles.filterChip, !selectedRouteId && styles.filterChipActive]}
+              onPress={() => setSelectedRouteId(null)}
+            >
+              <Text style={[styles.filterChipTxt, !selectedRouteId && styles.filterChipTxtActive]}>All</Text>
+              <View style={[styles.filterBadge, !selectedRouteId && { backgroundColor: c.primary }]}>
+                <Text style={[styles.filterBadgeTxt, !selectedRouteId && { color: '#fff' }]}>
+                  {queue.filter(q => q.status !== 'Removed' && q.status !== 'Dispatched').length}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {routes.filter(r => r.isActive !== false).map(r => {
+              const count = queue.filter(q => q.routeId === r.id && q.status !== 'Removed' && q.status !== 'Dispatched').length;
+              const on = selectedRouteId === r.id;
+              return (
+                <TouchableOpacity key={r.id} style={[styles.filterChip, on && styles.filterChipActive]} onPress={() => setSelectedRouteId(r.id)}>
+                  <Text style={[styles.filterChipTxt, on && styles.filterChipTxtActive]} numberOfLines={1}>
+                    {r.routeName || r.destinationStation}
+                  </Text>
+                  {count > 0 && (
+                    <View style={[styles.filterBadge, on && { backgroundColor: '#fff' }]}>
+                      <Text style={[styles.filterBadgeTxt, on && { color: c.primary }]}>{count}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* ── Content ── */}
+      <View style={styles.content}>
+        {activeView === 'overview' && <OverviewView />}
+        {activeView === 'queue' && <QueueView />}
+        {activeView === 'analytics' && <AnalyticsView />}
+      </View>
+
+      {/* ── FAB ── */}
+      <View style={[styles.fabWrap, { bottom: Math.max(insets.bottom, 12) + 12 }]}>
+        <TouchableOpacity style={[styles.fab, { backgroundColor: c.primary }]} onPress={() => setAddModalVisible(true)} activeOpacity={0.85}>
+          <Ionicons name="add" size={26} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* ══════════ Add to Queue Modal ══════════ */}
       <Modal visible={addModalVisible} transparent animationType="fade" onRequestClose={() => setAddModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: c.surface, width: modalW, maxHeight: modalMaxH }]}>
+          <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
+            {/* Header */}
             <View style={[styles.modalHeader, { borderBottomColor: c.border }]}>
-              <Text style={[styles.modalTitle, { color: c.text }]}>Add Vehicle to Queue</Text>
-              <TouchableOpacity onPress={() => setAddModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={c.textMuted} />
+              <View style={styles.modalHeaderLeft}>
+                <View style={[styles.modalIcon, { backgroundColor: c.primary + '15' }]}>
+                  <Ionicons name="add-circle" size={20} color={c.primary} />
+                </View>
+                <Text style={[styles.modalTitle, { color: c.text }]}>Add to Queue</Text>
+              </View>
+              <TouchableOpacity onPress={() => setAddModalVisible(false)} style={[styles.modalClose, { backgroundColor: c.background }]}>
+                <Ionicons name="close" size={18} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
-              <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Route *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingBottom: 16 }}>
+            {/* Body */}
+            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyPad} keyboardShouldPersistTaps="handled">
+              <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Route (optional)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
+                <TouchableOpacity style={[styles.chip, !addRouteId && styles.chipActive]} onPress={() => setAddRouteId(null)}>
+                  <Text style={[styles.chipTxt, !addRouteId && styles.chipTxtActive]}>None</Text>
+                </TouchableOpacity>
                 {routes.filter(r => r.isActive !== false).map(r => (
-                  <TouchableOpacity key={r.id}
-                    style={[styles.chip, { borderColor: addRouteId === r.id ? c.primary : c.border, backgroundColor: addRouteId === r.id ? c.primary : 'transparent' }]}
-                    onPress={() => setAddRouteId(r.id)}
-                  >
-                    <Text style={[styles.chipTxt, { color: addRouteId === r.id ? '#fff' : c.text }]} numberOfLines={1}>
+                  <TouchableOpacity key={r.id} style={[styles.chip, addRouteId === r.id && styles.chipActive]} onPress={() => setAddRouteId(r.id)}>
+                    <Text style={[styles.chipTxt, addRouteId === r.id && styles.chipTxtActive]} numberOfLines={1}>
                       {r.destinationStation || r.routeName}
                     </Text>
                   </TouchableOpacity>
@@ -549,343 +630,157 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
               </ScrollView>
 
               <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Vehicle *</Text>
-              {vehicles.filter(v => !queuedVehicleIds.has(v.id)).length === 0 ? (
-                <Text style={[styles.emptySubText, { color: c.textMuted, textAlign: 'center', paddingVertical: 16 }]}>
-                  All vehicles are already queued
-                </Text>
-              ) : vehicles.filter(v => !queuedVehicleIds.has(v.id)).map(v => (
-                <TouchableOpacity key={v.id}
-                  style={[styles.vehicleRow, {
-                    borderColor: addVehicleId === v.id ? c.primary : c.border,
-                    backgroundColor: addVehicleId === v.id ? c.primary + '0e' : 'transparent',
-                  }]}
-                  onPress={() => setAddVehicleId(v.id)}
-                >
-                  <View style={[styles.vehicleRowIcon, { backgroundColor: addVehicleId === v.id ? c.primary + '20' : c.background }]}>
-                    <Ionicons name="car-sport" size={18} color={addVehicleId === v.id ? c.primary : c.textMuted} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.vehicleRowReg, { color: c.text }]}>{v.registration || 'Unknown'}</Text>
-                    <Text style={[styles.vehicleRowMeta, { color: c.textMuted }]}>
-                      {[v.make, v.model].filter(Boolean).join(' ') || 'Vehicle'}{v.capacity ? ` Â· ${v.capacity} seats` : ''}
-                    </Text>
-                  </View>
-                  {addVehicleId === v.id && <Ionicons name="checkmark-circle" size={22} color={c.primary} />}
-                </TouchableOpacity>
-              ))}
+              <View style={styles.vehicleList}>
+                {vehicles.filter(v => !queuedVehicleIds.has(v.id)).length === 0 ? (
+                  <Text style={[styles.noVehicles, { color: c.textMuted }]}>All vehicles are already queued</Text>
+                ) : (
+                  vehicles.filter(v => !queuedVehicleIds.has(v.id)).map(v => {
+                    const sel = addVehicleId === v.id;
+                    return (
+                      <TouchableOpacity key={v.id}
+                        style={[styles.vehicleItem, { borderColor: sel ? c.primary : c.border, backgroundColor: sel ? c.primary + '08' : 'transparent' }]}
+                        onPress={() => setAddVehicleId(v.id)}
+                      >
+                        <View style={[styles.vehicleItemIcon, { backgroundColor: sel ? c.primary + '20' : c.background }]}>
+                          <Ionicons name="car-sport" size={16} color={sel ? c.primary : c.textMuted} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.vehicleItemReg, { color: c.text }]}>{v.registration || 'Unknown'}</Text>
+                          <Text style={[styles.vehicleItemMeta, { color: c.textMuted }]}>
+                            {[v.make, v.model].filter(Boolean).join(' ') || 'Vehicle'}{v.capacity ? ` · ${v.capacity} seats` : ''}
+                          </Text>
+                        </View>
+                        {sel && <Ionicons name="checkmark-circle" size={20} color={c.primary} />}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
 
-              <Text style={[styles.fieldLabel, { color: c.textMuted, marginTop: 12 }]}>Notes (optional)</Text>
+              <Text style={[styles.fieldLabel, { color: c.textMuted, marginTop: 16 }]}>Notes (optional)</Text>
               <TextInput
-                style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
-                value={addNotes}
-                onChangeText={setAddNotes}
-                placeholder="Optional notesâ€¦"
-                placeholderTextColor={c.textMuted}
+                style={[styles.input, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
+                value={addNotes} onChangeText={setAddNotes}
+                placeholder="Optional notes…" placeholderTextColor={c.textMuted}
               />
             </ScrollView>
 
+            {/* Footer */}
             <View style={[styles.modalFooter, { borderTopColor: c.border }]}>
-              <TouchableOpacity
-                style={[styles.footerBtn, { borderColor: c.border }]}
-                onPress={() => { setAddModalVisible(false); setAddVehicleId(null); setAddRouteId(null); setAddNotes(''); }}
-              >
-                <Text style={[styles.footerBtnTxt, { color: c.textMuted }]}>Cancel</Text>
+              <TouchableOpacity style={[styles.btnOutline, { borderColor: c.border }]} onPress={() => { setAddModalVisible(false); setAddVehicleId(null); setAddRouteId(null); setAddNotes(''); }}>
+                <Text style={[styles.btnOutlineTxt, { color: c.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.footerBtn, { backgroundColor: c.primary, borderColor: c.primary }]}
-                onPress={handleAddToQueue}
-                disabled={addBusy}
-              >
-                {addBusy
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={[styles.footerBtnTxt, { color: '#fff' }]}>Add to Queue</Text>
-                }
+              <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: c.primary }]} onPress={handleAddToQueue} disabled={addBusy}>
+                {addBusy ? <ActivityIndicator color="#fff" size="small" /> : (
+                  <>
+                    <Ionicons name="add" size={16} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.btnPrimaryTxt}>Add to Queue</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* â”€â”€ Dispatch Modal â”€â”€ */}
+      {/* ══════════ Dispatch Modal ══════════ */}
       <Modal visible={dispatchModalVisible} transparent animationType="fade" onRequestClose={() => setDispatchModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: c.surface, width: modalW, maxHeight: modalMaxH }]}>
+          <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
+            {/* Header */}
             <View style={[styles.modalHeader, { borderBottomColor: c.border }]}>
-              <Text style={[styles.modalTitle, { color: c.text }]}>Dispatch Vehicle</Text>
-              <TouchableOpacity onPress={() => setDispatchModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color={c.textMuted} />
+              <View style={styles.modalHeaderLeft}>
+                <View style={[styles.modalIcon, { backgroundColor: '#22c55e15' }]}>
+                  <Ionicons name="send" size={18} color="#22c55e" />
+                </View>
+                <Text style={[styles.modalTitle, { color: c.text }]}>Dispatch Vehicle</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); }} style={[styles.modalClose, { backgroundColor: c.background }]}>
+                <Ionicons name="close" size={18} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, flexGrow: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+            {/* Body */}
+            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyPad} keyboardShouldPersistTaps="handled">
               {dispatchEntry && (
-                <View style={[styles.dispatchPreview, { backgroundColor: '#22c55e0e', borderColor: '#22c55e35' }]}>
-                  <View style={[styles.dispatchPreviewIcon, { backgroundColor: '#22c55e20' }]}>
-                    <Ionicons name="car-sport" size={22} color="#22c55e" />
+                <View style={[styles.dispatchPreview, { borderColor: c.border, backgroundColor: c.background }]}>
+                  <View style={[styles.dispatchPreviewIcon, { backgroundColor: c.primary + '15' }]}>
+                    <Ionicons name="car-sport" size={20} color={c.primary} />
                   </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.dispatchReg, { color: c.text }]}>{dispatchEntry.vehicleRegistration}</Text>
-                    <Text style={[styles.dispatchMeta, { color: c.textMuted }]}>
-                      Position #{dispatchEntry.queuePosition}{dispatchEntry.driverName ? ` Â· ${dispatchEntry.driverName}` : ''}
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.dispatchPreviewReg, { color: c.text }]}>{dispatchEntry.vehicleRegistration}</Text>
+                    <Text style={[styles.dispatchPreviewMeta, { color: c.textMuted }]}>
+                      #{dispatchEntry.queuePosition} · {dispatchEntry.driverName || 'No driver'}
                     </Text>
-                    {(dispatchEntry.routeDestination || dispatchEntry.routeName) && (
-                      <Text style={[styles.dispatchMeta, { color: c.textMuted, marginTop: 2 }]}>
-                        {dispatchEntry.routeDestination || dispatchEntry.routeName}
-                      </Text>
-                    )}
                   </View>
                 </View>
               )}
 
-              <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Passenger Count (optional)</Text>
+              <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Passengers (optional)</Text>
               <TextInput
-                style={[styles.textInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
-                value={dispatchPax}
-                onChangeText={(text) => {
-                  setDispatchPax(text);
-                  // Clear passenger list when manual count is entered
-                  if (text && dispatchPassengers.length > 0) {
-                    setDispatchPassengers([]);
-                  }
-                }}
+                style={[styles.input, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
+                value={includePassengerList ? String(passengerList.filter(p => p.name.trim() || p.contact.trim()).length) : dispatchPax}
+                onChangeText={setDispatchPax}
                 keyboardType="numeric"
-                placeholder={dispatchPassengers.length > 0 ? `${dispatchPassengers.length} (from list)` : "e.g. 15"}
+                placeholder="e.g. 15"
                 placeholderTextColor={c.textMuted}
+                editable={!includePassengerList}
               />
-              <Text style={[styles.fieldHint, { color: c.textMuted }]}>
-                Enter number manually OR use passenger list below
-              </Text>
 
-              {/* Passenger List Section */}
-              <View style={{ marginTop: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <Text style={[styles.fieldLabel, { color: c.textMuted }]}>
-                    Passengers ({dispatchPassengers.length})
-                  </Text>
-                  <TouchableOpacity
-                    style={{ flexDirection: 'row', alignItems: 'center', padding: 6 }}
-                    onPress={() => {
-                      setDispatchPassengers([...dispatchPassengers, { name: '', contact: '', nextOfKinName: '', nextOfKinContact: '', destination: '', amount: 0, paymentMethod: 'Cash' }]);
-                      setDispatchPax('');
-                    }}
-                  >
-                    <Ionicons name="add-circle" size={18} color="#22c55e" />
-                    <Text style={{ color: '#22c55e', fontSize: 13, marginLeft: 4 }}>Add Passenger</Text>
+              {/* Passenger list toggle */}
+              <TouchableOpacity style={styles.toggleRow} onPress={() => setIncludePassengerList(!includePassengerList)}>
+                <View style={[styles.toggleBox, { borderColor: includePassengerList ? c.primary : c.border, backgroundColor: includePassengerList ? c.primary + '15' : 'transparent' }]}>
+                  {includePassengerList && <Ionicons name="checkmark" size={14} color={c.primary} />}
+                </View>
+                <Text style={[styles.toggleLabel, { color: c.text }]}>Include passenger details</Text>
+              </TouchableOpacity>
+
+              {includePassengerList && (
+                <View style={{ marginTop: 12 }}>
+                  {passengerList.map((pax, idx) => (
+                    <View key={idx} style={[styles.paxRow, { borderColor: c.border }]}>
+                      <Text style={[styles.paxNum, { color: c.textMuted }]}>#{idx + 1}</Text>
+                      <View style={{ flex: 1, gap: 6 }}>
+                        <TextInput
+                          style={[styles.paxInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
+                          value={pax.name}
+                          onChangeText={t => { const u = [...passengerList]; u[idx].name = t; setPassengerList(u); }}
+                          placeholder="Name" placeholderTextColor={c.textMuted}
+                        />
+                        <TextInput
+                          style={[styles.paxInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
+                          value={pax.contact}
+                          onChangeText={t => { const u = [...passengerList]; u[idx].contact = t; setPassengerList(u); }}
+                          placeholder="Phone" placeholderTextColor={c.textMuted}
+                          keyboardType="phone-pad"
+                        />
+                      </View>
+                      {passengerList.length > 1 && (
+                        <TouchableOpacity onPress={() => setPassengerList(passengerList.filter((_, i) => i !== idx))} style={{ padding: 4 }}>
+                          <Ionicons name="close-circle" size={20} color="#ef4444" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                  <TouchableOpacity style={[styles.addPaxBtn, { borderColor: c.primary }]} onPress={() => setPassengerList([...passengerList, { name: '', contact: '' }])}>
+                    <Ionicons name="add-circle-outline" size={16} color={c.primary} style={{ marginRight: 6 }} />
+                    <Text style={[styles.addPaxBtnTxt, { color: c.primary }]}>Add Passenger</Text>
                   </TouchableOpacity>
                 </View>
-
-                {dispatchPassengers.map((p, i) => (
-                  <View key={i} style={[styles.passengerCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>
-                        Passenger {i + 1}
-                      </Text>
-                      <TouchableOpacity onPress={() => setDispatchPassengers(prev => prev.filter((_, idx) => idx !== i))}>
-                        <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                    <TextInput
-                      style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                      placeholder="Name *"
-                      placeholderTextColor={c.textMuted}
-                      value={p.name ?? ''}
-                      onChangeText={v => {
-                        const updated = [...dispatchPassengers];
-                        updated[i].name = v;
-                        setDispatchPassengers(updated);
-                        setDispatchPax('');
-                      }}
-                    />
-                    <TextInput
-                      style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                      placeholder="Phone"
-                      placeholderTextColor={c.textMuted}
-                      value={p.contact ?? ''}
-                      onChangeText={v => {
-                        const updated = [...dispatchPassengers];
-                        updated[i].contact = v;
-                        setDispatchPassengers(updated);
-                      }}
-                      keyboardType="phone-pad"
-                    />
-                    <TextInput
-                      style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                      placeholder="Next of Kin Name (optional)"
-                      placeholderTextColor={c.textMuted}
-                      value={p.nextOfKinName ?? ''}
-                      onChangeText={v => {
-                        const updated = [...dispatchPassengers];
-                        updated[i].nextOfKinName = v;
-                        setDispatchPassengers(updated);
-                      }}
-                    />
-                    <TextInput
-                      style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                      placeholder="Next of Kin Contact (optional)"
-                      placeholderTextColor={c.textMuted}
-                      value={p.nextOfKinContact ?? ''}
-                      onChangeText={v => {
-                        const updated = [...dispatchPassengers];
-                        updated[i].nextOfKinContact = v;
-                        setDispatchPassengers(updated);
-                      }}
-                      keyboardType="phone-pad"
-                    />
-                    {routeStops.length > 0 ? (
-                      <View style={{ marginTop: 4 }}>
-                        <Text style={{ color: c.textMuted, fontSize: 11, marginBottom: 6 }}>Select Destination:</Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                          {routeStops.map((stop, idx) => (
-                            <TouchableOpacity
-                              key={idx}
-                              style={{
-                                paddingHorizontal: 12,
-                                paddingVertical: 8,
-                                borderRadius: 20,
-                                borderWidth: 1,
-                                borderColor: p.destination === stop.stopName ? '#22c55e' : c.border,
-                                backgroundColor: p.destination === stop.stopName ? '#22c55e20' : c.background,
-                              }}
-                              onPress={() => {
-                                const updated = [...dispatchPassengers];
-                                updated[i].destination = stop.stopName;
-                                updated[i].amount = stop.fareFromOrigin || 0;
-                                setDispatchPassengers(updated);
-                                setDispatchPax('');
-                              }}
-                            >
-                              <Text style={{ 
-                                color: p.destination === stop.stopName ? '#22c55e' : c.text, 
-                                fontSize: 13,
-                                fontWeight: p.destination === stop.stopName ? '600' : '400'
-                              }}>
-                                {stop.stopName}
-                              </Text>
-                              {stop.fareFromOrigin > 0 && (
-                                <Text style={{ color: c.textMuted, fontSize: 11 }}>
-                                  R{stop.fareFromOrigin.toFixed(2)}
-                                </Text>
-                              )}
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-                    ) : (
-                      <TextInput
-                        style={[styles.passengerInput, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
-                        placeholder="Destination (optional)"
-                        placeholderTextColor={c.textMuted}
-                        value={p.destination ?? ''}
-                        onChangeText={v => {
-                          const updated = [...dispatchPassengers];
-                          updated[i].destination = v;
-                          setDispatchPassengers(updated);
-                        }}
-                      />
-                    )}
-                    {/* Payment Method Selection */}
-                    <View style={{ marginTop: 8 }}>
-                      <Text style={{ color: c.textMuted, fontSize: 11, marginBottom: 6 }}>Payment Method:</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                        {['Cash', 'Card', 'Mzansi Wallet'].map((method) => (
-                          <TouchableOpacity
-                            key={method}
-                            style={{
-                              paddingHorizontal: 14,
-                              paddingVertical: 8,
-                              borderRadius: 20,
-                              borderWidth: 1,
-                              borderColor: p.paymentMethod === method ? '#22c55e' : c.border,
-                              backgroundColor: p.paymentMethod === method ? '#22c55e20' : c.background,
-                            }}
-                            onPress={() => {
-                              const updated = [...dispatchPassengers];
-                              updated[i].paymentMethod = method;
-                              setDispatchPassengers(updated);
-                              // If Card selected, show POS payment UI
-                              if (method === 'Card') {
-                                Alert.alert(
-                                  'Card Payment',
-                                  'Please use the POS device to process card payment.',
-                                  [
-                                    { text: 'Payment Complete', onPress: () => console.log('[Payment] Card payment processed via POS') },
-                                    { text: 'Cancel', style: 'cancel', onPress: () => {
-                                      const reset = [...dispatchPassengers];
-                                      reset[i].paymentMethod = 'Cash';
-                                      setDispatchPassengers(reset);
-                                    }}
-                                  ]
-                                );
-                              }
-                            }}
-                          >
-                            <Text style={{ 
-                              color: p.paymentMethod === method ? '#22c55e' : c.text, 
-                              fontSize: 13,
-                              fontWeight: p.paymentMethod === method ? '600' : '400'
-                            }}>
-                              {method === 'Mzansi Wallet' ? 'Wallet' : method}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                    {/* Fare Display */}
-                    {p.amount > 0 && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, padding: 10, backgroundColor: '#22c55e10', borderRadius: 8, borderWidth: 1, borderColor: '#22c55e30' }}>
-                        <Ionicons name="cash-outline" size={18} color="#22c55e" />
-                        <View style={{ marginLeft: 8, flex: 1 }}>
-                          <Text style={{ color: '#22c55e', fontSize: 16, fontWeight: '700' }}>
-                            Fare: R{p.amount.toFixed(2)}
-                          </Text>
-                          <Text style={{ color: c.textMuted, fontSize: 12 }}>
-                            Payment: {p.paymentMethod || 'Cash'}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                ))}
-
-                {dispatchPassengers.length === 0 && (
-                  <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 8, fontStyle: 'italic' }}>
-                    No passengers added yet. Tap "Add Passenger" to create a passenger list.
-                  </Text>
-                )}
-
-                {/* Running Total */}
-                {dispatchPassengers.length > 0 && (
-                  <View style={{ marginTop: 16, padding: 12, backgroundColor: '#22c55e15', borderRadius: 12, borderWidth: 2, borderColor: '#22c55e40' }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ color: c.text, fontSize: 14, fontWeight: '600' }}>
-                        Total Passengers: {dispatchPassengers.length}
-                      </Text>
-                      <Text style={{ color: '#22c55e', fontSize: 20, fontWeight: '800' }}>
-                        Total: R{dispatchPassengers.reduce((sum, p) => sum + (p.amount || 0), 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-              </View>
+              )}
             </ScrollView>
 
+            {/* Footer */}
             <View style={[styles.modalFooter, { borderTopColor: c.border }]}>
-              <TouchableOpacity
-                style={[styles.footerBtn, { borderColor: c.border }]}
-                onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); setDispatchPax(''); setDispatchPassengers([]); setRouteStops([]); }}
-              >
-                <Text style={[styles.footerBtnTxt, { color: c.textMuted }]}>Cancel</Text>
+              <TouchableOpacity style={[styles.btnOutline, { borderColor: c.border }]} onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); }}>
+                <Text style={[styles.btnOutlineTxt, { color: c.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.footerBtn, { backgroundColor: '#22c55e', borderColor: '#22c55e' }]}
-                onPress={handleDispatch}
-                disabled={dispatchBusy}
-              >
+              <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: '#22c55e' }]} onPress={handleDispatch} disabled={dispatchBusy}>
                 {dispatchBusy ? <ActivityIndicator color="#fff" size="small" /> : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="send" size={16} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={[styles.footerBtnTxt, { color: '#fff' }]}>Dispatch</Text>
-                  </View>
+                  <>
+                    <Ionicons name="send" size={14} color="#fff" style={{ marginRight: 6 }} />
+                    <Text style={styles.btnPrimaryTxt}>Dispatch</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
@@ -893,230 +788,576 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
         </View>
       </Modal>
 
-    </View>
-  );
-}
+      {/* ══════════ Assign Route Modal ══════════ */}
+      <Modal visible={routeModalVisible} transparent animationType="fade" onRequestClose={() => setRouteModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: c.border }]}>
+              <View style={styles.modalHeaderLeft}>
+                <View style={[styles.modalIcon, { backgroundColor: '#3b82f615' }]}>
+                  <Ionicons name="navigate" size={18} color="#3b82f6" />
+                </View>
+                <Text style={[styles.modalTitle, { color: c.text }]}>Assign Route</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setRouteModalVisible(false); setRouteModalEntry(null); }} style={[styles.modalClose, { backgroundColor: c.background }]}>
+                <Ionicons name="close" size={18} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Sub-components
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyPad}>
+              {routeModalEntry && (
+                <View style={[styles.dispatchPreview, { borderColor: c.border, backgroundColor: c.background }]}>
+                  <View style={[styles.dispatchPreviewIcon, { backgroundColor: c.primary + '15' }]}>
+                    <Ionicons name="car-sport" size={20} color={c.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.dispatchPreviewReg, { color: c.text }]}>{routeModalEntry.vehicleRegistration}</Text>
+                    <Text style={[styles.dispatchPreviewMeta, { color: c.textMuted }]}>
+                      Current: {routeModalEntry.routeName || routeModalEntry.routeDestination || 'No route'}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
-function StatChip({ label, value, color, icon }) {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-        <Ionicons name={icon} size={13} color={color} style={{ marginRight: 4 }} />
-        <Text style={{ fontSize: 17, fontWeight: '800', color }}>{value}</Text>
-      </View>
-      <Text style={{ fontSize: 10, fontWeight: '600', color, opacity: 0.75, letterSpacing: 0.3 }}>
-        {label.toUpperCase()}
-      </Text>
-    </View>
-  );
-}
-
-function QueueCard({ entry, isFirst, isLast, c, onDispatch, onRemove, onMoveUp, onMoveDown }) {
-  const pos = entry.queuePosition;
-  const posColor = pos === 1 ? '#22c55e' : pos <= 3 ? '#3b82f6' : c.textMuted;
-
-  return (
-    <View style={{
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: pos === 1 ? '#22c55e35' : c.border,
-      backgroundColor: c.surface,
-      marginBottom: 10,
-      overflow: 'hidden',
-    }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14 }}>
-        {/* Position badge */}
-        <View style={{
-          width: 42, height: 42, borderRadius: 13,
-          backgroundColor: posColor + '18',
-          alignItems: 'center', justifyContent: 'center',
-          marginRight: 12,
-        }}>
-          <Text style={{ fontSize: 14, fontWeight: '900', color: posColor }}>#{pos}</Text>
+              <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Select Route</Text>
+              <TouchableOpacity
+                style={[styles.chip, { marginBottom: 8 }, !routeModalEntry?.routeId && styles.chipActive]}
+                onPress={() => handleAssignRoute(routeModalEntry, null)}
+                disabled={routeModalBusy}
+              >
+                <Text style={[styles.chipTxt, !routeModalEntry?.routeId && styles.chipTxtActive]}>None (unassigned)</Text>
+              </TouchableOpacity>
+              {routes.filter(r => r.isActive !== false).map(r => {
+                const isCurrent = routeModalEntry?.routeId === r.id;
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[styles.chip, { marginBottom: 8 }, isCurrent && styles.chipActive]}
+                    onPress={() => handleAssignRoute(routeModalEntry, r.id)}
+                    disabled={routeModalBusy}
+                  >
+                    <Text style={[styles.chipTxt, isCurrent && styles.chipTxtActive]}>
+                      {r.routeName || r.destinationStation}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              {routeModalBusy && <ActivityIndicator style={{ marginTop: 12 }} color={c.primary} />}
+            </ScrollView>
+          </View>
         </View>
+      </Modal>
+    </View>
+  );
+}
 
-        {/* Vehicle info */}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: c.text }} numberOfLines={1}>
-            {entry.vehicleRegistration || 'Unknown'}
-          </Text>
-          <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 1 }} numberOfLines={1}>
-            {[entry.vehicleMake, entry.vehicleModel].filter(Boolean).join(' ')}
-            {entry.vehicleCapacity ? ` · ${entry.vehicleCapacity} seats` : ''}
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4, gap: 8 }}>
-            {entry.driverName && (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="person-outline" size={11} color={c.textMuted} style={{ marginRight: 3 }} />
-                <Text style={{ fontSize: 11, color: c.textMuted }}>{entry.driverName}</Text>
+// ══════════════════════════════════════════════════════════════════════════════
+// Sub-components
+// ══════════════════════════════════════════════════════════════════════════════
+
+function StatPill({ icon, label, value, color, c, styles }) {
+  return (
+    <View style={[styles.statPill, { backgroundColor: color + '10' }]}>
+      <Ionicons name={icon} size={14} color={color} style={{ marginRight: 6 }} />
+      <Text style={[styles.statPillValue, { color }]}>{value}</Text>
+      <Text style={[styles.statPillLabel, { color: c.textMuted }]}>{label}</Text>
+    </View>
+  );
+}
+
+function QueueCard({ entry, isFirst, isLast, c, styles, onDispatch, onRemove, onMoveUp, onMoveDown, onAssignRoute }) {
+  const posColor = entry.queuePosition === 1 ? '#22c55e' : entry.queuePosition <= 3 ? '#3b82f6' : c.textMuted;
+
+  return (
+    <View style={[styles.queueCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+      {/* Top row: position + vehicle info + dispatch */}
+      <View style={styles.queueCardTop}>
+        <View style={[styles.posBadge, { backgroundColor: posColor + '15' }]}>
+          <Text style={[styles.posText, { color: posColor }]}>#{entry.queuePosition}</Text>
+        </View>
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={[styles.queueReg, { color: c.text }]}>{entry.vehicleRegistration || 'Unknown'}</Text>
+          <View style={styles.queueMetaRow}>
+            {entry.driverName ? (
+              <View style={styles.metaChip}>
+                <Ionicons name="person" size={10} color={c.textMuted} style={{ marginRight: 3 }} />
+                <Text style={[styles.metaChipTxt, { color: c.textMuted }]}>{entry.driverName}</Text>
               </View>
-            )}
-            {(entry.routeDestination || entry.routeName) && (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="navigate-outline" size={11} color={c.textMuted} style={{ marginRight: 3 }} />
-                <Text style={{ fontSize: 11, color: c.textMuted }} numberOfLines={1}>
-                  {entry.routeDestination || entry.routeName}
-                </Text>
+            ) : null}
+            {(entry.routeDestination || entry.routeName) ? (
+              <View style={styles.metaChip}>
+                <Ionicons name="navigate" size={10} color={c.textMuted} style={{ marginRight: 3 }} />
+                <Text style={[styles.metaChipTxt, { color: c.textMuted }]}>{entry.routeDestination || entry.routeName}</Text>
               </View>
-            )}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="time-outline" size={11} color={c.textMuted} style={{ marginRight: 3 }} />
-              <Text style={{ fontSize: 11, color: c.textMuted }}>{entry.joinedAt}</Text>
+            ) : null}
+            <View style={styles.metaChip}>
+              <Ionicons name="time" size={10} color={c.textMuted} style={{ marginRight: 3 }} />
+              <Text style={[styles.metaChipTxt, { color: c.textMuted }]}>{entry.joinedAt}</Text>
             </View>
           </View>
         </View>
-
-        {/* Reorder arrows */}
-        <View style={{ alignItems: 'center', marginLeft: 8 }}>
-          <TouchableOpacity onPress={onMoveUp} disabled={isFirst} style={{ padding: 6, opacity: isFirst ? 0.2 : 1 }}>
-            <Ionicons name="chevron-up" size={18} color={c.textMuted} />
+        {entry.queuePosition === 1 && (
+          <TouchableOpacity style={styles.dispatchBtn} onPress={onDispatch}>
+            <Ionicons name="send" size={13} color="#fff" style={{ marginRight: 5 }} />
+            <Text style={styles.dispatchBtnTxt}>Go</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onMoveDown} disabled={isLast} style={{ padding: 6, opacity: isLast ? 0.2 : 1 }}>
-            <Ionicons name="chevron-down" size={18} color={c.textMuted} />
-          </TouchableOpacity>
-        </View>
+        )}
       </View>
-
-      {/* Action footer */}
-      <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: c.border }}>
-        <TouchableOpacity
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRightWidth: 1, borderRightColor: c.border, backgroundColor: '#22c55e0a' }}
-          onPress={onDispatch}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="send" size={14} color="#22c55e" style={{ marginRight: 6 }} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: '#22c55e' }}>Dispatch</Text>
+      {/* Bottom actions */}
+      <View style={[styles.queueCardActions, { borderTopColor: c.border }]}>
+        <TouchableOpacity style={styles.queueAction} onPress={onMoveUp} disabled={isFirst}>
+          <Ionicons name="chevron-up" size={16} color={isFirst ? c.border : c.primary} />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, backgroundColor: '#ef44440a' }}
-          onPress={onRemove}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="trash-outline" size={14} color="#ef4444" style={{ marginRight: 6 }} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: '#ef4444' }}>Remove</Text>
+        <TouchableOpacity style={styles.queueAction} onPress={onAssignRoute}>
+          <Ionicons name="navigate-outline" size={14} color="#3b82f6" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.queueAction} onPress={onDispatch}>
+          <Ionicons name="send-outline" size={14} color={c.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.queueAction} onPress={onRemove}>
+          <Ionicons name="trash-outline" size={14} color="#ef4444" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.queueAction} onPress={onMoveDown} disabled={isLast}>
+          <Ionicons name="chevron-down" size={16} color={isLast ? c.border : c.primary} />
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-function DispatchedCard({ entry, c }) {
-  const time = entry.departedAt
-    ? new Date(entry.departedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : 'â€”';
+function DispatchedCard({ entry, c, styles }) {
+  const time = entry.departedAt ? new Date(entry.departedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
   return (
-    <View style={{
-      borderRadius: 12, borderWidth: 1, borderColor: c.border,
-      backgroundColor: c.surface, padding: 12, marginBottom: 8,
-      flexDirection: 'row', alignItems: 'center', opacity: 0.72,
-    }}>
-      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: '#22c55e18', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-        <Ionicons name="checkmark" size={16} color="#22c55e" />
+    <View style={[styles.dispatchedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+      <View style={[styles.doneBadge, { backgroundColor: '#22c55e15' }]}>
+        <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 14, fontWeight: '700', color: c.text }}>{entry.vehicleRegistration || 'Unknown'}</Text>
-        <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 1 }}>
-          Departed {time}{entry.passengerCount ? ` Â· ${entry.passengerCount} pax` : ''}
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={[styles.queueReg, { color: c.text }]}>{entry.vehicleRegistration || 'Unknown'}</Text>
+        <Text style={[styles.metaChipTxt, { color: c.textMuted }]}>
+          Departed {time}{entry.passengerCount ? ` · ${entry.passengerCount} pax` : ''}
         </Text>
       </View>
-      <View style={{ backgroundColor: '#22c55e18', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-        <Text style={{ fontSize: 10, fontWeight: '800', color: '#22c55e' }}>DISPATCHED</Text>
+      <View style={[styles.goneTag, { backgroundColor: '#22c55e15' }]}>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: '#22c55e' }}>GONE</Text>
       </View>
     </View>
   );
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ══════════════════════════════════════════════════════════════════════════════
 // Styles
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ══════════════════════════════════════════════════════════════════════════════
 
 function createStyles(c) {
   return StyleSheet.create({
-    root: { flex: 1 },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-    loadingText: { marginTop: 12, fontSize: 14 },
+    // ── Layout
+    root: { flex: 1, flexDirection: 'column' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    content: { flex: 1, flexDirection: 'column' },
+    scrollView: { flex: 1 },
+    scrollContent: { padding: 16, paddingBottom: 80 },
+    loadingTxt: { fontSize: 14, marginTop: 12 },
 
-    // Header
-    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1 },
-    backBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    headerTitle: { fontSize: 17, fontWeight: '800' },
-    headerSub: { fontSize: 12, marginTop: 1 },
-    addBtn: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 9 },
-    addBtnTxt: { color: '#fff', fontSize: 14, fontWeight: '800' },
+    // ── Header
+    header: {
+      paddingBottom: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 4,
+      elevation: 3,
+      zIndex: 10,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      marginBottom: 10,
+    },
+    headerBack: {
+      width: 36, height: 36, borderRadius: 18,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    headerCenter: { flex: 1, marginLeft: 8 },
+    headerTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+    headerSubtitle: { fontSize: 12, marginTop: 1 },
+    headerAction: {
+      width: 36, height: 36, borderRadius: 18,
+      alignItems: 'center', justifyContent: 'center',
+    },
 
-    // Stats bar
-    statsBar: { flexDirection: 'row', borderBottomWidth: 1 },
+    // ── Stats Strip
+    statsStrip: {
+      flexDirection: 'row',
+      paddingHorizontal: 12,
+      gap: 6,
+    },
+    statPill: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 6,
+      borderRadius: 10,
+    },
+    statPillValue: { fontSize: 13, fontWeight: '800', marginRight: 3 },
+    statPillLabel: { fontSize: 10, fontWeight: '600' },
 
-    // Route pills
-    pillRow: { borderBottomWidth: 1, maxHeight: 52 },
-    pillContent: { paddingHorizontal: 14, paddingVertical: 9, flexDirection: 'row', gap: 8, alignItems: 'center' },
-    pill: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1 },
-    pillTxt: { fontSize: 12, fontWeight: '700' },
-    pillBadge: { borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, marginLeft: 6 },
-    pillBadgeTxt: { fontSize: 10, fontWeight: '800' },
+    // ── Tabs
+    tabs: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      height: 48,
+    },
+    tab: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    tabActive: {
+      borderBottomWidth: 2,
+      borderBottomColor: c.primary,
+    },
+    tabLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.textMuted,
+    },
 
-    // Scroll
-    scrollContent: { padding: 16 },
+    // ── Filter Bar
+    filterBar: {
+      borderBottomWidth: 1,
+      paddingVertical: 10,
+    },
+    filterContent: {
+      paddingHorizontal: 12,
+      gap: 8,
+    },
+    filterChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+    },
+    filterChipActive: {
+      backgroundColor: c.primary,
+      borderColor: c.primary,
+    },
+    filterChipTxt: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.text,
+      maxWidth: 120,
+    },
+    filterChipTxtActive: { color: '#fff' },
+    filterBadge: {
+      backgroundColor: c.border,
+      borderRadius: 10,
+      minWidth: 20, height: 20,
+      alignItems: 'center', justifyContent: 'center',
+      paddingHorizontal: 5,
+      marginLeft: 6,
+    },
+    filterBadgeTxt: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: c.text,
+    },
 
-    // Empty state
-    emptyState: { alignItems: 'center', paddingTop: 60, paddingBottom: 40 },
-    emptyIconWrap: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-    emptyTitle: { fontSize: 20, fontWeight: '800', marginBottom: 8 },
-    emptySubText: { fontSize: 14, textAlign: 'center', marginBottom: 24, lineHeight: 20 },
-    emptyAddBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14 },
+    // ── FAB
+    fabWrap: { position: 'absolute', right: 16 },
+    fab: {
+      width: 52, height: 52, borderRadius: 26,
+      alignItems: 'center', justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.25,
+      shadowRadius: 6,
+      elevation: 6,
+    },
 
-    // Hero card (next to dispatch)
-    heroCard: { borderRadius: 18, borderWidth: 1, padding: 18, marginBottom: 20 },
-    heroLabel: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-    heroDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-    heroLabelTxt: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-    heroBody: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-    heroIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-    heroReg: { fontSize: 22, fontWeight: '900' },
-    heroMeta: { fontSize: 13, marginTop: 2 },
-    heroDetail: { fontSize: 12 },
-    heroDispatchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 14, paddingVertical: 14 },
-    heroDispatchTxt: { fontSize: 16, fontWeight: '800', color: '#fff' },
+    // ── Queue Cards
+    queueCard: {
+      borderWidth: 1,
+      borderRadius: 14,
+      marginBottom: 10,
+      overflow: 'hidden',
+    },
+    queueCardTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 12,
+    },
+    posBadge: {
+      width: 36, height: 36, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    posText: { fontSize: 13, fontWeight: '800' },
+    queueReg: { fontSize: 15, fontWeight: '700' },
+    queueMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+    metaChip: { flexDirection: 'row', alignItems: 'center' },
+    metaChipTxt: { fontSize: 11 },
+    queueCardActions: {
+      flexDirection: 'row',
+      borderTopWidth: 1,
+    },
+    queueAction: {
+      flex: 1,
+      alignItems: 'center', justifyContent: 'center',
+      paddingVertical: 8,
+    },
+    dispatchBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#22c55e',
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 16,
+    },
+    dispatchBtnTxt: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
-    // Section
-    section: { marginBottom: 8 },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-    sectionTitle: { fontSize: 15, fontWeight: '800' },
-    sectionBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+    // ── Dispatched Card
+    dispatchedCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: 12,
+      marginBottom: 10,
+      opacity: 0.7,
+    },
+    doneBadge: {
+      width: 36, height: 36, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    goneTag: {
+      paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+    },
 
-    // Modal
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 16 },
-    modalBox: { borderRadius: 22, overflow: 'hidden', flexDirection: 'column' },
-    modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
-    modalTitle: { fontSize: 17, fontWeight: '900' },
-    modalBody: { padding: 20 },
-    modalFooter: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: 1 },
-    footerBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 14, paddingVertical: 14 },
-    footerBtnTxt: { fontSize: 14, fontWeight: '700' },
+    // ── List headers
+    listHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    listHeaderDot: {
+      width: 8, height: 8, borderRadius: 4, marginRight: 8,
+    },
+    listHeaderTxt: { fontSize: 15, fontWeight: '700' },
 
-    // Form fields
-    fieldLabel: { fontSize: 12, fontWeight: '700', marginBottom: 8, letterSpacing: 0.4 },
-    fieldHint: { fontSize: 11, marginTop: -8, marginBottom: 8 },
-    textInput: { borderWidth: 1, borderRadius: 12, padding: 13, fontSize: 15, marginBottom: 14 },
-    chip: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1 },
-    chipTxt: { fontSize: 13, fontWeight: '700' },
-    vehicleRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 11, marginBottom: 8 },
-    vehicleRowIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-    vehicleRowReg: { fontSize: 14, fontWeight: '800' },
-    vehicleRowMeta: { fontSize: 11, marginTop: 2 },
+    // ── Empty state
+    emptyState: { alignItems: 'center', paddingVertical: 48 },
+    emptyIcon: {
+      width: 72, height: 72, borderRadius: 36,
+      alignItems: 'center', justifyContent: 'center',
+      marginBottom: 16,
+    },
+    emptyTitle: { fontSize: 18, fontWeight: '700' },
+    emptySubtitle: { fontSize: 14, textAlign: 'center', marginTop: 6, marginBottom: 20 },
+    emptyBtn: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20,
+    },
+    emptyBtnTxt: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
-    // Dispatch preview
-    dispatchPreview: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 18 },
-    dispatchPreviewIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    dispatchReg: { fontSize: 16, fontWeight: '900' },
-    dispatchMeta: { fontSize: 12, marginTop: 2 },
+    // ── Overview
+    nextCard: {
+      borderRadius: 14, padding: 16, marginBottom: 16,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+    },
+    nextCardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    nextIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+    nextLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+    nextCardBody: { flexDirection: 'row', alignItems: 'center' },
+    nextReg: { fontSize: 17, fontWeight: '800' },
+    nextMeta: { fontSize: 13, marginTop: 2 },
+    quickActions: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+    quickBtn: {
+      flex: 1, alignItems: 'center', borderRadius: 12, padding: 14,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
+    },
+    quickBtnIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+    quickBtnLabel: { fontSize: 12, fontWeight: '600' },
 
-    // Passenger card styles
-    passengerCard: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10, gap: 8 },
-    passengerInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 },
+    // ── Card (shared)
+    card: {
+      borderRadius: 14, padding: 16, marginBottom: 16,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+    },
+    cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
+    cardEmpty: { fontSize: 13, paddingVertical: 16, textAlign: 'center' },
+    routeRow: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingVertical: 11, borderBottomWidth: 1,
+    },
+    routeDot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
+    routeRowName: { fontSize: 14, fontWeight: '600' },
+    routeCount: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+    routeCountTxt: { fontSize: 12, fontWeight: '700' },
+
+    // ── Analytics
+    analyticsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    analyticsTile: {
+      width: '47%', borderRadius: 12, padding: 16, alignItems: 'center',
+    },
+    analyticsTileValue: { fontSize: 24, fontWeight: '800', marginTop: 6 },
+    analyticsTileLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+    breakdownRow: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingVertical: 10, borderBottomWidth: 1,
+    },
+    breakdownName: { fontSize: 14, fontWeight: '600' },
+    breakdownMeta: { fontSize: 11, marginTop: 2 },
+    breakdownPct: { fontSize: 12, fontWeight: '700', marginLeft: 8, width: 36, textAlign: 'right' },
+    progressBarBg: {
+      width: 60, height: 6, borderRadius: 3,
+      backgroundColor: c.border, overflow: 'hidden',
+    },
+    progressBarFill: { height: 6, borderRadius: 3 },
+
+    // ── Modal (shared)
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 24,
+    },
+    modalCard: {
+      width: '100%',
+      maxWidth: 480,
+      maxHeight: '90%',
+      borderRadius: 18,
+      overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.15,
+      shadowRadius: 24,
+      elevation: 12,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+    },
+    modalHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+    modalIcon: {
+      width: 32, height: 32, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+      marginRight: 10,
+    },
+    modalTitle: { fontSize: 17, fontWeight: '800' },
+    modalClose: {
+      width: 32, height: 32, borderRadius: 16,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    modalBody: { flexShrink: 1 },
+    modalBodyPad: { padding: 16, paddingBottom: 8 },
+    modalFooter: {
+      flexDirection: 'row',
+      gap: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+    },
+    fieldLabel: {
+      fontSize: 12, fontWeight: '700',
+      letterSpacing: 0.3,
+      marginBottom: 8,
+      textTransform: 'uppercase',
+    },
+    input: {
+      borderWidth: 1, borderRadius: 10,
+      padding: 12, fontSize: 14,
+      marginBottom: 4,
+    },
+    chip: {
+      borderRadius: 18,
+      paddingHorizontal: 14, paddingVertical: 7,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.background,
+    },
+    chipActive: { backgroundColor: c.primary, borderColor: c.primary },
+    chipTxt: { fontSize: 12, fontWeight: '700', color: c.text },
+    chipTxtActive: { color: '#fff' },
+    vehicleList: { maxHeight: 220 },
+    noVehicles: { fontSize: 13, textAlign: 'center', paddingVertical: 20 },
+    vehicleItem: {
+      flexDirection: 'row', alignItems: 'center',
+      borderWidth: 1, borderRadius: 12,
+      padding: 10, marginBottom: 6,
+    },
+    vehicleItemIcon: {
+      width: 34, height: 34, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+      marginRight: 10,
+    },
+    vehicleItemReg: { fontSize: 14, fontWeight: '700' },
+    vehicleItemMeta: { fontSize: 11, marginTop: 1 },
+    btnOutline: {
+      flex: 1,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderRadius: 12,
+      paddingVertical: 12,
+    },
+    btnOutlineTxt: { fontSize: 14, fontWeight: '600' },
+    btnPrimary: {
+      flex: 1,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      borderRadius: 12,
+      paddingVertical: 12,
+    },
+    btnPrimaryTxt: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+    // ── Dispatch modal extras
+    dispatchPreview: {
+      flexDirection: 'row', alignItems: 'center',
+      borderWidth: 1, borderRadius: 12,
+      padding: 12, marginBottom: 16,
+    },
+    dispatchPreviewIcon: {
+      width: 40, height: 40, borderRadius: 12,
+      alignItems: 'center', justifyContent: 'center',
+      marginRight: 12,
+    },
+    dispatchPreviewReg: { fontSize: 16, fontWeight: '800' },
+    dispatchPreviewMeta: { fontSize: 12, marginTop: 2 },
+    toggleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
+    toggleBox: {
+      width: 22, height: 22, borderRadius: 6,
+      borderWidth: 2,
+      alignItems: 'center', justifyContent: 'center',
+      marginRight: 10,
+    },
+    toggleLabel: { fontSize: 14, fontWeight: '600' },
+    paxRow: {
+      flexDirection: 'row', alignItems: 'flex-start',
+      borderWidth: 1, borderRadius: 10,
+      padding: 10, marginBottom: 8,
+    },
+    paxNum: { fontSize: 11, fontWeight: '700', width: 28, paddingTop: 8 },
+    paxInput: {
+      borderWidth: 1, borderRadius: 8,
+      padding: 8, fontSize: 13,
+    },
+    addPaxBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderStyle: 'dashed',
+      borderRadius: 10, paddingVertical: 10, marginTop: 4,
+    },
+    addPaxBtnTxt: { fontSize: 13, fontWeight: '600' },
   });
 }

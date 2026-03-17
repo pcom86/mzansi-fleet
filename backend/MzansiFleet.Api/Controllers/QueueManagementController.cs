@@ -290,7 +290,7 @@ namespace MzansiFleet.Api.Controllers
                 Loading = entries.Count(e => e.Status == "Loading"),
                 Dispatched = entries.Count(e => e.Status == "Dispatched"),
                 Removed = entries.Count(e => e.Status == "Removed"),
-                TotalPassengers = entries.Where(e => e.Status == "Dispatched").Sum(e => e.PassengerCount ?? 0),
+                TotalPassengers = entries.Where(e => e.Status == "Dispatched").Sum(e => e.PassengerCount),
                 AverageWaitMinutes = entries
                     .Where(e => e.Status == "Dispatched" && e.DepartedAt.HasValue)
                     .Select(e => (e.DepartedAt!.Value - e.CreatedAt).TotalMinutes)

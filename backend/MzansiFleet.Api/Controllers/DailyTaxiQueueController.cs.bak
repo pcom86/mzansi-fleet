@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -455,33 +455,6 @@ namespace MzansiFleet.Api.Controllers
             }
         }
 
-        // PUT: api/DailyTaxiQueue/{id}/assign-route — Assign or change route for a queue entry
-        [HttpPut("{id}/assign-route")]
-        public async Task<ActionResult> AssignRoute(Guid id, [FromBody] AssignRouteDto dto)
-        {
-            try
-            {
-                var entry = await _context.DailyTaxiQueues.FindAsync(id);
-                if (entry == null)
-                    return NotFound(new { message = "Queue entry not found" });
-
-                if (entry.Status == "Dispatched" || entry.Status == "Removed")
-                    return BadRequest(new { message = "Cannot change route of a dispatched or removed entry" });
-
-                entry.RouteId = dto.RouteId;
-                entry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
-
-                await _context.SaveChangesAsync();
-
-                return Ok(new { message = "Route assigned", id = entry.Id, routeId = entry.RouteId });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"[Queue] Error assigning route to entry {id}: {ex.Message}");
-                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
-            }
-        }
-
         // GET: api/DailyTaxiQueue/stats/{rankId}?date=2026-03-13
         [HttpGet("stats/{rankId}")]
         public async Task<ActionResult<QueueStatsDto>> GetQueueStats(Guid rankId, [FromQuery] DateTime? date)
@@ -496,8 +469,7 @@ namespace MzansiFleet.Api.Controllers
             var dispatched = entries.Count(e => e.Status == "Dispatched");
             var removed = entries.Count(e => e.Status == "Removed");
             var totalPassengers = entries.Where(e => e.Status == "Dispatched").Sum(e => e.PassengerCount);
-            var dispatchedEntries = entries.Where(e => e.Status == "Dispatched" && e.DepartedAt.HasValue).ToList();
-            var avgWaitMinutes = 0d;
+            var avgWaitMinutes = 0;
             if (dispatchedEntries.Count > 0)
             {
                 avgWaitMinutes = dispatchedEntries
@@ -506,15 +478,16 @@ namespace MzansiFleet.Api.Controllers
             
             var result = new QueueStatsDto
             {
-                Loading = waiting,
-                Dispatched = dispatched,
-                Removed = removed,
-                Total = entries.Count,
-                TotalPassengers = totalPassengers,
-                AverageWaitMinutes = Math.Round(avgWaitMinutes, 1)
+                date = targetDate,
+                waiting = waiting,
+                dispatched = dispatched,
+                removed = removed,
+                total = entries.Count,
+                totalPassengers = totalPassengers,
+                avgWaitMinutes = (double)Math.Round(avgWaitMinutes, 1)
             };
-
-            return Ok(result);
+    
+    return Ok(result);
         }
 
     public class QueueStatsDto
@@ -560,11 +533,3 @@ namespace MzansiFleet.Api.Controllers
     {
         public int NewPosition { get; set; }
     }
-
-    public class AssignRouteDto
-    {
-        public Guid? RouteId { get; set; }
-    }
-
-    }
-}

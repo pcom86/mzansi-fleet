@@ -1,6 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-      <TargetFramework>net10.0</TargetFramework>
+      <TargetFramework>net9.0</TargetFramework>
+      <RollForward>LatestMajor</RollForward>
+      <EnableWorkloadResolver>false</EnableWorkloadResolver>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MzansiFleet.Application\MzansiFleet.Application.csproj" />

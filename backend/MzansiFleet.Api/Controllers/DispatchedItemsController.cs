@@ -1,10 +1,51 @@
+#nullable disable
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MzansiFleet.Domain.Entities;
-using MzansiFleet.Api.DTOs;
+using MzansiFleet.Repository;
+using Microsoft.Extensions.Logging;
 
 namespace MzansiFleet.Api.Controllers
 {
+    // ── DTOs ─────────────────────────────────────────────────────────────
+    
+    public class DispatchedItemDto
+    {
+        public Guid Id { get; set; }
+        public string? VehicleRegistration { get; set; }
+        public string? VehicleMake { get; set; }
+        public string? VehicleModel { get; set; }
+        public string? RouteName { get; set; }
+        public string? RouteDestination { get; set; }
+        public string? DriverName { get; set; }
+        public int PassengerCount { get; set; }
+        public DateTime? DepartedAt { get; set; }
+        public string? Status { get; set; }
+    }
+
+    public class DispatchedItemDetailDto : DispatchedItemDto
+    {
+        public string? DriverPhone { get; set; }
+        public string? TaxiRankName { get; set; }
+        public string? Notes { get; set; }
+        public List<DispatchedPassengerDto>? Passengers { get; set; }
+    }
+
+    public class DispatchedPassengerDto
+    {
+        public string? PassengerName { get; set; }
+        public string? PassengerPhone { get; set; }
+        public string? NextOfKinName { get; set; }
+        public string? NextOfKinContact { get; set; }
+        public string? Destination { get; set; }
+        public decimal Amount { get; set; }
+        public string? PaymentMethod { get; set; }
+    }
+
     [ApiController]
     [Route("api/[controller]")]
     public class DispatchedItemsController : ControllerBase
@@ -18,7 +59,7 @@ namespace MzansiFleet.Api.Controllers
             _logger = logger;
         }
 
-        [HttpGet("dispatched")]
+        [HttpGet]
         public async Task<ActionResult<List<DispatchedItemDto>>> GetDispatchedItems()
         {
             try
@@ -29,38 +70,24 @@ namespace MzansiFleet.Api.Controllers
                     .Include(q => q.Route)
                     .Include(q => q.Driver)
                     .Include(q => q.TaxiRank)
-                    .Include(q => q.TripPassengers)
+                    .Select(q => new DispatchedItemDto
+                    {
+                        Id = q.Id,
+                        VehicleRegistration = q.Vehicle.Registration,
+                        VehicleMake = q.Vehicle.Make,
+                        VehicleModel = q.Vehicle.Model,
+                        RouteName = q.Route.RouteName,
+                        RouteDestination = q.Route.DestinationStation,
+                        DriverName = q.Driver.Name,
+                        PassengerCount = q.PassengerCount,
+                        DepartedAt = q.DepartedAt,
+                        Status = q.Status
+                    })
                     .OrderByDescending(q => q.DepartedAt)
                     .ToListAsync();
 
-                var result = dispatchedItems.Select(item => new DispatchedItemDto
-                {
-                    Id = item.Id,
-                    VehicleRegistration = item.Vehicle?.RegistrationNumber,
-                    VehicleMake = item.Vehicle?.Make,
-                    VehicleModel = item.Vehicle?.Model,
-                    RouteName = item.Route?.RouteName,
-                    RouteDestination = item.Route?.DestinationStation,
-                    DriverName = item.Driver?.FullName,
-                    DriverPhone = item.Driver?.PhoneNumber,
-                    TaxiRankName = item.TaxiRank?.Name,
-                    PassengerCount = item.PassengerCount,
-                    DepartedAt = item.DepartedAt,
-                    Status = item.Status,
-                    Passengers = item.TripPassengers?.Select(p => new PassengerDto
-                    {
-                        Name = p.PassengerName,
-                        Contact = p.PassengerPhone,
-                        NextOfKinName = p.NextOfKinName,
-                        NextOfKinContact = p.NextOfKinContact,
-                        Destination = p.ArrivalStation,
-                        Amount = p.Amount,
-                        PaymentMethod = p.PaymentMethod
-                    }).ToList()
-                }).ToList();
-
-                _logger.LogInformation($"[DispatchedItems] Retrieved {result.Count} dispatched items");
-                return Ok(result);
+                _logger.LogInformation($"[DispatchedItems] Retrieved {dispatchedItems.Count} dispatched items");
+                return Ok(dispatchedItems);
             }
             catch (Exception ex)
             {
@@ -80,37 +107,43 @@ namespace MzansiFleet.Api.Controllers
                     .Include(q => q.Route)
                     .Include(q => q.Driver)
                     .Include(q => q.TaxiRank)
-                    .Include(q => q.TripPassengers)
                     .FirstOrDefaultAsync();
 
                 if (item == null)
                     return NotFound(new { message = "Dispatched item not found" });
 
+                // Get the trip for this dispatched item
+                var trip = await _context.TaxiRankTrips
+                    .Where(t => t.VehicleId == item.VehicleId && 
+                                   t.DepartureTime >= item.DepartedAt)
+                    .Include(t => t.Passengers)
+                    .FirstOrDefaultAsync();
+
                 var result = new DispatchedItemDetailDto
                 {
                     Id = item.Id,
-                    VehicleRegistration = item.Vehicle?.RegistrationNumber,
+                    VehicleRegistration = item.Vehicle?.Registration,
                     VehicleMake = item.Vehicle?.Make,
                     VehicleModel = item.Vehicle?.Model,
                     RouteName = item.Route?.RouteName,
                     RouteDestination = item.Route?.DestinationStation,
-                    DriverName = item.Driver?.FullName,
-                    DriverPhone = item.Driver?.PhoneNumber,
+                    DriverName = item.Driver?.Name,
+                    DriverPhone = item.Driver?.Phone,
                     TaxiRankName = item.TaxiRank?.Name,
                     PassengerCount = item.PassengerCount,
                     DepartedAt = item.DepartedAt,
                     Status = item.Status,
                     Notes = item.Notes,
-                    Passengers = item.TripPassengers?.Select(p => new PassengerDto
+                    Passengers = trip?.Passengers?.Select(p => new DispatchedPassengerDto
                     {
-                        Name = p.PassengerName,
-                        Contact = p.PassengerPhone,
+                        PassengerName = p.PassengerName,
+                        PassengerPhone = p.PassengerPhone,
                         NextOfKinName = p.NextOfKinName,
                         NextOfKinContact = p.NextOfKinContact,
                         Destination = p.ArrivalStation,
                         Amount = p.Amount,
                         PaymentMethod = p.PaymentMethod
-                    }).ToList()
+                    }).ToList() ?? new List<DispatchedPassengerDto>()
                 };
 
                 _logger.LogInformation($"[DispatchedItems] Retrieved details for dispatched item {id}");
@@ -122,27 +155,5 @@ namespace MzansiFleet.Api.Controllers
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
         }
-    }
-
-    public class DispatchedItemDto
-    {
-        public Guid Id { get; set; }
-        public string? VehicleRegistration { get; set; }
-        public string? VehicleMake { get; set; }
-        public string? VehicleModel { get; set; }
-        public string? RouteName { get; set; }
-        public string? RouteDestination { get; set; }
-        public string? DriverName { get; set; }
-        public string? DriverPhone { get; set; }
-        public string? TaxiRankName { get; set; }
-        public int? PassengerCount { get; set; }
-        public DateTime? DepartedAt { get; set; }
-        public string? Status { get; set; }
-        public List<PassengerDto>? Passengers { get; set; }
-    }
-
-    public class DispatchedItemDetailDto : DispatchedItemDto
-    {
-        public string? Notes { get; set; }
     }
 }
