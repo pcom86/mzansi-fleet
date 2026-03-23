@@ -25,7 +25,9 @@ namespace MzansiFleet.Api.Controllers
         [HttpPost]
         public async Task<ActionResult<DriverBehaviorEvent>> RecordEvent([FromBody] RecordBehaviorEventDto dto)
         {
-            var driver = await _context.DriverProfiles.FindAsync(dto.DriverId);
+            var driver = await _context.DriverProfiles
+                .Include(d => d.User)
+                .FirstOrDefaultAsync(d => d.Id == dto.DriverId);
             if (driver == null) return NotFound(new { message = "Driver not found" });
 
             var ev = new DriverBehaviorEvent
@@ -50,6 +52,12 @@ namespace MzansiFleet.Api.Controllers
 
             _context.DriverBehaviorEvents.Add(ev);
             await _context.SaveChangesAsync();
+
+            // Notify fleet owners for any negative behavior event.
+            if (IsNegativeBehaviorEvent(ev))
+            {
+                await NotifyOwnersOfBehaviorAlertAsync(ev, driver);
+            }
 
             return CreatedAtAction(nameof(GetById), new { id = ev.Id }, ev);
         }
@@ -207,6 +215,84 @@ namespace MzansiFleet.Api.Controllers
             _context.DriverBehaviorEvents.Remove(ev);
             await _context.SaveChangesAsync();
             return NoContent();
+        }
+
+        private static bool IsNegativeBehaviorEvent(DriverBehaviorEvent ev)
+        {
+            return string.Equals(ev.EventType, "Negative", StringComparison.OrdinalIgnoreCase)
+                || ev.PointsImpact < 0;
+        }
+
+        private async Task NotifyOwnersOfBehaviorAlertAsync(DriverBehaviorEvent ev, DriverProfile driver)
+        {
+            try
+            {
+                var tenantId = ev.TenantId ?? driver.User?.TenantId;
+                if (!tenantId.HasValue || tenantId.Value == Guid.Empty) return;
+
+                var ownerUserIds = await _context.Users
+                    .Where(u => u.TenantId == tenantId.Value && u.Role == "Owner" && u.IsActive)
+                    .Select(u => u.Id)
+                    .Distinct()
+                    .ToListAsync();
+
+                if (ownerUserIds.Count == 0) return;
+
+                var eventDate = ev.EventDate == default ? DateTime.UtcNow : ev.EventDate;
+                var driverName = string.IsNullOrWhiteSpace(driver.Name) ? "Driver" : driver.Name;
+                var severity = string.IsNullOrWhiteSpace(ev.Severity) ? "Medium" : ev.Severity;
+                var vehicleText = string.Empty;
+
+                if (ev.VehicleId.HasValue)
+                {
+                    var vehicle = await _context.Vehicles
+                        .Where(v => v.Id == ev.VehicleId.Value)
+                        .Select(v => new { v.Registration, v.Make, v.Model })
+                        .FirstOrDefaultAsync();
+
+                    if (vehicle != null)
+                    {
+                        var reg = string.IsNullOrWhiteSpace(vehicle.Registration) ? "Unknown" : vehicle.Registration;
+                        vehicleText = $" Vehicle: {reg} ({vehicle.Make} {vehicle.Model}).";
+                    }
+                }
+
+                var subject = $"Driver behavior alert: {driverName} – {ev.Category}";
+                var body =
+                    $"A behavior alert was recorded for {driverName}. " +
+                    $"Category: {ev.Category}. Severity: {severity}. " +
+                    $"Date: {eventDate:yyyy-MM-dd HH:mm} UTC." +
+                    vehicleText +
+                    (string.IsNullOrWhiteSpace(ev.Description) ? string.Empty : $" Details: {ev.Description}");
+
+                foreach (var ownerUserId in ownerUserIds)
+                {
+                    _context.Messages.Add(new Message
+                    {
+                        Id = Guid.NewGuid(),
+                        SenderType = "System",
+                        SenderId = ev.ReportedById,
+                        SenderName = "Traffic Monitoring System",
+                        RecipientType = "Owner",
+                        RecipientId = ownerUserId,
+                        Subject = subject,
+                        Content = body,
+                        MessageType = "Alert",
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow,
+                        RelatedEntityType = "DriverBehavior",
+                        RelatedEntityId = ev.Id,
+                        IsDeletedBySender = false,
+                        IsDeletedByReceiver = false,
+                    });
+                }
+
+                await _context.SaveChangesAsync();
+            }
+            catch
+            {
+                // Messaging should never block behavior-event recording.
+            }
         }
     }
 

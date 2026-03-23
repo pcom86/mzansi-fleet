@@ -455,6 +455,31 @@ try
         CREATE INDEX IF NOT EXISTS ""IX_RouteVehicles_RouteId"" ON ""RouteVehicles""(""RouteId"");
     ";
     fixRouteVehiclesCmd.ExecuteNonQuery();
+
+    using var fixTaxiRankTripsCmd = conn.CreateCommand();
+    fixTaxiRankTripsCmd.CommandText = @"
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'TaxiRankTrips' AND column_name = 'CompletedAt'
+            ) THEN
+                ALTER TABLE ""TaxiRankTrips"" ADD COLUMN ""CompletedAt"" TIMESTAMP WITH TIME ZONE;
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'TaxiRankTrips' AND column_name = 'Latitude'
+            ) THEN
+                ALTER TABLE ""TaxiRankTrips"" ADD COLUMN ""Latitude"" NUMERIC;
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'TaxiRankTrips' AND column_name = 'Longitude'
+            ) THEN
+                ALTER TABLE ""TaxiRankTrips"" ADD COLUMN ""Longitude"" NUMERIC;
+            END IF;
+        END $$;
+    ";
+    fixTaxiRankTripsCmd.ExecuteNonQuery();
     
     logger.LogInformation("Taxi rank tables created successfully");
 
@@ -548,6 +573,59 @@ try
     ";
     queueCmd.ExecuteNonQuery();
     logger.LogInformation("DailyTaxiQueues table ensured");
+
+    // Create QueueBookings table for rider queue bookings
+    using var queueBookingCmd = conn.CreateCommand();
+    queueBookingCmd.CommandText = @"
+        CREATE TABLE IF NOT EXISTS ""QueueBookings"" (
+            ""Id"" UUID PRIMARY KEY,
+            ""UserId"" UUID NOT NULL,
+            ""QueueEntryId"" UUID NOT NULL,
+            ""TaxiRankId"" UUID NOT NULL,
+            ""RouteId"" UUID,
+            ""VehicleId"" UUID NOT NULL,
+            ""SeatsBooked"" INTEGER NOT NULL DEFAULT 1,
+            ""TotalFare"" NUMERIC NOT NULL DEFAULT 0,
+            ""PaymentMethod"" TEXT NOT NULL DEFAULT 'EFT',
+            ""PaymentStatus"" TEXT NOT NULL DEFAULT 'Pending',
+            ""PaymentReference"" TEXT,
+            ""BankReference"" TEXT,
+            ""PaidAt"" TIMESTAMP WITH TIME ZONE,
+            ""EftAccountName"" TEXT,
+            ""EftBank"" TEXT,
+            ""EftAccountNumber"" TEXT,
+            ""EftBranchCode"" TEXT,
+            ""Status"" TEXT NOT NULL DEFAULT 'Pending',
+            ""Notes"" TEXT,
+            ""CancellationReason"" TEXT,
+            ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            ""UpdatedAt"" TIMESTAMP WITH TIME ZONE,
+            ""ConfirmedAt"" TIMESTAMP WITH TIME ZONE,
+            ""CancelledAt"" TIMESTAMP WITH TIME ZONE
+        );
+        CREATE INDEX IF NOT EXISTS ""IX_QueueBookings_QueueEntryId"" ON ""QueueBookings""(""QueueEntryId"");
+        CREATE INDEX IF NOT EXISTS ""IX_QueueBookings_UserId"" ON ""QueueBookings""(""UserId"");
+        CREATE INDEX IF NOT EXISTS ""IX_QueueBookings_TaxiRankId"" ON ""QueueBookings""(""TaxiRankId"");
+    ";
+    queueBookingCmd.ExecuteNonQuery();
+    logger.LogInformation("QueueBookings table ensured");
+
+    // Create QueueBookingPassengers table for rider passenger details
+    using var queueBookingPassengersCmd = conn.CreateCommand();
+    queueBookingPassengersCmd.CommandText = @"
+        CREATE TABLE IF NOT EXISTS ""QueueBookingPassengers"" (
+            ""Id"" UUID PRIMARY KEY,
+            ""QueueBookingId"" UUID NOT NULL,
+            ""Name"" TEXT NOT NULL,
+            ""ContactNumber"" TEXT NOT NULL,
+            ""Email"" TEXT,
+            ""Destination"" TEXT,
+            ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS ""IX_QueueBookingPassengers_QueueBookingId"" ON ""QueueBookingPassengers""(""QueueBookingId"");
+    ";
+    queueBookingPassengersCmd.ExecuteNonQuery();
+    logger.LogInformation("QueueBookingPassengers table ensured");
 
     // Create Messages table for messaging system
     using var messagesCmd = conn.CreateCommand();

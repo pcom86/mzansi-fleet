@@ -1,0 +1,12 @@
+﻿  Determining projects to restore...
+  All projects are up-to-date for restore.
+  MzansiFleet.Domain -> C:\Users\pcom8\repos\mzansi-fleet\backend\MzansiFleet.Domain\bin\Debug\net9.0\MzansiFleet.Domain.dll
+  MzansiFleet.Repository -> C:\Users\pcom8\repos\mzansi-fleet\backend\MzansiFleet.Repository\bin\Debug\net9.0\MzansiFleet.Repository.dll
+  MzansiFleet.Application -> C:\Users\pcom8\repos\mzansi-fleet\backend\MzansiFleet.Application\bin\Debug\net9.0\MzansiFleet.Application.dll
+  MzansiFleet.Api -> C:\Users\pcom8\repos\mzansi-fleet\backend\MzansiFleet.Api\bin\Debug\net9.0\MzansiFleet.Api.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:07.36

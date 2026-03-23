@@ -23,17 +23,172 @@ namespace MzansiFleet.Api.Controllers
             _logger = logger;
         }
 
+        // GET: api/DailyTaxiQueue/my-queue?driverId={id}&date=2026-03-19
+        [HttpGet("my-queue")]
+        public async Task<ActionResult> GetMyQueue([FromQuery] Guid driverId, [FromQuery] DateTime? date)
+        {
+            if (driverId == Guid.Empty)
+            {
+                return BadRequest(new { message = "driverId is required" });
+            }
+
+            var targetDate = DateTime.SpecifyKind((date ?? DateTime.UtcNow).Date, DateTimeKind.Utc);
+
+            var driver = await _context.DriverProfiles
+                .Where(d => d.Id == driverId)
+                .Select(d => new
+                {
+                    d.Id,
+                    d.Name,
+                    d.AssignedVehicleId,
+                })
+                .FirstOrDefaultAsync();
+
+            if (driver == null)
+            {
+                return NotFound(new { message = "Driver not found" });
+            }
+
+            var vehicleId = driver.AssignedVehicleId;
+            if (!vehicleId.HasValue || vehicleId.Value == Guid.Empty)
+            {
+                return Ok(new
+                {
+                    date = targetDate,
+                    driverId,
+                    driverName = driver.Name,
+                    message = "No vehicle assigned to this driver",
+                    queue = Array.Empty<object>(),
+                });
+            }
+
+            var vehicleRegistration = await _context.Vehicles
+                .Where(v => v.Id == vehicleId.Value)
+                .Select(v => v.Registration)
+                .FirstOrDefaultAsync();
+
+            // Prefer today's queue entry for this vehicle to determine active rank/route context.
+            var myEntry = await _context.DailyTaxiQueues
+                .Where(q => q.VehicleId == vehicleId.Value
+                    && q.QueueDate == targetDate
+                    && q.Status != "Removed")
+                .OrderByDescending(q => q.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            Guid? rankId = myEntry?.TaxiRankId;
+            Guid? routeId = myEntry?.RouteId;
+
+            // Fallback to active vehicle-rank assignment if no queue entry exists yet today.
+            if (!rankId.HasValue || rankId.Value == Guid.Empty)
+            {
+                rankId = await _context.VehicleTaxiRanks
+                    .Where(vr => vr.VehicleId == vehicleId.Value && vr.IsActive)
+                    .OrderByDescending(vr => vr.AssignedDate)
+                    .Select(vr => (Guid?)vr.TaxiRankId)
+                    .FirstOrDefaultAsync();
+            }
+
+            if (!rankId.HasValue || rankId.Value == Guid.Empty)
+            {
+                return Ok(new
+                {
+                    date = targetDate,
+                    driverId,
+                    driverName = driver.Name,
+                    vehicleId,
+                    vehicleRegistration,
+                    message = "Vehicle is not linked to any taxi rank",
+                    queue = Array.Empty<object>(),
+                });
+            }
+
+            var rankName = await _context.TaxiRanks
+                .Where(r => r.Id == rankId.Value)
+                .Select(r => r.Name)
+                .FirstOrDefaultAsync();
+
+            var routeName = routeId.HasValue
+                ? await _context.Routes
+                    .Where(r => r.Id == routeId.Value)
+                    .Select(r => r.RouteName)
+                    .FirstOrDefaultAsync()
+                : null;
+
+            var queue = await _context.DailyTaxiQueues
+                .Where(q => q.TaxiRankId == rankId.Value && q.QueueDate == targetDate && q.Status != "Removed")
+                .OrderBy(q => q.Status == "Dispatched" ? 1 : 0)
+                .ThenBy(q => q.QueuePosition)
+                .Select(q => new
+                {
+                    q.Id,
+                    q.VehicleId,
+                    vehicleRegistration = q.Vehicle != null ? q.Vehicle.Registration : null,
+                    vehicleMake = q.Vehicle != null ? q.Vehicle.Make : null,
+                    vehicleModel = q.Vehicle != null ? q.Vehicle.Model : null,
+                    q.DriverId,
+                    driverName = q.Driver != null
+                        ? q.Driver.Name
+                        : _context.DriverProfiles
+                            .Where(d => d.AssignedVehicleId == q.VehicleId)
+                            .Select(d => d.Name)
+                            .FirstOrDefault(),
+                    q.RouteId,
+                    routeName = q.Route != null ? q.Route.RouteName : null,
+                    q.QueuePosition,
+                    q.Status,
+                    joinedAt = q.JoinedAt.ToString(@"hh\:mm"),
+                    q.EstimatedDepartureTime,
+                    q.DepartedAt,
+                    q.PassengerCount,
+                    tripId = _context.TaxiRankTrips
+                        .Where(t => t.VehicleId == q.VehicleId
+                            && t.TaxiRankId == q.TaxiRankId
+                            && t.DepartureTime.Date == targetDate
+                            && t.Status != "Completed"
+                            && t.Status != "Cancelled")
+                        .OrderByDescending(t => t.DepartureTime)
+                        .Select(t => (Guid?)t.Id)
+                        .FirstOrDefault(),
+                    isMine = q.VehicleId == vehicleId.Value,
+                })
+                .ToListAsync();
+
+            var mine = queue.FirstOrDefault(q => q.isMine);
+
+            return Ok(new
+            {
+                date = targetDate,
+                driverId,
+                driverName = driver.Name,
+                vehicleId,
+                vehicleRegistration,
+                rankId,
+                rankName,
+                routeId,
+                routeName,
+                myQueueEntryId = mine?.Id,
+                myTripId = mine?.tripId,
+                myPosition = mine?.QueuePosition,
+                myStatus = mine?.Status,
+                totalVehicles = queue.Count,
+                waitingCount = queue.Count(q => q.Status == "Waiting" || q.Status == "Loading"),
+                dispatchedCount = queue.Count(q => q.Status == "Dispatched"),
+                queue,
+            });
+        }
+
         // GET: api/DailyTaxiQueue/by-rank/{rankId}?date=2026-03-13
         [HttpGet("by-rank/{rankId}")]
         public async Task<ActionResult> GetQueueByRank(Guid rankId, [FromQuery] DateTime? date)
         {
-            var targetDate = (date ?? DateTime.UtcNow).Date;
+            var targetDate = DateTime.SpecifyKind((date ?? DateTime.UtcNow).Date, DateTimeKind.Utc);
 
             var queue = await _context.DailyTaxiQueues
                 .Where(q => q.TaxiRankId == rankId && q.QueueDate == targetDate)
                 .Include(q => q.Vehicle)
                 .Include(q => q.Driver)
                 .Include(q => q.Route)
+                .Include(q => q.DispatchedByUser)
                 .OrderBy(q => q.Status == "Dispatched" ? 1 : 0) // active first
                 .ThenBy(q => q.QueuePosition)
                 .Select(q => new
@@ -49,16 +204,37 @@ namespace MzansiFleet.Api.Controllers
                     vehicleModel = q.Vehicle != null ? q.Vehicle.Model : null,
                     vehicleCapacity = q.Vehicle != null ? q.Vehicle.Capacity : (int?)null,
                     q.DriverId,
-                    driverName = q.Driver != null ? q.Driver.Name : null,
-                    driverPhone = q.Driver != null ? q.Driver.Phone : null,
+                    driverName = q.Driver != null
+                        ? q.Driver.Name
+                        : _context.DriverProfiles
+                            .Where(d => d.AssignedVehicleId == q.VehicleId)
+                            .Select(d => d.Name)
+                            .FirstOrDefault(),
+                    driverPhone = q.Driver != null
+                        ? q.Driver.Phone
+                        : _context.DriverProfiles
+                            .Where(d => d.AssignedVehicleId == q.VehicleId)
+                            .Select(d => d.Phone)
+                            .FirstOrDefault(),
                     q.QueueDate,
                     q.QueuePosition,
                     joinedAt = q.JoinedAt.ToString(@"hh\:mm"),
                     q.Status,
                     q.DepartedAt,
+                    q.EstimatedDepartureTime,
                     q.PassengerCount,
                     q.Notes,
                     q.CreatedAt,
+                    q.DispatchedByUserId,
+                    dispatchedByName = q.DispatchedByUser != null
+                        ? q.DispatchedByUser.FullName
+                        : null,
+                    tripId = _context.TaxiRankTrips
+                        .Where(t => t.VehicleId == q.VehicleId && t.TaxiRankId == q.TaxiRankId
+                            && t.DepartureTime.Date == targetDate)
+                        .OrderByDescending(t => t.DepartureTime)
+                        .Select(t => (Guid?)t.Id)
+                        .FirstOrDefault(),
                 })
                 .ToListAsync();
 
@@ -69,7 +245,7 @@ namespace MzansiFleet.Api.Controllers
         [HttpGet("by-route/{routeId}")]
         public async Task<ActionResult> GetQueueByRoute(Guid routeId, [FromQuery] DateTime? date)
         {
-            var targetDate = (date ?? DateTime.UtcNow).Date;
+            var targetDate = DateTime.SpecifyKind((date ?? DateTime.UtcNow).Date, DateTimeKind.Utc);
 
             var queue = await _context.DailyTaxiQueues
                 .Where(q => q.RouteId == routeId && q.QueueDate == targetDate && q.Status != "Removed")
@@ -88,13 +264,24 @@ namespace MzansiFleet.Api.Controllers
                     vehicleModel = q.Vehicle != null ? q.Vehicle.Model : null,
                     vehicleCapacity = q.Vehicle != null ? q.Vehicle.Capacity : (int?)null,
                     q.DriverId,
-                    driverName = q.Driver != null ? q.Driver.Name : null,
-                    driverPhone = q.Driver != null ? q.Driver.Phone : null,
+                    driverName = q.Driver != null
+                        ? q.Driver.Name
+                        : _context.DriverProfiles
+                            .Where(d => d.AssignedVehicleId == q.VehicleId)
+                            .Select(d => d.Name)
+                            .FirstOrDefault(),
+                    driverPhone = q.Driver != null
+                        ? q.Driver.Phone
+                        : _context.DriverProfiles
+                            .Where(d => d.AssignedVehicleId == q.VehicleId)
+                            .Select(d => d.Phone)
+                            .FirstOrDefault(),
                     q.QueueDate,
                     q.QueuePosition,
                     joinedAt = q.JoinedAt.ToString(@"hh\:mm"),
                     q.Status,
                     q.DepartedAt,
+                    q.EstimatedDepartureTime,
                     q.PassengerCount,
                     q.Notes,
                     q.CreatedAt,
@@ -140,6 +327,7 @@ namespace MzansiFleet.Api.Controllers
                 QueuePosition = maxPosition + 1,
                 JoinedAt = DateTime.UtcNow.TimeOfDay,
                 Status = "Waiting",
+                EstimatedDepartureTime = dto.EstimatedDepartureTime,
                 Notes = dto.Notes,
                 CreatedAt = DateTime.UtcNow,
             };
@@ -171,6 +359,7 @@ namespace MzansiFleet.Api.Controllers
                 created.QueuePosition,
                 joinedAt = created.JoinedAt.ToString(@"hh\:mm"),
                 created.Status,
+                created.EstimatedDepartureTime,
                 created.Notes,
                 created.CreatedAt,
             });
@@ -213,13 +402,44 @@ namespace MzansiFleet.Api.Controllers
                 // Auto-calculate passenger count from list if provided, otherwise use explicit count
                 var passengerList = dto?.Passengers;
                 entry.PassengerCount = passengerList?.Count > 0 ? passengerList.Count : (dto?.PassengerCount ?? 0);
+
+                // Validate passenger count against vehicle capacity
+                var vehicle = await _context.Vehicles.FindAsync(entry.VehicleId);
+                if (vehicle?.Capacity > 0 && entry.PassengerCount > vehicle.Capacity)
+                {
+                    _logger.LogWarning($"[Queue] Passenger count {entry.PassengerCount} exceeds vehicle capacity {vehicle.Capacity} for vehicle {entry.VehicleId}");
+                }
                 
                 entry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
                 _logger.LogInformation($"[Queue] Updated entry: PassengerCount={entry.PassengerCount}, DispatchedByUserId={entry.DispatchedByUserId}");
 
+                // Ensure a driver is attached to the dispatch so earnings reflect on the driver profile.
+                Guid? resolvedDriverId = entry.DriverId;
+                if (!resolvedDriverId.HasValue || resolvedDriverId.Value == Guid.Empty)
+                {
+                    resolvedDriverId = await _context.DriverProfiles
+                        .Where(d => d.AssignedVehicleId == entry.VehicleId)
+                        .Select(d => (Guid?)d.Id)
+                        .FirstOrDefaultAsync();
+
+                    if (resolvedDriverId.HasValue && resolvedDriverId.Value != Guid.Empty)
+                    {
+                        entry.DriverId = resolvedDriverId;
+                        _logger.LogInformation($"[Queue] Auto-resolved driver {resolvedDriverId} for vehicle {entry.VehicleId}");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"[Queue] No driver found for vehicle {entry.VehicleId}; trip earnings will not be linked to a driver profile");
+                    }
+                }
+
                 await _context.SaveChangesAsync();
                 _logger.LogInformation($"[Queue] Saved entry status changes");
+
+                // Track earnings for response
+                decimal _totalFare = 0;
+                bool _earningsRecorded = false;
 
                 // Create TaxiRankTrip and store passengers if passenger list provided
                 if (passengerList?.Count > 0)
@@ -239,7 +459,7 @@ namespace MzansiFleet.Api.Controllers
                             Id = Guid.NewGuid(),
                             TenantId = entry.TenantId,
                             VehicleId = entry.VehicleId,
-                            DriverId = entry.DriverId,
+                            DriverId = resolvedDriverId,
                             TaxiRankId = entry.TaxiRankId,
                             MarshalId = dto?.DispatchedByUserId, // Marshal who dispatched
                             DepartureStation = taxiRank?.Name ?? "Unknown",
@@ -256,14 +476,22 @@ namespace MzansiFleet.Api.Controllers
                         _context.TaxiRankTrips.Add(trip);
                         _logger.LogInformation($"[Queue] Created TaxiRankTrip: {trip.Id}");
 
-                        // Add passengers to the trip
-                        foreach (var passengerDto in passengerList.Where(p => !string.IsNullOrWhiteSpace(p.Name)))
+                        // Resolve a valid UserId for the FK: marshal → driver → skip passengers if neither exists
+                        var resolvedUserId = dto?.DispatchedByUserId ?? entry.DriverId;
+                        if (resolvedUserId == null || resolvedUserId == Guid.Empty)
                         {
-                            var passenger = new TripPassenger
+                            _logger.LogWarning("[Queue] No valid UserId for passengers – skipping TripPassenger rows");
+                        }
+                        else
+                        {
+                            // Add passengers to the trip
+                            foreach (var passengerDto in passengerList.Where(p => !string.IsNullOrWhiteSpace(p.Name)))
                             {
-                                Id = Guid.NewGuid(),
-                                TaxiRankTripId = trip.Id,
-                                UserId = dto?.DispatchedByUserId ?? Guid.Empty, // Marshal as placeholder
+                                var passenger = new TripPassenger
+                                {
+                                    Id = Guid.NewGuid(),
+                                    TaxiRankTripId = trip.Id,
+                                    UserId = resolvedUserId.Value,
                                 PassengerName = passengerDto.Name,
                                 PassengerPhone = passengerDto.Contact,
                                 NextOfKinName = passengerDto.NextOfKinName,
@@ -272,24 +500,25 @@ namespace MzansiFleet.Api.Controllers
                                 ArrivalStation = passengerDto.Destination ?? route?.DestinationStation ?? "Unknown",
                                 Amount = passengerDto.Amount,
                                 PaymentMethod = passengerDto.PaymentMethod ?? "Cash",
-                                BoardedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
-                            };
-                            _context.TripPassengers.Add(passenger);
+                                    BoardedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                                };
+                                _context.TripPassengers.Add(passenger);
+                            }
                         }
 
                         await _context.SaveChangesAsync();
                         _logger.LogInformation($"[Queue] Stored {passengerList.Count} passengers for trip {trip.Id}");
 
                         // Add vehicle earnings from trip fare
-                        var totalFare = passengerList.Sum(p => p.Amount);
-                        if (totalFare > 0)
+                        _totalFare = passengerList.Sum(p => p.Amount);
+                        if (_totalFare > 0)
                         {
                             var earnings = new VehicleEarnings
                             {
                                 Id = Guid.NewGuid(),
                                 VehicleId = entry.VehicleId,
-                                Date = DateTime.UtcNow,
-                                Amount = totalFare,
+                                Date = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+                                Amount = _totalFare,
                                 Source = "Trip",
                                 Description = $"Taxi rank trip from {taxiRank?.Name} to {route?.DestinationStation} - {passengerList.Count} passengers",
                                 Period = "Daily",
@@ -297,21 +526,93 @@ namespace MzansiFleet.Api.Controllers
                             };
                             _context.VehicleEarnings.Add(earnings);
                             await _context.SaveChangesAsync();
-                            _logger.LogInformation($"[Queue] Added vehicle earnings: R{totalFare} for vehicle {entry.VehicleId}");
+                            _earningsRecorded = true;
+                            _logger.LogInformation($"[Queue] Added vehicle earnings: R{_totalFare} for vehicle {entry.VehicleId}");
                         }
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, $"[Queue] Error creating trip/passengers/earnings: {ex.Message}");
-                        // Don't fail the dispatch if passenger storage fails
+                        // Detach any failed entities so subsequent SaveChanges doesn't re-attempt them
+                        foreach (var failedEntry in _context.ChangeTracker.Entries()
+                            .Where(e => e.State == EntityState.Added))
+                        {
+                            failedEntry.State = EntityState.Detached;
+                        }
+                    }
+                }
+                else if (dto?.FareAmount > 0)
+                {
+                    // Quick dispatch with fare info — create trip record without individual passengers
+                    try
+                    {
+                        var route = entry.RouteId.HasValue 
+                            ? await _context.Routes.FindAsync(entry.RouteId.Value) 
+                            : null;
+                        var taxiRank = await _context.TaxiRanks.FindAsync(entry.TaxiRankId);
+
+                        var quickFare = dto.FareAmount ?? 0;
+
+                        var trip = new TaxiRankTrip
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = entry.TenantId,
+                            VehicleId = entry.VehicleId,
+                            DriverId = resolvedDriverId,
+                            TaxiRankId = entry.TaxiRankId,
+                            MarshalId = dto.DispatchedByUserId,
+                            DepartureStation = taxiRank?.Name ?? "Unknown",
+                            DestinationStation = route?.DestinationStation ?? "Unknown",
+                            DepartureTime = DateTime.UtcNow,
+                            TotalAmount = quickFare,
+                            TotalCosts = 0,
+                            NetAmount = quickFare,
+                            Status = "Departed",
+                            PassengerCount = entry.PassengerCount,
+                            CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                        };
+
+                        _context.TaxiRankTrips.Add(trip);
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation($"[Queue] Created quick-dispatch TaxiRankTrip: {trip.Id}, Fare: R{quickFare}");
+
+                        // Record vehicle earnings
+                        if (quickFare > 0)
+                        {
+                            _totalFare = quickFare;
+                            var earnings = new VehicleEarnings
+                            {
+                                Id = Guid.NewGuid(),
+                                VehicleId = entry.VehicleId,
+                                Date = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
+                                Amount = quickFare,
+                                Source = "Trip",
+                                Description = $"Quick dispatch from {taxiRank?.Name} to {route?.DestinationStation} - {entry.PassengerCount} passengers",
+                                Period = "Daily",
+                                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                            };
+                            _context.VehicleEarnings.Add(earnings);
+                            await _context.SaveChangesAsync();
+                            _earningsRecorded = true;
+                            _logger.LogInformation($"[Queue] Added quick-dispatch earnings: R{quickFare} for vehicle {entry.VehicleId}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"[Queue] Error creating quick-dispatch trip/earnings: {ex.Message}");
+                        foreach (var failedEntry in _context.ChangeTracker.Entries()
+                            .Where(e => e.State == EntityState.Added))
+                        {
+                            failedEntry.State = EntityState.Detached;
+                        }
                     }
                 }
 
-                // Shift remaining vehicles up by 1 - handle null RouteId and QueueDate gracefully
+                // Shift remaining vehicles up by 1 - handle null RouteId gracefully
                 var remaining = await _context.DailyTaxiQueues
                     .Where(q => q.TaxiRankId == entry.TaxiRankId
                         && (entry.RouteId == null || q.RouteId == entry.RouteId)
-                        && (entry.QueueDate == null || q.QueueDate == entry.QueueDate)
+                        && q.QueueDate == entry.QueueDate
                         && q.QueuePosition > entry.QueuePosition
                         && q.Status != "Dispatched" && q.Status != "Removed")
                     .OrderBy(q => q.QueuePosition)
@@ -329,12 +630,412 @@ namespace MzansiFleet.Api.Controllers
                 await _context.SaveChangesAsync();
                 _logger.LogInformation($"[Queue] Successfully dispatched vehicle {id}");
 
-                return Ok(new { message = "Vehicle dispatched successfully", id = entry.Id });
+                return Ok(new
+                {
+                    message = "Vehicle dispatched successfully",
+                    id = entry.Id,
+                    totalFare = _totalFare,
+                    passengerCount = entry.PassengerCount,
+                    earningsRecorded = _earningsRecorded
+                });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"[Queue] Error dispatching vehicle {id}: {ex.Message}");
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
+        // GET: api/DailyTaxiQueue/{id}/trip-details
+        [HttpGet("{id}/trip-details")]
+        public async Task<ActionResult<object>> GetQueueTripDetails(Guid id)
+        {
+            try
+            {
+                var queueEntry = await _context.DailyTaxiQueues
+                    .Include(q => q.Vehicle)
+                    .Include(q => q.Driver)
+                    .Include(q => q.Route)
+                    .Include(q => q.TaxiRank)
+                    .FirstOrDefaultAsync(q => q.Id == id);
+
+                if (queueEntry == null)
+                    return NotFound(new { message = "Queue entry not found" });
+
+                if (queueEntry.Status != "Dispatched")
+                    return BadRequest(new { message = "Trip details are only available for dispatched vehicles" });
+
+                // Resolve driver via fallback if needed
+                string driverName = queueEntry.Driver?.Name;
+                string driverPhone = queueEntry.Driver?.Phone;
+                if (string.IsNullOrEmpty(driverName))
+                {
+                    var fallbackDriver = await _context.DriverProfiles
+                        .FirstOrDefaultAsync(d => d.AssignedVehicleId == queueEntry.VehicleId);
+                    if (fallbackDriver != null)
+                    {
+                        driverName = fallbackDriver.Name;
+                        driverPhone = fallbackDriver.Phone;
+                    }
+                }
+
+                // Find the associated trip
+                var trip = await _context.TaxiRankTrips
+                    .Include(t => t.Vehicle)
+                    .Include(t => t.Driver)
+                    .Include(t => t.Marshal)
+                    .Include(t => t.TaxiRank)
+                    .FirstOrDefaultAsync(t => t.VehicleId == queueEntry.VehicleId 
+                        && t.TaxiRankId == queueEntry.TaxiRankId
+                        && t.DepartureTime.Date == queueEntry.QueueDate
+                        && t.Status != "Completed"
+                        && t.Status != "Cancelled");
+
+                if (trip == null)
+                    return NotFound(new { message = "No active trip found for this queue entry" });
+
+                // Use trip driver if queue entry driver was null
+                var tripDriverName = trip.Driver?.Name ?? driverName;
+                var tripDriverPhone = trip.Driver?.Phone ?? driverPhone;
+
+                // Get passengers for this trip
+                var passengers = await _context.TripPassengers
+                    .Where(p => p.TaxiRankTripId == trip.Id)
+                    .OrderBy(p => p.SeatNumber ?? 999)
+                    .ToListAsync();
+
+                // Get costs for this trip
+                var costs = await _context.TripCosts
+                    .Where(c => c.TaxiRankTripId == trip.Id)
+                    .OrderByDescending(c => c.CreatedAt)
+                    .ToListAsync();
+
+                var result = new
+                {
+                    QueueEntry = new
+                    {
+                        queueEntry.Id,
+                        queueEntry.QueuePosition,
+                        queueEntry.Status,
+                        queueEntry.JoinedAt,
+                        queueEntry.DepartedAt,
+                        queueEntry.EstimatedDepartureTime,
+                        queueEntry.PassengerCount,
+                        queueEntry.Notes,
+                        queueEntry.QueueDate,
+                        Vehicle = queueEntry.Vehicle != null ? new
+                        {
+                            queueEntry.Vehicle.Id,
+                            queueEntry.Vehicle.Make,
+                            queueEntry.Vehicle.Model,
+                            queueEntry.Vehicle.Registration,
+                            queueEntry.Vehicle.Type,
+                            queueEntry.Vehicle.Capacity
+                        } : null,
+                        DriverName = driverName,
+                        DriverPhone = driverPhone,
+                        Driver = new
+                        {
+                            name = driverName,
+                            phone = driverPhone
+                        },
+                        Route = queueEntry.Route != null ? new
+                        {
+                            queueEntry.Route.Id,
+                            queueEntry.Route.RouteName,
+                            queueEntry.Route.DepartureStation,
+                            queueEntry.Route.DestinationStation
+                        } : null,
+                        TaxiRank = queueEntry.TaxiRank != null ? new
+                        {
+                            queueEntry.TaxiRank.Id,
+                            queueEntry.TaxiRank.Name,
+                            queueEntry.TaxiRank.Code,
+                            queueEntry.TaxiRank.Address,
+                            queueEntry.TaxiRank.City,
+                            queueEntry.TaxiRank.Province
+                        } : null
+                    },
+                    Trip = new
+                    {
+                        trip.Id,
+                        trip.TenantId,
+                        trip.VehicleId,
+                        trip.DriverId,
+                        trip.MarshalId,
+                        trip.TaxiRankId,
+                        trip.DepartureStation,
+                        trip.DestinationStation,
+                        trip.DepartureTime,
+                        trip.ArrivalTime,
+                        trip.Status,
+                        trip.PassengerCount,
+                        trip.TotalAmount,
+                        trip.TotalCosts,
+                        trip.NetAmount,
+                        trip.Notes,
+                        trip.CompletedAt,
+                        trip.Latitude,
+                        trip.Longitude,
+                        trip.CreatedAt,
+                        trip.UpdatedAt,
+                        DriverName = tripDriverName,
+                        DriverPhone = tripDriverPhone,
+                        Driver = new { name = tripDriverName, phone = tripDriverPhone }
+                    },
+                    Passengers = passengers.Select(p => new
+                    {
+                        p.Id,
+                        p.TaxiRankTripId,
+                        p.UserId,
+                        p.PassengerName,
+                        p.PassengerPhone,
+                        p.DepartureStation,
+                        p.ArrivalStation,
+                        p.Amount,
+                        p.PaymentMethod,
+                        p.PaymentReference,
+                        p.SeatNumber,
+                        p.BoardedAt,
+                        p.Notes
+                    }).ToList(),
+                    Costs = costs.Select(c => new
+                    {
+                        c.Id,
+                        c.TaxiRankTripId,
+                        c.AddedByDriverId,
+                        c.Category,
+                        c.Amount,
+                        c.Description,
+                        c.ReceiptNumber,
+                        c.CreatedAt
+                    }).ToList(),
+                    Summary = new
+                    {
+                        TotalPassengers = passengers.Count,
+                        TotalEarnings = passengers.Sum(p => p.Amount),
+                        CashEarnings = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Cash").Sum(p => p.Amount),
+                        CardEarnings = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Card").Sum(p => p.Amount),
+                        TotalCosts = costs.Sum(c => c.Amount),
+                        NetEarnings = passengers.Sum(p => p.Amount) - costs.Sum(c => c.Amount)
+                    }
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Queue] Error getting trip details for queue entry {id}: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
+            }
+        }
+
+        // PUT: api/DailyTaxiQueue/{id}/complete-trip
+        [HttpPut("{id}/complete-trip")]
+        public async Task<ActionResult> CompleteQueueTrip(Guid id, [FromBody] CompleteQueueTripDto dto)
+        {
+            try
+            {
+                _logger.LogInformation($"[Queue] CompleteQueueTrip called with id: {id}, dto: {System.Text.Json.JsonSerializer.Serialize(dto)}");
+
+                var queueEntry = await _context.DailyTaxiQueues.FindAsync(id);
+                if (queueEntry == null)
+                    return NotFound(new { message = "Queue entry not found" });
+
+                if (queueEntry.Status != "Dispatched")
+                    return BadRequest(new { message = "Only dispatched trips can be completed" });
+
+                // Find the associated trip
+                var trip = await _context.TaxiRankTrips
+                    .FirstOrDefaultAsync(t => t.VehicleId == queueEntry.VehicleId 
+                        && t.TaxiRankId == queueEntry.TaxiRankId
+                        && t.DepartureTime.Date == queueEntry.QueueDate
+                        && t.Status != "Completed"
+                        && t.Status != "Cancelled");
+
+                if (trip == null)
+                    return NotFound(new { message = "No active trip found for this queue entry" });
+
+                // Driver authorization check
+                if (dto.CompletedByDriverId.HasValue && dto.CompletedByDriverId.Value != Guid.Empty)
+                {
+                    if (!trip.DriverId.HasValue || trip.DriverId.Value == Guid.Empty)
+                    {
+                        return BadRequest(new { message = "This trip has no assigned driver" });
+                    }
+
+                    if (trip.DriverId.Value != dto.CompletedByDriverId.Value)
+                    {
+                        return Forbid();
+                    }
+                }
+
+                var completedAt = dto.CompletedAt.HasValue
+                    ? (dto.CompletedAt.Value.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(dto.CompletedAt.Value, DateTimeKind.Utc)
+                        : dto.CompletedAt.Value.ToUniversalTime())
+                    : DateTime.UtcNow;
+
+                // Update trip status and completion details
+                trip.Status = "Completed";
+                trip.ArrivalTime = completedAt;
+                trip.CompletedAt = completedAt;
+                trip.Latitude = dto.Latitude;
+                trip.Longitude = dto.Longitude;
+                trip.Notes = string.IsNullOrEmpty(dto.Notes) ? trip.Notes : dto.Notes;
+                trip.UpdatedAt = completedAt;
+
+                // Update queue entry status
+                queueEntry.Status = "Completed";
+                queueEntry.UpdatedAt = completedAt;
+
+                // Get actual passengers and finalize earnings
+                var passengers = await _context.TripPassengers
+                    .Where(p => p.TaxiRankTripId == trip.Id)
+                    .ToListAsync();
+
+                var cashTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Cash").Sum(p => p.Amount);
+                var cardTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Card").Sum(p => p.Amount);
+                var totalEarnings = passengers.Sum(p => p.Amount);
+
+                // Update vehicle earnings record
+                var routeName = $"{trip.DepartureStation} → {trip.DestinationStation}";
+                var earnings = await _context.VehicleEarnings
+                    .Where(e => e.VehicleId == trip.VehicleId &&
+                               e.Date.Date == trip.DepartureTime.Date &&
+                               e.Source == routeName)
+                    .OrderByDescending(e => e.CreatedAt)
+                    .FirstOrDefaultAsync();
+
+                if (earnings != null)
+                {
+                    earnings.Amount = totalEarnings;
+                    earnings.Description = $"Completed trip: {routeName} | {passengers.Count} passengers | Cash: R{cashTotal}, Card: R{cardTotal}";
+                    _context.VehicleEarnings.Update(earnings);
+                }
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation($"[Queue] Successfully completed trip {trip.Id} for queue entry {id}");
+
+                return Ok(new
+                {
+                    message = "Trip completed successfully",
+                    tripId = trip.Id,
+                    queueEntryId = queueEntry.Id,
+                    completedAt,
+                    totalEarnings,
+                    passengerCount = passengers.Count,
+                    cashEarnings = cashTotal,
+                    cardEarnings = cardTotal
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Queue] Error completing trip for queue entry {id}: {ex.Message}");
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
+        // GET: api/DailyTaxiQueue/driver/{driverId}/dispatched-trips
+        [HttpGet("driver/{driverId}/dispatched-trips")]
+        public async Task<ActionResult<IEnumerable<object>>> GetDriverDispatchedTrips(Guid driverId, [FromQuery] DateTime? date)
+        {
+            try
+            {
+                var query = _context.DailyTaxiQueues
+                    .Include(q => q.Vehicle)
+                    .Include(q => q.Driver)
+                    .Include(q => q.TaxiRank)
+                    .Include(q => q.Route)
+                    .Where(q => q.DriverId == driverId && q.Status == "Dispatched");
+
+                if (date.HasValue)
+                {
+                    var targetDate = DateTime.SpecifyKind(date.Value.Date, DateTimeKind.Utc);
+                    query = query.Where(q => q.QueueDate == targetDate);
+                }
+
+                var dispatchedEntries = await query
+                    .OrderByDescending(q => q.DepartedAt)
+                    .ToListAsync();
+
+                // Build fallback driver lookup for entries missing Driver nav prop
+                var vehicleIdsNoDriver = dispatchedEntries.Where(e => e.Driver == null).Select(e => e.VehicleId).Distinct().ToList();
+                var driverNameLookup = new Dictionary<Guid, string>();
+                var driverPhoneLookup = new Dictionary<Guid, string>();
+                if (vehicleIdsNoDriver.Any())
+                {
+                    var fallbacks = await _context.DriverProfiles
+                        .Where(d => d.AssignedVehicleId != null && vehicleIdsNoDriver.Contains(d.AssignedVehicleId.Value))
+                        .Select(d => new { VehicleId = d.AssignedVehicleId!.Value, d.Name, d.Phone })
+                        .ToListAsync();
+                    foreach (var fb in fallbacks)
+                    {
+                        driverNameLookup[fb.VehicleId] = fb.Name;
+                        driverPhoneLookup[fb.VehicleId] = fb.Phone;
+                    }
+                }
+
+                var result = dispatchedEntries.Select(entry =>
+                {
+                    var dn = entry.Driver?.Name;
+                    var dp = entry.Driver?.Phone;
+                    if (string.IsNullOrEmpty(dn))
+                    {
+                        driverNameLookup.TryGetValue(entry.VehicleId, out dn);
+                        driverPhoneLookup.TryGetValue(entry.VehicleId, out dp);
+                    }
+
+                    return new
+                    {
+                        entry.Id,
+                        entry.QueuePosition,
+                        entry.DepartedAt,
+                        entry.EstimatedDepartureTime,
+                        entry.PassengerCount,
+                        entry.Notes,
+                        DriverName = dn,
+                        DriverPhone = dp,
+                        Driver = dn != null ? new { name = dn, phone = dp } : null,
+                        Vehicle = entry.Vehicle != null ? new
+                        {
+                            entry.Vehicle.Id,
+                            entry.Vehicle.Make,
+                            entry.Vehicle.Model,
+                            entry.Vehicle.Registration,
+                            entry.Vehicle.Type,
+                            entry.Vehicle.Capacity
+                        } : null,
+                        TaxiRank = entry.TaxiRank != null ? new
+                        {
+                            entry.TaxiRank.Id,
+                            entry.TaxiRank.Name,
+                            entry.TaxiRank.Code,
+                            entry.TaxiRank.Address,
+                            entry.TaxiRank.City,
+                            entry.TaxiRank.Province
+                        } : null,
+                        Route = entry.Route != null ? new
+                        {
+                            entry.Route.Id,
+                            entry.Route.RouteName,
+                            entry.Route.DepartureStation,
+                            entry.Route.DestinationStation,
+                            entry.Route.StandardFare
+                        } : null,
+                        CanComplete = true,
+                        TripDetailsUrl = $"/api/DailyTaxiQueue/{entry.Id}/trip-details",
+                        CompleteTripUrl = $"/api/DailyTaxiQueue/{entry.Id}/complete-trip"
+                    };
+                });
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Queue] Error getting dispatched trips for driver {driverId}: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
             }
         }
 
@@ -355,11 +1056,11 @@ namespace MzansiFleet.Api.Controllers
             if (oldPos == newPos)
                 return Ok(new { message = "No change" });
 
-            // Get all active entries for the same rank/route/date - handle null values gracefully
+            // Get all active entries for the same rank/route/date - handle null RouteId gracefully
             var activeEntries = await _context.DailyTaxiQueues
                 .Where(q => q.TaxiRankId == entry.TaxiRankId
                     && (entry.RouteId == null || q.RouteId == entry.RouteId)
-                    && (entry.QueueDate == null || q.QueueDate == entry.QueueDate)
+                    && q.QueueDate == entry.QueueDate
                     && q.Status != "Dispatched" && q.Status != "Removed")
                 .OrderBy(q => q.QueuePosition)
                 .ToListAsync();
@@ -424,11 +1125,11 @@ namespace MzansiFleet.Api.Controllers
                 await _context.SaveChangesAsync();
                 _logger.LogInformation($"[Queue] Updated entry status to Removed");
 
-                // Shift remaining vehicles up - handle null RouteId and QueueDate gracefully
+                // Shift remaining vehicles up - handle null RouteId gracefully
                 var remaining = await _context.DailyTaxiQueues
                     .Where(q => q.TaxiRankId == entry.TaxiRankId
                         && (entry.RouteId == null || q.RouteId == entry.RouteId)
-                        && (entry.QueueDate == null || q.QueueDate == entry.QueueDate)
+                        && q.QueueDate == entry.QueueDate
                         && q.QueuePosition > oldPos
                         && q.Status != "Dispatched" && q.Status != "Removed")
                     .OrderBy(q => q.QueuePosition)
@@ -535,6 +1236,7 @@ namespace MzansiFleet.Api.Controllers
         public Guid? DriverId { get; set; }
         public Guid TenantId { get; set; }
         public DateTime? QueueDate { get; set; }
+        public DateTime? EstimatedDepartureTime { get; set; }
         public string? Notes { get; set; }
     }
 
@@ -542,6 +1244,7 @@ namespace MzansiFleet.Api.Controllers
     {
         public Guid? DispatchedByUserId { get; set; }
         public int? PassengerCount { get; set; }
+        public decimal? FareAmount { get; set; } // Total fare for quick dispatch
         public List<PassengerDto>? Passengers { get; set; }
     }
 
@@ -556,6 +1259,167 @@ namespace MzansiFleet.Api.Controllers
         public string? PaymentMethod { get; set; } = "Cash";
     }
 
+        // GET: api/DailyTaxiQueue/owner/{tenantId}/rank-queues?date=2026-03-20
+        [HttpGet("owner/{tenantId}/rank-queues")]
+        public async Task<ActionResult> GetOwnerRankQueues(Guid tenantId, [FromQuery] DateTime? date)
+        {
+            try
+            {
+                var targetDate = DateTime.SpecifyKind((date ?? DateTime.UtcNow).Date, DateTimeKind.Utc);
+
+                // 1. Get all vehicles owned by this tenant
+                var ownerVehicleIds = await _context.Vehicles
+                    .Where(v => v.TenantId == tenantId)
+                    .Select(v => v.Id)
+                    .ToListAsync();
+
+                if (!ownerVehicleIds.Any())
+                    return Ok(new { date = targetDate, tenantId, ranks = Array.Empty<object>(), message = "No vehicles found for this owner" });
+
+                // 2. Find all taxi rank IDs where owner vehicles are assigned
+                var rankIdsFromJunction = await _context.VehicleTaxiRanks
+                    .Where(vr => ownerVehicleIds.Contains(vr.VehicleId) && vr.IsActive)
+                    .Select(vr => vr.TaxiRankId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var rankIdsFromVehicle = await _context.Vehicles
+                    .Where(v => v.TenantId == tenantId && v.TaxiRankId.HasValue && v.TaxiRankId.Value != Guid.Empty)
+                    .Select(v => v.TaxiRankId!.Value)
+                    .Distinct()
+                    .ToListAsync();
+
+                var allRankIds = rankIdsFromJunction.Union(rankIdsFromVehicle).Distinct().ToList();
+
+                if (!allRankIds.Any())
+                    return Ok(new { date = targetDate, tenantId, ranks = Array.Empty<object>(), message = "No vehicles assigned to any taxi rank" });
+
+                // 3. Get rank details
+                var ranks = await _context.TaxiRanks
+                    .Where(r => allRankIds.Contains(r.Id))
+                    .Select(r => new { r.Id, r.Name, r.Code, r.Address, r.City, r.Province })
+                    .ToListAsync();
+
+                // 4. Get queue entries for today across all relevant ranks
+                var queueEntries = await _context.DailyTaxiQueues
+                    .Where(q => allRankIds.Contains(q.TaxiRankId) && q.QueueDate == targetDate && q.Status != "Removed")
+                    .Include(q => q.Vehicle)
+                    .Include(q => q.Driver)
+                    .Include(q => q.Route)
+                    .OrderBy(q => q.TaxiRankId)
+                    .ThenBy(q => q.Status == "Dispatched" ? 1 : 0)
+                    .ThenBy(q => q.QueuePosition)
+                    .ToListAsync();
+
+                // 5. Get active trips for owner vehicles
+                var activeTrips = await _context.TaxiRankTrips
+                    .Where(t => ownerVehicleIds.Contains(t.VehicleId)
+                        && t.Status != "Completed" && t.Status != "Cancelled")
+                    .Include(t => t.Vehicle)
+                    .Include(t => t.Driver)
+                    .Include(t => t.Passengers)
+                    .OrderByDescending(t => t.DepartureTime)
+                    .ToListAsync();
+
+                // 6. Build driver name fallback lookup
+                var vehicleIdsNoDriver = queueEntries
+                    .Where(e => e.Driver == null)
+                    .Select(e => e.VehicleId)
+                    .Distinct()
+                    .ToList();
+                var driverLookup = new Dictionary<Guid, (string Name, string Phone)>();
+                if (vehicleIdsNoDriver.Any())
+                {
+                    var fallbacks = await _context.DriverProfiles
+                        .Where(d => d.AssignedVehicleId != null && vehicleIdsNoDriver.Contains(d.AssignedVehicleId.Value))
+                        .Select(d => new { VehicleId = d.AssignedVehicleId!.Value, d.Name, d.Phone })
+                        .ToListAsync();
+                    foreach (var fb in fallbacks)
+                        driverLookup[fb.VehicleId] = (fb.Name, fb.Phone);
+                }
+
+                var ownerVehicleIdSet = new HashSet<Guid>(ownerVehicleIds);
+
+                // 7. Group by rank
+                var result = ranks.Select(rank =>
+                {
+                    var rankQueue = queueEntries
+                        .Where(q => q.TaxiRankId == rank.Id)
+                        .Select(q =>
+                        {
+                            var dn = q.Driver?.Name ?? (driverLookup.ContainsKey(q.VehicleId) ? driverLookup[q.VehicleId].Name : null);
+                            var dp = q.Driver?.Phone ?? (driverLookup.ContainsKey(q.VehicleId) ? driverLookup[q.VehicleId].Phone : null);
+                            return new
+                            {
+                                q.Id,
+                                q.VehicleId,
+                                vehicleRegistration = q.Vehicle?.Registration,
+                                vehicleMake = q.Vehicle?.Make,
+                                vehicleModel = q.Vehicle?.Model,
+                                vehicleCapacity = q.Vehicle?.Capacity,
+                                q.DriverId,
+                                driverName = dn,
+                                driverPhone = dp,
+                                q.RouteId,
+                                routeName = q.Route?.RouteName,
+                                q.QueuePosition,
+                                q.Status,
+                                joinedAt = q.JoinedAt.ToString(@"hh\:mm"),
+                                q.DepartedAt,
+                                q.PassengerCount,
+                                isOwnerVehicle = ownerVehicleIdSet.Contains(q.VehicleId),
+                            };
+                        })
+                        .ToList();
+
+                    var rankTrips = activeTrips
+                        .Where(t => t.TaxiRankId == rank.Id)
+                        .Select(t => new
+                        {
+                            t.Id,
+                            t.VehicleId,
+                            vehicleRegistration = t.Vehicle?.Registration,
+                            t.DriverId,
+                            driverName = t.Driver?.Name ?? (driverLookup.ContainsKey(t.VehicleId) ? driverLookup[t.VehicleId].Name : null),
+                            t.DepartureStation,
+                            t.DestinationStation,
+                            t.DepartureTime,
+                            t.Status,
+                            t.PassengerCount,
+                            t.TotalAmount,
+                            passengerList = t.Passengers.Select(p => new { p.PassengerName, p.Amount, p.PaymentMethod }).ToList(),
+                            isOwnerVehicle = ownerVehicleIdSet.Contains(t.VehicleId),
+                        })
+                        .ToList();
+
+                    return new
+                    {
+                        rank = rank,
+                        totalInQueue = rankQueue.Count,
+                        waitingCount = rankQueue.Count(q => q.Status == "Waiting" || q.Status == "Loading"),
+                        dispatchedCount = rankQueue.Count(q => q.Status == "Dispatched"),
+                        ownerVehiclesInQueue = rankQueue.Count(q => q.isOwnerVehicle),
+                        queue = rankQueue,
+                        activeTrips = rankTrips,
+                    };
+                }).ToList();
+
+                return Ok(new
+                {
+                    date = targetDate,
+                    tenantId,
+                    totalVehicles = ownerVehicleIds.Count,
+                    totalRanks = result.Count,
+                    ranks = result,
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Queue] Error fetching owner rank queues for tenant {tenantId}");
+                return StatusCode(500, new { message = "Failed to load rank queues", error = ex.Message });
+            }
+        }
+
     public class ReorderDto
     {
         public int NewPosition { get; set; }
@@ -564,6 +1428,15 @@ namespace MzansiFleet.Api.Controllers
     public class AssignRouteDto
     {
         public Guid? RouteId { get; set; }
+    }
+
+    public class CompleteQueueTripDto
+    {
+        public string Notes { get; set; } = string.Empty;
+        public Guid? CompletedByDriverId { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
     }
 
     }

@@ -5,6 +5,7 @@ import {
   Dimensions, StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
@@ -17,6 +18,14 @@ import client from '../api/client';
 
 const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
 
+function normalizeQueueStatus(status) {
+  const value = String(status || '').toLowerCase();
+  if (value === 'dispatched') return 'dispatched';
+  if (value === 'completed' || value === 'arrived') return 'completed';
+  if (value === 'removed') return 'removed';
+  return 'waiting';
+}
+
 export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const { user } = useAuth();
   const { theme } = useAppTheme();
@@ -25,6 +34,8 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const styles = useMemo(() => createStyles(c), [c]);
 
   const passedRank = navRoute?.params?.rank;
+  const passedDispatchEntry = navRoute?.params?.dispatchEntry;
+  const openDispatchModal = navRoute?.params?.openDispatchModal;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,6 +45,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const [queue, setQueue] = useState([]);
   const [stats, setStats] = useState(null);
   const [vehicles, setVehicles] = useState([]);
+  const [drivers, setDrivers] = useState([]);
 
   const [activeView, setActiveView] = useState('queue');
   const [showFilters, setShowFilters] = useState(true);
@@ -44,6 +56,8 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const [addVehicleId, setAddVehicleId] = useState(null);
   const [addDriverId, setAddDriverId] = useState(null);
   const [addNotes, setAddNotes] = useState('');
+  const [addEstimatedDeparture, setAddEstimatedDeparture] = useState('');
+  const [showETDPicker, setShowETDPicker] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
 
   // Route assign modal
@@ -55,9 +69,139 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   const [dispatchModalVisible, setDispatchModalVisible] = useState(false);
   const [dispatchEntry, setDispatchEntry] = useState(null);
   const [dispatchPax, setDispatchPax] = useState('');
+  const [dispatchDefaultFare, setDispatchDefaultFare] = useState('');
+  const [dispatchFare, setDispatchFare] = useState('');
   const [dispatchBusy, setDispatchBusy] = useState(false);
   const [includePassengerList, setIncludePassengerList] = useState(false);
-  const [passengerList, setPassengerList] = useState([{ name: '', contact: '' }]);
+  const [passengerList, setPassengerList] = useState([{
+    name: '', contact: '', nextOfKinName: '', nextOfKinContact: '',
+    destination: '', amount: '', paymentMethod: 'Cash',
+  }]);
+  const [destPickerOpen, setDestPickerOpen] = useState(false);
+  const [destPickerIdx, setDestPickerIdx] = useState(-1);
+
+  // Dispatched filters & detail modal
+  const [queueDate, setQueueDate] = useState(() => {
+    const d = new Date(); return d.toISOString().split('T')[0];
+  });
+  const [dispatchFilterReg, setDispatchFilterReg] = useState('');
+  const [dispatchFilterBy, setDispatchFilterBy] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tripDetailVisible, setTripDetailVisible] = useState(false);
+  const [tripDetailEntry, setTripDetailEntry] = useState(null);
+  const [tripDetailData, setTripDetailData] = useState(null);
+  const [tripDetailLoading, setTripDetailLoading] = useState(false);
+
+  const dispatchRoute = useMemo(() => routes.find(r => r.id === dispatchEntry?.routeId), [routes, dispatchEntry?.routeId]);
+
+  const dispatchRouteStops = useMemo(() => {
+    const sourceRoutes = dispatchRoute ? [dispatchRoute] : routes;
+    const allStops = [];
+    const seen = new Set();
+    for (const route of sourceRoutes) {
+      const rawStops = route?.stops ?? route?.Stops;
+      if (!Array.isArray(rawStops)) continue;
+      for (const stop of rawStops) {
+        const name = stop.stopName ?? stop.StopName ?? '';
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        allStops.push({
+          stopName: name,
+          stopOrder: stop.stopOrder ?? stop.StopOrder ?? 0,
+          fareFromOrigin: stop.fareFromOrigin ?? stop.FareFromOrigin,
+          routeFare: route.standardFare ?? route.StandardFare ?? 0,
+        });
+      }
+    }
+    return allStops.sort((a, b) => (a.stopOrder || 0) - (b.stopOrder || 0));
+  }, [dispatchRoute, routes]);
+
+  const dispatchDestinations = useMemo(() => {
+    const sourceRoutes = dispatchRoute ? [dispatchRoute] : routes;
+    const items = dispatchRouteStops.map(s => ({
+      name: s.stopName,
+      fare: s.fareFromOrigin ?? s.routeFare ?? 0,
+    }));
+    const seen = new Set(items.map(i => i.name));
+    for (const route of sourceRoutes) {
+      const dest = route.destinationStation ?? route.DestinationStation;
+      const fare = route.standardFare ?? route.StandardFare ?? 0;
+      if (dest && !seen.has(dest)) {
+        seen.add(dest);
+        items.push({ name: dest, fare });
+      }
+    }
+    return items;
+  }, [dispatchRoute, routes, dispatchRouteStops]);
+
+  const getFareForDestination = useCallback((destination) => {
+    const stop = dispatchRouteStops.find(s => s.stopName === destination);
+    if (stop?.fareFromOrigin != null) return stop.fareFromOrigin;
+    if (stop?.routeFare != null) return stop.routeFare;
+    if (dispatchRoute) return dispatchRoute.standardFare ?? dispatchRoute.StandardFare ?? 0;
+    return 0;
+  }, [dispatchRoute, dispatchRouteStops]);
+
+  const passengerSummary = useMemo(() => {
+    const valid = includePassengerList
+      ? passengerList.filter(p => p.name.trim() || p.contact.trim())
+      : [];
+    const totalFare = includePassengerList
+      ? valid.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
+      : (parseFloat(dispatchFare) || 0);
+    const count = includePassengerList
+      ? valid.length
+      : (dispatchPax ? parseInt(dispatchPax, 10) || 0 : 0);
+    return { count, totalFare };
+  }, [includePassengerList, passengerList, dispatchPax, dispatchFare]);
+
+  // Handle opening dispatch modal from navigation parameters
+  useEffect(() => {
+    if (openDispatchModal && passedDispatchEntry && queue.length > 0) {
+      const entry = queue.find(q => q.id === passedDispatchEntry.id);
+      if (entry) {
+        setDispatchEntry(entry);
+        setDispatchModalVisible(true);
+      }
+    }
+  }, [openDispatchModal, passedDispatchEntry, queue]);
+
+  useEffect(() => {
+    if (!dispatchModalVisible) return;
+
+    const defaultDestination = dispatchDestinations[0]?.name || '';
+    const defaultFare = getFareForDestination(defaultDestination);
+    setPassengerList([{
+      name: '', contact: '', nextOfKinName: '', nextOfKinContact: '',
+      destination: defaultDestination,
+      amount: defaultFare ? String(defaultFare) : '',
+      paymentMethod: 'Cash',
+    }]);
+    setDispatchPax('');
+    setDispatchDefaultFare('');
+    setDispatchFare('');
+    setIncludePassengerList(false);
+  }, [dispatchModalVisible, dispatchDestinations, getFareForDestination]);
+
+  // ── Derived date helpers ────────────────────────────────────────────
+
+  const isToday = queueDate === new Date().toISOString().split('T')[0];
+  const queueDateLabel = (() => {
+    const d = new Date(queueDate + 'T00:00:00');
+    if (isToday) return 'Today';
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    if (queueDate === yesterday.toISOString().split('T')[0]) return 'Yesterday';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  })();
+
+  function shiftDate(days) {
+    const d = new Date(queueDate + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    const today = new Date().toISOString().split('T')[0];
+    const next = d.toISOString().split('T')[0];
+    if (next > today) return;
+    setQueueDate(next);
+  }
 
   // ── Data Loading ──────────────────────────────────────────────────────
 
@@ -73,11 +217,13 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       }
       if (!activeRank?.id) { setLoading(false); return; }
 
-      const [queueData, statsData, routesResp, vehiclesResp] = await Promise.all([
-        getQueueByRank(activeRank.id).catch(() => []),
+      const dateParam = isToday ? undefined : queueDate;
+      const [queueData, statsData, routesResp, vehiclesResp, driversResp] = await Promise.all([
+        getQueueByRank(activeRank.id, dateParam).catch(() => []),
         getQueueStats(activeRank.id).catch(() => null),
         client.get(`/Routes?taxiRankId=${activeRank.id}`).catch(() => ({ data: [] })),
         fetchVehiclesByRankId(activeRank.id).catch(() => ({ data: [] })),
+        client.get(user?.tenantId ? `/Drivers?tenantId=${user.tenantId}` : '/Drivers').catch(() => ({ data: [] })),
       ]);
 
       setQueue(queueData || []);
@@ -106,6 +252,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
 
       setRoutes(filteredRoutes);
       setVehicles(vehiclesResp.data || vehiclesResp || []);
+      setDrivers(driversResp?.data || driversResp || []);
     } catch (err) {
       console.warn('Queue load error', err?.message);
       if (!silent) Alert.alert('Error', 'Failed to load queue data');
@@ -113,7 +260,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [rank, user]);
+  }, [rank, user, queueDate, isToday]);
 
   useEffect(() => { loadData(); }, [loadData]);
   const onRefresh = () => { setRefreshing(true); loadData(true); };
@@ -121,21 +268,49 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   // ── Derived data ──────────────────────────────────────────────────────
 
   const filteredQueue = useMemo(() => {
-    if (!selectedRouteId) return queue.filter(q => q.status !== 'Removed');
-    return queue.filter(q => (q.routeId === selectedRouteId || !q.routeId) && q.status !== 'Removed');
+    if (!selectedRouteId) return queue.filter(q => normalizeQueueStatus(q.status) !== 'removed');
+    return queue.filter(q => (q.routeId === selectedRouteId || !q.routeId) && normalizeQueueStatus(q.status) !== 'removed');
   }, [queue, selectedRouteId]);
 
-  const activeQueue = filteredQueue.filter(q => q.status !== 'Dispatched');
-  const dispatchedQueue = filteredQueue.filter(q => q.status === 'Dispatched');
+  const activeQueue = filteredQueue.filter(q => normalizeQueueStatus(q.status) === 'waiting');
+  const dispatchedQueue = filteredQueue.filter(q => normalizeQueueStatus(q.status) === 'dispatched');
+  const completedQueue = filteredQueue.filter(q => normalizeQueueStatus(q.status) === 'completed');
+
+  const filteredDispatched = useMemo(() => {
+    let list = dispatchedQueue;
+    if (dispatchFilterReg.trim()) {
+      const term = dispatchFilterReg.trim().toLowerCase();
+      list = list.filter(q => (q.vehicleRegistration || '').toLowerCase().includes(term));
+    }
+    if (dispatchFilterBy.trim()) {
+      const term = dispatchFilterBy.trim().toLowerCase();
+      list = list.filter(q => (q.dispatchedByName || '').toLowerCase().includes(term));
+    }
+    return list.sort((a, b) => new Date(b.departedAt || 0) - new Date(a.departedAt || 0));
+  }, [dispatchedQueue, dispatchFilterReg, dispatchFilterBy]);
+
+  const filteredCompleted = useMemo(() => {
+    let list = completedQueue;
+    if (dispatchFilterReg.trim()) {
+      const term = dispatchFilterReg.trim().toLowerCase();
+      list = list.filter(q => (q.vehicleRegistration || '').toLowerCase().includes(term));
+    }
+    if (dispatchFilterBy.trim()) {
+      const term = dispatchFilterBy.trim().toLowerCase();
+      list = list.filter(q => (q.dispatchedByName || '').toLowerCase().includes(term));
+    }
+    return list.sort((a, b) => new Date(b.completedAt || b.updatedAt || b.departedAt || 0) - new Date(a.completedAt || a.updatedAt || a.departedAt || 0));
+  }, [completedQueue, dispatchFilterReg, dispatchFilterBy]);
 
   const queuedVehicleIds = new Set(
-    queue.filter(q => q.status !== 'Dispatched' && q.status !== 'Removed').map(q => q.vehicleId)
+    queue.filter(q => normalizeQueueStatus(q.status) === 'waiting').map(q => q.vehicleId)
   );
 
   // ── Handlers ──────────────────────────────────────────────────────────
 
   async function handleAddToQueue() {
     if (!addVehicleId) return Alert.alert('Required', 'Please select a vehicle');
+    if (!addRouteId) return Alert.alert('Required', 'Please select a route');
     setAddBusy(true);
     try {
       await addToQueue({
@@ -144,6 +319,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
         vehicleId: addVehicleId,
         driverId: addDriverId,
         tenantId: user?.tenantId,
+        estimatedDepartureTime: addEstimatedDeparture ? new Date(`${new Date().toISOString().split('T')[0]}T${addEstimatedDeparture}`).toISOString() : undefined,
         notes: addNotes || undefined,
       });
       setAddModalVisible(false);
@@ -151,6 +327,8 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       setAddRouteId(null);
       setAddDriverId(null);
       setAddNotes('');
+      setAddEstimatedDeparture('');
+      setShowETDPicker(false);
       loadData(true);
     } catch (err) {
       Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to add vehicle');
@@ -161,6 +339,30 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
 
   async function handleDispatch() {
     if (!dispatchEntry) return;
+
+    // Validate passenger count against vehicle capacity
+    const capacity = dispatchEntry.vehicleCapacity;
+    const paxCount = includePassengerList
+      ? passengerList.filter(p => p.name.trim() || p.contact.trim()).length
+      : (dispatchPax ? parseInt(dispatchPax, 10) : 0);
+
+    if (capacity && paxCount > capacity) {
+      Alert.alert(
+        'Over Capacity',
+        `This vehicle can carry ${capacity} passengers but you entered ${paxCount}.\n\nDo you want to proceed anyway?`,
+        [
+          { text: 'Go Back', style: 'cancel' },
+          { text: 'Proceed', style: 'destructive', onPress: () => executeDispatch() },
+        ],
+      );
+      return;
+    }
+
+    executeDispatch();
+  }
+
+  async function executeDispatch() {
+    if (!dispatchEntry) return;
     setDispatchBusy(true);
     try {
       const validPassengers = includePassengerList
@@ -170,17 +372,40 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
         ? validPassengers.length
         : (dispatchPax ? parseInt(dispatchPax, 10) : undefined);
 
-      await dispatchVehicle(dispatchEntry.id, {
+      const passengersPayload = validPassengers.map(p => ({
+        name: p.name?.trim(),
+        contact: p.contact?.trim(),
+        nextOfKinName: p.nextOfKinName?.trim(),
+        nextOfKinContact: p.nextOfKinContact?.trim(),
+        destination: p.destination,
+        amount: parseFloat(p.amount) || 0,
+        paymentMethod: p.paymentMethod || 'Cash',
+      }));
+
+      const resp = await dispatchVehicle(dispatchEntry.id, {
         dispatchedByUserId: user?.userId || user?.id,
         passengerCount: finalPassengerCount,
-        passengers: validPassengers.length > 0 ? validPassengers : undefined,
+        passengers: passengersPayload.length > 0 ? passengersPayload : undefined,
+        fareAmount: !includePassengerList && dispatchFare ? parseFloat(dispatchFare) : undefined,
       });
+      const reg = dispatchEntry.vehicleRegistration || 'Vehicle';
       setDispatchModalVisible(false);
       setDispatchEntry(null);
       setDispatchPax('');
+      setDispatchDefaultFare('');
+      setDispatchFare('');
       setIncludePassengerList(false);
-      setPassengerList([{ name: '', contact: '' }]);
+      setPassengerList([{ name: '', contact: '', nextOfKinName: '', nextOfKinContact: '', destination: '', amount: '', paymentMethod: 'Cash' }]);
       loadData(true);
+
+      // Show earnings confirmation
+      const data = resp?.data || resp;
+      if (data?.earningsRecorded && data?.totalFare > 0) {
+        Alert.alert(
+          'Dispatched',
+          `${reg} dispatched successfully.\n\nEarnings recorded: R${Number(data.totalFare).toFixed(2)}\nPassengers: ${data.passengerCount || 0}`,
+        );
+      }
     } catch (err) {
       Alert.alert('Error', err?.response?.data?.message || 'Failed to dispatch');
     } finally {
@@ -240,16 +465,76 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
     }
   }
 
+  async function handleViewTripDetail(entry) {
+    setTripDetailEntry(entry);
+    setTripDetailVisible(true);
+    setTripDetailData(null);
+    if (!entry.tripId) {
+      setTripDetailData({ noTrip: true });
+      return;
+    }
+    setTripDetailLoading(true);
+    try {
+      const [tripResp, paxResp] = await Promise.all([
+        client.get(`/TaxiRankTrips/${entry.tripId}`),
+        client.get(`/TaxiRankTrips/${entry.tripId}/passengers`),
+      ]);
+      setTripDetailData({
+        trip: tripResp.data,
+        passengers: paxResp.data || [],
+      });
+    } catch {
+      setTripDetailData({ error: true });
+    } finally {
+      setTripDetailLoading(false);
+    }
+  }
+
   // ── Sub-Views ─────────────────────────────────────────────────────────
 
   function QueueView() {
+    const renderHistorySection = (title, items, allItems, accentColor, emptyMessage, statusKey) => (
+      <>
+        <View style={styles.listHeader}>
+          <View style={[styles.listHeaderDot, { backgroundColor: accentColor }]} />
+          <Text style={[styles.listHeaderTxt, { color: c.text }]}>
+            {title} ({items.length})
+          </Text>
+          {items.length !== allItems.length ? (
+            <Text style={[styles.dfCountSub, { marginLeft: 6 }]}>of {allItems.length}</Text>
+          ) : null}
+        </View>
+
+        {allItems.length === 0 ? (
+          <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', paddingVertical: 12 }}>
+            {emptyMessage}
+          </Text>
+        ) : items.length === 0 ? (
+          <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', paddingVertical: 12 }}>
+            No {statusKey} vehicles match filters
+          </Text>
+        ) : (
+          items.map(entry => (
+            <DispatchedCard
+              key={entry.id}
+              entry={entry}
+              c={c}
+              styles={styles}
+              onPress={() => handleViewTripDetail(entry)}
+              variant={statusKey}
+            />
+          ))
+        )}
+      </>
+    );
+
     return (
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
       >
-        {activeQueue.length === 0 && dispatchedQueue.length === 0 ? (
+        {activeQueue.length === 0 && isToday ? (
           <View style={styles.emptyState}>
             <View style={[styles.emptyIcon, { backgroundColor: c.primary + '15' }]}>
               <Ionicons name="car-outline" size={40} color={c.primary} />
@@ -266,49 +551,154 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
               <Text style={styles.emptyBtnTxt}>Add Vehicle</Text>
             </TouchableOpacity>
           </View>
-        ) : (
+        ) : activeQueue.length > 0 ? (
           <>
-            {activeQueue.length > 0 && (
-              <>
-                <View style={styles.listHeader}>
-                  <View style={[styles.listHeaderDot, { backgroundColor: '#f59e0b' }]} />
-                  <Text style={[styles.listHeaderTxt, { color: c.text }]}>
-                    Waiting ({activeQueue.length})
-                  </Text>
-                </View>
-                {activeQueue.map((entry, idx) => (
-                  <QueueCard
-                    key={entry.id}
-                    entry={entry}
-                    isFirst={idx === 0}
-                    isLast={idx === activeQueue.length - 1}
-                    c={c}
-                    styles={styles}
-                    onDispatch={() => { setDispatchEntry(entry); setDispatchModalVisible(true); }}
-                    onRemove={() => handleRemove(entry)}
-                    onMoveUp={() => handleMoveUp(entry)}
-                    onMoveDown={() => handleMoveDown(entry)}
-                    onAssignRoute={() => { setRouteModalEntry(entry); setRouteModalVisible(true); }}
-                  />
-                ))}
-              </>
-            )}
-
-            {dispatchedQueue.length > 0 && (
-              <>
-                <View style={[styles.listHeader, { marginTop: 20 }]}>
-                  <View style={[styles.listHeaderDot, { backgroundColor: '#22c55e' }]} />
-                  <Text style={[styles.listHeaderTxt, { color: c.text }]}>
-                    Dispatched ({dispatchedQueue.length})
-                  </Text>
-                </View>
-                {dispatchedQueue.map(entry => (
-                  <DispatchedCard key={entry.id} entry={entry} c={c} styles={styles} />
-                ))}
-              </>
-            )}
+            <View style={styles.listHeader}>
+              <View style={[styles.listHeaderDot, { backgroundColor: '#f59e0b' }]} />
+              <Text style={[styles.listHeaderTxt, { color: c.text }]}>
+                Waiting ({activeQueue.length})
+              </Text>
+            </View>
+            {activeQueue.map((entry, idx) => (
+              <QueueCard
+                key={entry.id}
+                entry={entry}
+                isFirst={idx === 0}
+                isLast={idx === activeQueue.length - 1}
+                c={c}
+                styles={styles}
+                onDispatch={() => { setDispatchEntry(entry); setDispatchModalVisible(true); }}
+                onRemove={() => handleRemove(entry)}
+                onMoveUp={() => handleMoveUp(entry)}
+                onMoveDown={() => handleMoveDown(entry)}
+                onAssignRoute={() => { setRouteModalEntry(entry); setRouteModalVisible(true); }}
+              />
+            ))}
           </>
-        )}
+        ) : null}
+
+        {/* ── Trip history filter card ── */}
+        <View style={[styles.dfCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+          {/* Header strip */}
+          <View style={styles.dfHeader}>
+            <View style={styles.dfHeaderLeft}>
+              <View style={styles.dfHeaderIcon}>
+                <Ionicons name="checkmark-done" size={14} color="#fff" />
+              </View>
+              <Text style={styles.dfHeaderTitle}>Trip History</Text>
+              <View style={styles.dfCountBadge}>
+                <Text style={styles.dfCountTxt}>{filteredDispatched.length + filteredCompleted.length}</Text>
+              </View>
+              {(filteredDispatched.length + filteredCompleted.length) !== (dispatchedQueue.length + completedQueue.length) ? (
+                <Text style={styles.dfCountSub}>of {dispatchedQueue.length + completedQueue.length}</Text>
+              ) : null}
+            </View>
+            {(dispatchFilterReg || dispatchFilterBy) ? (
+              <TouchableOpacity
+                onPress={() => { setDispatchFilterReg(''); setDispatchFilterBy(''); }}
+                style={styles.dfResetBtn}
+              >
+                <Ionicons name="refresh" size={12} color="#fff" />
+                <Text style={styles.dfResetTxt}>Reset</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Date navigation row */}
+          <View style={[styles.dfDateRow, { borderBottomColor: c.border }]}>
+            <TouchableOpacity onPress={() => shiftDate(-1)} style={[styles.dfDateArrow, { backgroundColor: c.background }]}>
+              <Ionicons name="chevron-back" size={15} color={c.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                if (Platform.OS === 'web') {
+                  const input = window.prompt('Enter date (YYYY-MM-DD):', queueDate);
+                  if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
+                    const today = new Date().toISOString().split('T')[0];
+                    if (input <= today) setQueueDate(input);
+                  }
+                } else {
+                  setShowDatePicker(true);
+                }
+              }}
+              style={[styles.dfDatePill, { backgroundColor: isToday ? '#22c55e15' : c.primary + '10' }]}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="calendar" size={13} color={isToday ? '#22c55e' : c.primary} />
+              <Text style={[styles.dfDateTxt, { color: isToday ? '#22c55e' : c.primary }]}>{queueDateLabel}</Text>
+              {!isToday ? (
+                <TouchableOpacity
+                  onPress={(e) => { e.stopPropagation(); setQueueDate(new Date().toISOString().split('T')[0]); }}
+                  style={[styles.dfTodayBtn, { backgroundColor: c.primary }]}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={styles.dfTodayBtnTxt}>Today</Text>
+                </TouchableOpacity>
+              ) : null}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => shiftDate(1)}
+              style={[styles.dfDateArrow, { backgroundColor: c.background }]}
+              disabled={isToday}
+            >
+              <Ionicons name="chevron-forward" size={15} color={isToday ? c.border : c.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Native date picker (mobile only) */}
+          {showDatePicker ? (
+            <DateTimePicker
+              value={new Date(queueDate + 'T00:00:00')}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              maximumDate={new Date()}
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(Platform.OS === 'ios');
+                if (selectedDate) {
+                  setQueueDate(selectedDate.toISOString().split('T')[0]);
+                }
+              }}
+            />
+          ) : null}
+
+          {/* Search inputs */}
+          <View style={styles.dfSearchArea}>
+            <View style={[styles.dfSearchField, { backgroundColor: c.background, borderColor: c.border }]}>
+              <Ionicons name="car-sport-outline" size={14} color={dispatchFilterReg ? c.primary : c.textMuted} />
+              <TextInput
+                style={[styles.dfSearchInput, { color: c.text }]}
+                placeholder="Search registration..."
+                placeholderTextColor={c.textMuted}
+                value={dispatchFilterReg}
+                onChangeText={setDispatchFilterReg}
+                autoCapitalize="characters"
+              />
+              {dispatchFilterReg ? (
+                <TouchableOpacity onPress={() => setDispatchFilterReg('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={c.textMuted} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <View style={[styles.dfSearchField, { backgroundColor: c.background, borderColor: c.border }]}>
+              <Ionicons name="shield-outline" size={14} color={dispatchFilterBy ? '#8b5cf6' : c.textMuted} />
+              <TextInput
+                style={[styles.dfSearchInput, { color: c.text }]}
+                placeholder="Search marshal / admin..."
+                placeholderTextColor={c.textMuted}
+                value={dispatchFilterBy}
+                onChangeText={setDispatchFilterBy}
+              />
+              {dispatchFilterBy ? (
+                <TouchableOpacity onPress={() => setDispatchFilterBy('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={c.textMuted} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </View>
+
+        {renderHistorySection('Dispatched Queue', filteredDispatched, dispatchedQueue, '#22c55e', 'No dispatched vehicles for this date', 'dispatched')}
+        {renderHistorySection('Completed Queue', filteredCompleted, completedQueue, '#16a34a', 'No completed vehicles for this date', 'completed')}
       </ScrollView>
     );
   }
@@ -375,7 +765,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
           <View style={[styles.card, { backgroundColor: c.surface }]}>
             <Text style={[styles.cardTitle, { color: c.text }]}>Routes</Text>
             {routes.filter(r => r.isActive !== false).slice(0, 5).map(route => {
-              const count = queue.filter(q => q.routeId === route.id && q.status !== 'Removed' && q.status !== 'Dispatched').length;
+              const count = queue.filter(q => q.routeId === route.id && normalizeQueueStatus(q.status) === 'waiting').length;
               return (
                 <TouchableOpacity
                   key={route.id}
@@ -446,8 +836,8 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
             <Text style={[styles.cardEmpty, { color: c.textMuted }]}>No routes configured</Text>
           ) : (
             routes.filter(r => r.isActive !== false).map(route => {
-              const waiting = queue.filter(q => q.routeId === route.id && q.status !== 'Removed' && q.status !== 'Dispatched').length;
-              const dispatched = queue.filter(q => q.routeId === route.id && q.status === 'Dispatched').length;
+              const waiting = queue.filter(q => q.routeId === route.id && normalizeQueueStatus(q.status) === 'waiting').length;
+              const dispatched = queue.filter(q => q.routeId === route.id && normalizeQueueStatus(q.status) === 'dispatched').length;
               const total = waiting + dispatched;
               const pct = total > 0 ? Math.round((dispatched / total) * 100) : 0;
               return (
@@ -639,7 +1029,22 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                     return (
                       <TouchableOpacity key={v.id}
                         style={[styles.vehicleItem, { borderColor: sel ? c.primary : c.border, backgroundColor: sel ? c.primary + '08' : 'transparent' }]}
-                        onPress={() => setAddVehicleId(v.id)}
+                        onPress={() => {
+                          setAddVehicleId(v.id);
+                          // Auto-select driver assigned to this vehicle
+                          const assignedDriver = drivers.find(d => d.assignedVehicleId === v.id || d.AssignedVehicleId === v.id);
+                          setAddDriverId(assignedDriver?.id || null);
+                          // If route isn't explicitly chosen, auto-select the assigned route for this vehicle (if any)
+                          if (!addRouteId) {
+                            const assignedRoute = routes.find(r => (r.routeVehicles || []).some(rv => {
+                              const vehicleId = rv.vehicleId || rv.vehicle?.id;
+                              return vehicleId === v.id && rv.isActive !== false;
+                            }));
+                            if (assignedRoute) {
+                              setAddRouteId(assignedRoute.id);
+                            }
+                          }
+                        }}
                       >
                         <View style={[styles.vehicleItemIcon, { backgroundColor: sel ? c.primary + '20' : c.background }]}>
                           <Ionicons name="car-sport" size={16} color={sel ? c.primary : c.textMuted} />
@@ -657,6 +1062,62 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
                 )}
               </View>
 
+              <Text style={[styles.fieldLabel, { color: c.textMuted, marginTop: 16 }]}>Driver (optional)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
+                <TouchableOpacity style={[styles.chip, !addDriverId && styles.chipActive]} onPress={() => setAddDriverId(null)}>
+                  <Text style={[styles.chipTxt, !addDriverId && styles.chipTxtActive]}>None</Text>
+                </TouchableOpacity>
+                {drivers.filter(d => d.isActive !== false).map(d => (
+                  <TouchableOpacity key={d.id} style={[styles.chip, addDriverId === d.id && styles.chipActive]} onPress={() => setAddDriverId(d.id)}>
+                    <Text style={[styles.chipTxt, addDriverId === d.id && styles.chipTxtActive]} numberOfLines={1}>
+                      {d.name || d.Name || 'Driver'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={[styles.fieldLabel, { color: c.textMuted, marginTop: 16 }]}>Est. Departure Time (optional)</Text>
+              <TouchableOpacity
+                style={[styles.input, { borderColor: c.border, backgroundColor: c.background, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                onPress={() => {
+                  if (Platform.OS === 'web') {
+                    const t = window.prompt('Enter estimated departure time (HH:MM)', addEstimatedDeparture || '');
+                    if (t && /^\d{1,2}:\d{2}$/.test(t.trim())) setAddEstimatedDeparture(t.trim());
+                  } else {
+                    setShowETDPicker(true);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: addEstimatedDeparture ? c.text : c.textMuted, fontSize: 14 }}>
+                  {addEstimatedDeparture || 'Select time'}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {addEstimatedDeparture ? (
+                    <TouchableOpacity onPress={() => setAddEstimatedDeparture('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={16} color={c.textMuted} />
+                    </TouchableOpacity>
+                  ) : null}
+                  <Ionicons name="time-outline" size={16} color={c.primary} />
+                </View>
+              </TouchableOpacity>
+              {showETDPicker && (
+                <DateTimePicker
+                  value={addEstimatedDeparture ? new Date(`2000-01-01T${addEstimatedDeparture}:00`) : new Date()}
+                  mode="time"
+                  is24Hour={true}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(event, selectedDate) => {
+                    setShowETDPicker(Platform.OS === 'ios');
+                    if (selectedDate) {
+                      const hh = String(selectedDate.getHours()).padStart(2, '0');
+                      const mm = String(selectedDate.getMinutes()).padStart(2, '0');
+                      setAddEstimatedDeparture(`${hh}:${mm}`);
+                    }
+                  }}
+                />
+              )}
+
               <Text style={[styles.fieldLabel, { color: c.textMuted, marginTop: 16 }]}>Notes (optional)</Text>
               <TextInput
                 style={[styles.input, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
@@ -667,7 +1128,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
 
             {/* Footer */}
             <View style={[styles.modalFooter, { borderTopColor: c.border }]}>
-              <TouchableOpacity style={[styles.btnOutline, { borderColor: c.border }]} onPress={() => { setAddModalVisible(false); setAddVehicleId(null); setAddRouteId(null); setAddNotes(''); }}>
+              <TouchableOpacity style={[styles.btnOutline, { borderColor: c.border }]} onPress={() => { setAddModalVisible(false); setAddVehicleId(null); setAddRouteId(null); setAddDriverId(null); setAddNotes(''); setAddEstimatedDeparture(''); setShowETDPicker(false); }}>
                 <Text style={[styles.btnOutlineTxt, { color: c.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: c.primary }]} onPress={handleAddToQueue} disabled={addBusy}>
@@ -684,106 +1145,350 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       </Modal>
 
       {/* ══════════ Dispatch Modal ══════════ */}
-      <Modal visible={dispatchModalVisible} transparent animationType="fade" onRequestClose={() => setDispatchModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
-            {/* Header */}
-            <View style={[styles.modalHeader, { borderBottomColor: c.border }]}>
-              <View style={styles.modalHeaderLeft}>
-                <View style={[styles.modalIcon, { backgroundColor: '#22c55e15' }]}>
-                  <Ionicons name="send" size={18} color="#22c55e" />
+      <Modal visible={dispatchModalVisible} transparent animationType="slide" onRequestClose={() => setDispatchModalVisible(false)}>
+        <View style={styles.dispatchOverlay}>
+          <View style={[styles.dispatchModalCard, { backgroundColor: c.surface }]}>
+            {/* ── Header ── */}
+            <View style={styles.dispatchHeader}>
+              <View style={styles.dispatchHeaderLeft}>
+                <View style={styles.dispatchHeaderIcon}>
+                  <Ionicons name="send" size={16} color="#fff" />
                 </View>
-                <Text style={[styles.modalTitle, { color: c.text }]}>Dispatch Vehicle</Text>
+                <View>
+                  <Text style={styles.dispatchHeaderTitle}>Dispatch Vehicle</Text>
+                  {dispatchEntry && (
+                    <Text style={[styles.dispatchHeaderSub, { color: c.textMuted }]}>
+                      {dispatchEntry.vehicleRegistration} · #{dispatchEntry.queuePosition} · {dispatchEntry.driverName || 'No driver'}{dispatchEntry.vehicleCapacity ? ` · ${dispatchEntry.vehicleCapacity} seats` : ''}
+                    </Text>
+                  )}
+                </View>
               </View>
-              <TouchableOpacity onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); }} style={[styles.modalClose, { backgroundColor: c.background }]}>
-                <Ionicons name="close" size={18} color={c.textMuted} />
+              <TouchableOpacity onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); }} hitSlop={12}>
+                <Ionicons name="close-circle" size={28} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
-            {/* Body */}
-            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyPad} keyboardShouldPersistTaps="handled">
-              {dispatchEntry && (
-                <View style={[styles.dispatchPreview, { borderColor: c.border, backgroundColor: c.background }]}>
-                  <View style={[styles.dispatchPreviewIcon, { backgroundColor: c.primary + '15' }]}>
-                    <Ionicons name="car-sport" size={20} color={c.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.dispatchPreviewReg, { color: c.text }]}>{dispatchEntry.vehicleRegistration}</Text>
-                    <Text style={[styles.dispatchPreviewMeta, { color: c.textMuted }]}>
-                      #{dispatchEntry.queuePosition} · {dispatchEntry.driverName || 'No driver'}
-                    </Text>
-                  </View>
-                </View>
+            {/* ── Live Totals Bar ── */}
+            <View style={[styles.totalBar, { backgroundColor: c.primary + '10' }]}>
+              <View style={styles.totalBarItem}>
+                <Ionicons name="people" size={16} color={c.primary} />
+                <Text style={[styles.totalBarLabel, { color: c.textMuted }]}>Passengers</Text>
+                <Text style={[styles.totalBarValue, { color: c.text }]}>{passengerSummary.count}</Text>
+              </View>
+              <View style={[styles.totalBarDivider, { backgroundColor: c.border }]} />
+              <View style={styles.totalBarItem}>
+                <Ionicons name="cash" size={16} color="#22c55e" />
+                <Text style={[styles.totalBarLabel, { color: c.textMuted }]}>Total Fare</Text>
+                <Text style={[styles.totalBarValue, { color: '#22c55e' }]}>R {passengerSummary.totalFare.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            {/* ── Body ── */}
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ padding: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+
+              {!includePassengerList && (
+                <>
+                  <Text style={[styles.dFieldLabel, { color: c.textMuted }]}>Quick Passenger Count</Text>
+                  <TextInput
+                    style={[styles.dInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
+                    value={dispatchPax}
+                    onChangeText={t => {
+                      setDispatchPax(t);
+                      const count = parseInt(t, 10) || 0;
+                      const fare = parseFloat(dispatchDefaultFare) || 0;
+                      if (fare > 0 && count > 0) setDispatchFare((count * fare).toFixed(2));
+                      else if (count === 0) setDispatchFare('');
+                    }}
+                    keyboardType="numeric"
+                    placeholder="e.g. 15"
+                    placeholderTextColor={c.textMuted}
+                  />
+
+                  <Text style={[styles.dFieldLabel, { color: c.textMuted, marginTop: 12 }]}>Default Fare per Passenger (R)</Text>
+                  <TextInput
+                    style={[styles.dInput, { color: dispatchDefaultFare ? c.primary : c.text, borderColor: dispatchDefaultFare ? c.primary + '40' : c.border, backgroundColor: dispatchDefaultFare ? c.primary + '08' : c.background }]}
+                    value={dispatchDefaultFare}
+                    onChangeText={t => {
+                      setDispatchDefaultFare(t);
+                      const fare = parseFloat(t) || 0;
+                      const count = parseInt(dispatchPax, 10) || 0;
+                      if (fare > 0 && count > 0) setDispatchFare((count * fare).toFixed(2));
+                      else if (fare === 0) setDispatchFare('');
+                    }}
+                    keyboardType="numeric"
+                    placeholder="e.g. 50.00"
+                    placeholderTextColor={c.textMuted}
+                  />
+
+                  <Text style={[styles.dFieldLabel, { color: c.textMuted, marginTop: 12 }]}>Total Fare (R)</Text>
+                  <TextInput
+                    style={[styles.dInput, { color: dispatchFare ? '#22c55e' : c.text, borderColor: dispatchFare ? '#22c55e40' : c.border, backgroundColor: dispatchFare ? '#22c55e08' : c.background }]}
+                    value={dispatchFare}
+                    onChangeText={setDispatchFare}
+                    keyboardType="numeric"
+                    placeholder="0.00"
+                    placeholderTextColor={c.textMuted}
+                  />
+                </>
               )}
 
-              <Text style={[styles.fieldLabel, { color: c.textMuted }]}>Passengers (optional)</Text>
-              <TextInput
-                style={[styles.input, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
-                value={includePassengerList ? String(passengerList.filter(p => p.name.trim() || p.contact.trim()).length) : dispatchPax}
-                onChangeText={setDispatchPax}
-                keyboardType="numeric"
-                placeholder="e.g. 15"
-                placeholderTextColor={c.textMuted}
-                editable={!includePassengerList}
-              />
-
               {/* Passenger list toggle */}
-              <TouchableOpacity style={styles.toggleRow} onPress={() => setIncludePassengerList(!includePassengerList)}>
-                <View style={[styles.toggleBox, { borderColor: includePassengerList ? c.primary : c.border, backgroundColor: includePassengerList ? c.primary + '15' : 'transparent' }]}>
-                  {includePassengerList && <Ionicons name="checkmark" size={14} color={c.primary} />}
+              <TouchableOpacity
+                style={[styles.dToggle, { borderColor: includePassengerList ? c.primary : c.border, backgroundColor: includePassengerList ? c.primary + '08' : 'transparent' }]}
+                onPress={() => setIncludePassengerList(!includePassengerList)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.dToggleCheck, { borderColor: includePassengerList ? c.primary : c.border, backgroundColor: includePassengerList ? c.primary : 'transparent' }]}>
+                  {includePassengerList && <Ionicons name="checkmark" size={12} color="#fff" />}
                 </View>
-                <Text style={[styles.toggleLabel, { color: c.text }]}>Include passenger details</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.dToggleTitle, { color: c.text }]}>Capture passenger details</Text>
+                  <Text style={{ fontSize: 11, color: c.textMuted }}>Add name, contact, next of kin & destination per passenger</Text>
+                </View>
+                <Ionicons name={includePassengerList ? 'chevron-up' : 'chevron-down'} size={18} color={c.textMuted} />
               </TouchableOpacity>
 
               {includePassengerList && (
-                <View style={{ marginTop: 12 }}>
-                  {passengerList.map((pax, idx) => (
-                    <View key={idx} style={[styles.paxRow, { borderColor: c.border }]}>
-                      <Text style={[styles.paxNum, { color: c.textMuted }]}>#{idx + 1}</Text>
-                      <View style={{ flex: 1, gap: 6 }}>
-                        <TextInput
-                          style={[styles.paxInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
-                          value={pax.name}
-                          onChangeText={t => { const u = [...passengerList]; u[idx].name = t; setPassengerList(u); }}
-                          placeholder="Name" placeholderTextColor={c.textMuted}
-                        />
-                        <TextInput
-                          style={[styles.paxInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]}
-                          value={pax.contact}
-                          onChangeText={t => { const u = [...passengerList]; u[idx].contact = t; setPassengerList(u); }}
-                          placeholder="Phone" placeholderTextColor={c.textMuted}
-                          keyboardType="phone-pad"
-                        />
+                <View style={{ marginTop: 16 }}>
+                  {passengerList.map((pax, idx) => {
+                    const paxFare = parseFloat(pax.amount) || 0;
+                    return (
+                      <View key={idx} style={[styles.paxCard, { backgroundColor: c.background, borderColor: c.border }]}>
+                        {/* Card header */}
+                        <View style={styles.paxCardHeader}>
+                          <View style={[styles.paxBadge, { backgroundColor: c.primary }]}>
+                            <Text style={styles.paxBadgeText}>{idx + 1}</Text>
+                          </View>
+                          <Text style={[styles.paxCardTitle, { color: c.text }]}>
+                            {pax.name.trim() || `Passenger ${idx + 1}`}
+                          </Text>
+                          {paxFare > 0 && (
+                            <View style={[styles.paxFarePill, { backgroundColor: '#22c55e15' }]}>
+                              <Text style={styles.paxFarePillText}>R {paxFare.toFixed(2)}</Text>
+                            </View>
+                          )}
+                          {passengerList.length > 1 && (
+                            <TouchableOpacity onPress={() => setPassengerList(passengerList.filter((_, i) => i !== idx))} hitSlop={8}>
+                              <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+
+                        {/* Two-col: Name + Phone */}
+                        <View style={styles.paxFieldRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.paxFieldLabel, { color: c.textMuted }]}>Full Name *</Text>
+                            <TextInput
+                              style={[styles.dInput, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+                              value={pax.name}
+                              onChangeText={t => { const u = [...passengerList]; u[idx].name = t; setPassengerList(u); }}
+                              placeholder="John Doe" placeholderTextColor={c.textMuted}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.paxFieldLabel, { color: c.textMuted }]}>Phone</Text>
+                            <TextInput
+                              style={[styles.dInput, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+                              value={pax.contact}
+                              onChangeText={t => { const u = [...passengerList]; u[idx].contact = t; setPassengerList(u); }}
+                              placeholder="072 000 0000" placeholderTextColor={c.textMuted}
+                              keyboardType="phone-pad"
+                            />
+                          </View>
+                        </View>
+
+                        {/* Two-col: NextOfKin */}
+                        <View style={styles.paxFieldRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.paxFieldLabel, { color: c.textMuted }]}>Next of Kin</Text>
+                            <TextInput
+                              style={[styles.dInput, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+                              value={pax.nextOfKinName}
+                              onChangeText={t => { const u = [...passengerList]; u[idx].nextOfKinName = t; setPassengerList(u); }}
+                              placeholder="Name" placeholderTextColor={c.textMuted}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.paxFieldLabel, { color: c.textMuted }]}>Kin Phone</Text>
+                            <TextInput
+                              style={[styles.dInput, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+                              value={pax.nextOfKinContact}
+                              onChangeText={t => { const u = [...passengerList]; u[idx].nextOfKinContact = t; setPassengerList(u); }}
+                              placeholder="072 000 0000" placeholderTextColor={c.textMuted}
+                              keyboardType="phone-pad"
+                            />
+                          </View>
+                        </View>
+
+                        {/* Destination + Fare */}
+                        <View style={styles.paxFieldRow}>
+                          <View style={{ flex: 2 }}>
+                            <Text style={[styles.paxFieldLabel, { color: c.textMuted }]}>Destination</Text>
+                            {dispatchDestinations.length > 0 ? (
+                              <TouchableOpacity
+                                style={[styles.destButton, { borderColor: pax.destination ? c.primary + '50' : c.border, backgroundColor: pax.destination ? c.primary + '06' : c.surface }]}
+                                onPress={() => { setDestPickerIdx(idx); setDestPickerOpen(true); }}
+                                activeOpacity={0.7}
+                              >
+                                {pax.destination ? (
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={[styles.destButtonText, { color: c.text }]} numberOfLines={1}>{pax.destination}</Text>
+                                    <Text style={[styles.destButtonFare, { color: '#22c55e' }]}>R {(getFareForDestination(pax.destination) || 0).toFixed(2)}</Text>
+                                  </View>
+                                ) : (
+                                  <Text style={[styles.destButtonPlaceholder, { color: c.textMuted }]}>Select stop…</Text>
+                                )}
+                                <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+                              </TouchableOpacity>
+                            ) : (
+                              <TextInput
+                                style={[styles.dInput, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+                                value={pax.destination}
+                                onChangeText={t => { const u = [...passengerList]; u[idx].destination = t; setPassengerList(u); }}
+                                placeholder="Destination" placeholderTextColor={c.textMuted}
+                              />
+                            )}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.paxFieldLabel, { color: c.textMuted }]}>Fare (R)</Text>
+                            <TextInput
+                              style={[styles.dInput, styles.fareInput, { color: paxFare > 0 ? '#22c55e' : c.text, borderColor: paxFare > 0 ? '#22c55e40' : c.border, backgroundColor: paxFare > 0 ? '#22c55e08' : c.surface }]}
+                              value={pax.amount}
+                              onChangeText={t => { const u = [...passengerList]; u[idx].amount = t; setPassengerList(u); }}
+                              placeholder="0.00" placeholderTextColor={c.textMuted}
+                              keyboardType="numeric"
+                            />
+                          </View>
+                        </View>
+
+                        {/* Payment Method */}
+                        <View style={{ marginTop: 8 }}>
+                          <Text style={[styles.paxFieldLabel, { color: c.textMuted }]}>Payment Method</Text>
+                          <View style={{ flexDirection: 'row', marginTop: 4 }}>
+                            {['Cash', 'Card'].map((method, mi) => {
+                              const selected = (pax.paymentMethod || 'Cash') === method;
+                              const methodColor = method === 'Cash' ? '#22c55e' : '#3b82f6';
+                              const icon = method === 'Cash' ? 'cash-outline' : 'card-outline';
+                              return (
+                                <TouchableOpacity
+                                  key={method}
+                                  style={{
+                                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                                    paddingVertical: 10, borderRadius: 10, borderWidth: 1.5,
+                                    borderColor: selected ? methodColor : c.border,
+                                    backgroundColor: selected ? methodColor + '10' : c.surface,
+                                    marginLeft: mi > 0 ? 8 : 0,
+                                  }}
+                                  onPress={() => { const u = [...passengerList]; u[idx].paymentMethod = method; setPassengerList(u); }}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name={icon} size={16} color={selected ? methodColor : c.textMuted} />
+                                  <Text style={{ fontSize: 13, fontWeight: selected ? '700' : '500', color: selected ? methodColor : c.textMuted, marginLeft: 6 }}>
+                                    {method}
+                                  </Text>
+                                  {selected ? (
+                                    <Ionicons name="checkmark-circle" size={14} color={methodColor} style={{ marginLeft: 4 }} />
+                                  ) : null}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </View>
                       </View>
-                      {passengerList.length > 1 && (
-                        <TouchableOpacity onPress={() => setPassengerList(passengerList.filter((_, i) => i !== idx))} style={{ padding: 4 }}>
-                          <Ionicons name="close-circle" size={20} color="#ef4444" />
-                        </TouchableOpacity>
-                      )}
+                    );
+                  })}
+
+                  <TouchableOpacity
+                    style={[styles.dAddPaxBtn, { borderColor: c.primary + '40' }]}
+                    onPress={() => {
+                      const dest0 = dispatchDestinations[0]?.name || '';
+                      setPassengerList([...passengerList, { name: '', contact: '', nextOfKinName: '', nextOfKinContact: '', destination: dest0, amount: String(getFareForDestination(dest0)), paymentMethod: 'Cash' }]);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.dAddPaxIcon, { backgroundColor: c.primary + '15' }]}>
+                      <Ionicons name="person-add" size={16} color={c.primary} />
                     </View>
-                  ))}
-                  <TouchableOpacity style={[styles.addPaxBtn, { borderColor: c.primary }]} onPress={() => setPassengerList([...passengerList, { name: '', contact: '' }])}>
-                    <Ionicons name="add-circle-outline" size={16} color={c.primary} style={{ marginRight: 6 }} />
-                    <Text style={[styles.addPaxBtnTxt, { color: c.primary }]}>Add Passenger</Text>
+                    <Text style={[styles.dAddPaxText, { color: c.primary }]}>Add Passenger</Text>
                   </TouchableOpacity>
                 </View>
               )}
             </ScrollView>
 
-            {/* Footer */}
-            <View style={[styles.modalFooter, { borderTopColor: c.border }]}>
-              <TouchableOpacity style={[styles.btnOutline, { borderColor: c.border }]} onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); }}>
-                <Text style={[styles.btnOutlineTxt, { color: c.textMuted }]}>Cancel</Text>
+            {/* ── Footer ── */}
+            <View style={[styles.dispatchFooter, { borderTopColor: c.border, backgroundColor: c.surface }]}>
+              <TouchableOpacity style={[styles.dBtnCancel, { borderColor: c.border }]} onPress={() => { setDispatchModalVisible(false); setDispatchEntry(null); }}>
+                <Text style={[styles.dBtnCancelTxt, { color: c.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: '#22c55e' }]} onPress={handleDispatch} disabled={dispatchBusy}>
+              <TouchableOpacity style={styles.dBtnDispatch} onPress={handleDispatch} disabled={dispatchBusy} activeOpacity={0.8}>
                 {dispatchBusy ? <ActivityIndicator color="#fff" size="small" /> : (
                   <>
                     <Ionicons name="send" size={14} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={styles.btnPrimaryTxt}>Dispatch</Text>
+                    <Text style={styles.dBtnDispatchTxt}>Dispatch{passengerSummary.count > 0 ? ` (${passengerSummary.count})` : ''}</Text>
                   </>
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════ Destination Picker Modal ══════════ */}
+      <Modal visible={destPickerOpen} transparent animationType="slide" onRequestClose={() => setDestPickerOpen(false)}>
+        <View style={styles.destPickerOverlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setDestPickerOpen(false)} />
+          <View style={[styles.destPickerSheet, { backgroundColor: c.surface }]}>
+            <View style={styles.destPickerHandle}><View style={[styles.destPickerHandleBar, { backgroundColor: c.border }]} /></View>
+            <View style={styles.destPickerHeader}>
+              <View style={[styles.destPickerHeaderIcon, { backgroundColor: '#3b82f615' }]}>
+                <Ionicons name="location" size={18} color="#3b82f6" />
+              </View>
+              <Text style={[styles.destPickerTitle, { color: c.text }]}>Select Destination</Text>
+              <TouchableOpacity onPress={() => setDestPickerOpen(false)} hitSlop={12}>
+                <Ionicons name="close-circle" size={26} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 340 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+              {dispatchDestinations.map((dest, i) => {
+                const sourceRoutes = dispatchRoute ? [dispatchRoute] : routes;
+                const isLast = sourceRoutes.some(r => dest.name === (r.destinationStation ?? r.DestinationStation));
+                const isSel = destPickerIdx >= 0 && passengerList[destPickerIdx]?.destination === dest.name;
+                return (
+                  <TouchableOpacity
+                    key={dest.name}
+                    style={[styles.destPickerItem, { borderColor: isSel ? c.primary : c.border, backgroundColor: isSel ? c.primary + '08' : c.background }]}
+                    onPress={() => {
+                      if (destPickerIdx >= 0 && destPickerIdx < passengerList.length) {
+                        const u = [...passengerList];
+                        u[destPickerIdx].destination = dest.name;
+                        u[destPickerIdx].amount = String(dest.fare || '');
+                        setPassengerList(u);
+                      }
+                      setDestPickerOpen(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.destPickerItemLeft}>
+                      <View style={[styles.destPickerDot, { backgroundColor: isLast ? '#ef4444' : isSel ? c.primary : '#3b82f6' }]}>
+                        {isLast ? (
+                          <Ionicons name="flag" size={10} color="#fff" />
+                        ) : (
+                          <Text style={styles.destPickerDotText}>{i + 1}</Text>
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.destPickerItemName, { color: c.text }]} numberOfLines={1}>{dest.name}</Text>
+                        {isLast && <Text style={{ fontSize: 10, color: c.textMuted }}>Final destination</Text>}
+                      </View>
+                    </View>
+                    <View style={[styles.destPickerFareBadge, { backgroundColor: '#22c55e15' }]}>
+                      <Text style={styles.destPickerFareText}>R {(dest.fare || 0).toFixed(2)}</Text>
+                    </View>
+                    {isSel && <Ionicons name="checkmark-circle" size={20} color={c.primary} style={{ marginLeft: 8 }} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -847,12 +1552,223 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
           </View>
         </View>
       </Modal>
+
+      {/* ── Trip Detail Modal ── */}
+      <Modal visible={tripDetailVisible} transparent animationType="slide" onRequestClose={() => setTripDetailVisible(false)}>
+        <View style={styles.dispatchOverlay}>
+          <View style={[styles.dispatchModalCard, { backgroundColor: c.surface }]}>
+            {/* Header */}
+            <View style={[styles.dispatchHeader, { backgroundColor: '#3b82f6' }]}>
+              <View style={styles.dispatchHeaderLeft}>
+                <View style={[styles.dispatchHeaderIcon, { backgroundColor: '#ffffff25' }]}>
+                  <Ionicons name="receipt-outline" size={18} color="#fff" />
+                </View>
+                <View>
+                  <Text style={styles.dispatchHeaderTitle}>Trip Details</Text>
+                  <Text style={[styles.dispatchHeaderSub, { color: '#ffffffaa' }]}>
+                    {tripDetailEntry?.vehicleRegistration || ''}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setTripDetailVisible(false)} style={[styles.modalClose, { backgroundColor: '#ffffff20' }]}>
+                <Ionicons name="close" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+              {tripDetailLoading ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="large" color={c.primary} />
+                  <Text style={{ color: c.textMuted, marginTop: 12, fontSize: 13 }}>Loading trip details…</Text>
+                </View>
+              ) : tripDetailData?.noTrip ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Ionicons name="information-circle-outline" size={40} color={c.textMuted} />
+                  <Text style={{ color: c.textMuted, marginTop: 8, fontSize: 14 }}>No trip record found for this dispatch</Text>
+                </View>
+              ) : tripDetailData?.error ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Ionicons name="alert-circle-outline" size={40} color="#ef4444" />
+                  <Text style={{ color: '#ef4444', marginTop: 8, fontSize: 14 }}>Failed to load trip details</Text>
+                </View>
+              ) : tripDetailData?.trip ? (
+                <>
+                  {/* Vehicle / Driver / Route info */}
+                  <View style={[styles.tripInfoCard, { backgroundColor: c.background, borderColor: c.border }]}>
+                    <View style={styles.tripInfoRow}>
+                      <Ionicons name="car-sport-outline" size={16} color={c.primary} />
+                      <Text style={[styles.tripInfoLabel, { color: c.textMuted }]}>Vehicle</Text>
+                      <Text style={[styles.tripInfoValue, { color: c.text }]}>{tripDetailEntry?.vehicleRegistration || '—'}</Text>
+                    </View>
+                    <View style={styles.tripInfoRow}>
+                      <Ionicons name="person-outline" size={16} color={c.primary} />
+                      <Text style={[styles.tripInfoLabel, { color: c.textMuted }]}>Driver</Text>
+                      <Text style={[styles.tripInfoValue, { color: c.text }]}>{tripDetailEntry?.driverName || '—'}</Text>
+                    </View>
+                    <View style={styles.tripInfoRow}>
+                      <Ionicons name="navigate-outline" size={16} color={c.primary} />
+                      <Text style={[styles.tripInfoLabel, { color: c.textMuted }]}>Route</Text>
+                      <Text style={[styles.tripInfoValue, { color: c.text }]}>
+                        {tripDetailData.trip.departureStation || '?'} → {tripDetailData.trip.destinationStation || '?'}
+                      </Text>
+                    </View>
+                    <View style={styles.tripInfoRow}>
+                      <Ionicons name="time-outline" size={16} color={c.primary} />
+                      <Text style={[styles.tripInfoLabel, { color: c.textMuted }]}>Departed</Text>
+                      <Text style={[styles.tripInfoValue, { color: c.text }]}>
+                        {new Date(tripDetailData.trip.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    {(() => {
+                      const tripStatus = String(tripDetailData.trip.status || '').toLowerCase();
+                      const isCompletedTrip = normalizeQueueStatus(tripDetailEntry?.status) === 'completed'
+                        || tripStatus === 'completed'
+                        || tripStatus === 'arrived';
+                      const completedAt = tripDetailEntry?.completedAt
+                        || tripDetailData.trip.arrivalTime
+                        || tripDetailData.trip.updatedAt
+                        || tripDetailEntry?.updatedAt;
+
+                      if (!isCompletedTrip || !completedAt) return null;
+
+                      return (
+                        <View style={styles.tripInfoRow}>
+                          <Ionicons name="checkmark-done-outline" size={16} color="#16a34a" />
+                          <Text style={[styles.tripInfoLabel, { color: c.textMuted }]}>Completed</Text>
+                          <Text style={[styles.tripInfoValue, { color: c.text }]}>
+                            {new Date(completedAt).toLocaleString([], {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                    {tripDetailEntry?.dispatchedByName ? (
+                      <View style={styles.tripInfoRow}>
+                        <Ionicons name="shield-outline" size={16} color="#8b5cf6" />
+                        <Text style={[styles.tripInfoLabel, { color: c.textMuted }]}>Dispatched by</Text>
+                        <Text style={[styles.tripInfoValue, { color: c.text }]}>{tripDetailEntry.dispatchedByName}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  {/* Trip Summary */}
+                  {(() => {
+                    const paxList = tripDetailData.passengers || [];
+                    const totalPax = paxList.length || tripDetailData.trip.passengerCount || 0;
+                    const totalAmount = paxList.reduce((s, p) => s + (p.amount || 0), 0) || tripDetailData.trip.totalAmount || 0;
+                    const cashPax = paxList.filter(p => (p.paymentMethod || 'Cash').toLowerCase() === 'cash');
+                    const cardPax = paxList.filter(p => (p.paymentMethod || 'Cash').toLowerCase() === 'card');
+                    const cashTotal = cashPax.reduce((s, p) => s + (p.amount || 0), 0);
+                    const cardTotal = cardPax.reduce((s, p) => s + (p.amount || 0), 0);
+                    return (
+                      <View style={{ marginBottom: 16 }}>
+                        {/* Total bar */}
+                        <View style={[styles.totalBar, { backgroundColor: '#22c55e12', marginHorizontal: 0, marginBottom: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }]}>
+                          <View style={styles.totalBarItem}>
+                            <Text style={[styles.totalBarLabel, { color: '#22c55e' }]}>Passengers</Text>
+                            <Text style={[styles.totalBarValue, { color: '#22c55e' }]}>{totalPax}</Text>
+                          </View>
+                          <View style={[styles.totalBarDivider, { backgroundColor: '#22c55e30' }]} />
+                          <View style={styles.totalBarItem}>
+                            <Text style={[styles.totalBarLabel, { color: '#22c55e' }]}>Total Collected</Text>
+                            <Text style={[styles.totalBarValue, { color: '#22c55e' }]}>R{totalAmount.toFixed(2)}</Text>
+                          </View>
+                          <View style={[styles.totalBarDivider, { backgroundColor: '#22c55e30' }]} />
+                          <View style={styles.totalBarItem}>
+                            <Text style={[styles.totalBarLabel, { color: '#22c55e' }]}>Status</Text>
+                            <Text style={[styles.totalBarValue, { color: '#22c55e', fontSize: 13 }]}>{tripDetailData.trip.status}</Text>
+                          </View>
+                        </View>
+                        {/* Cash / Card breakdown */}
+                        <View style={{ flexDirection: 'row', borderWidth: 1, borderTopWidth: 0, borderColor: '#22c55e20', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, overflow: 'hidden' }}>
+                          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 8, backgroundColor: '#f0fdf408' }}>
+                            <Ionicons name="cash-outline" size={16} color="#22c55e" />
+                            <View>
+                              <Text style={{ fontSize: 10, color: c.textMuted, fontWeight: '600' }}>Cash</Text>
+                              <Text style={{ fontSize: 14, fontWeight: '800', color: '#22c55e' }}>R{cashTotal.toFixed(2)}</Text>
+                            </View>
+                            <View style={{ backgroundColor: '#22c55e18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: '#22c55e' }}>{cashPax.length}</Text>
+                            </View>
+                          </View>
+                          <View style={{ width: 1, backgroundColor: '#22c55e20' }} />
+                          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 8, backgroundColor: '#3b82f608' }}>
+                            <Ionicons name="card-outline" size={16} color="#3b82f6" />
+                            <View>
+                              <Text style={{ fontSize: 10, color: c.textMuted, fontWeight: '600' }}>Card</Text>
+                              <Text style={{ fontSize: 14, fontWeight: '800', color: '#3b82f6' }}>R{cardTotal.toFixed(2)}</Text>
+                            </View>
+                            <View style={{ backgroundColor: '#3b82f618', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: '#3b82f6' }}>{cardPax.length}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })()}
+
+                  {/* Passenger list */}
+                  {tripDetailData.passengers.length > 0 ? (
+                    <>
+                      <Text style={[styles.dFieldLabel, { color: c.textMuted, marginBottom: 10 }]}>
+                        Passengers ({tripDetailData.passengers.length})
+                      </Text>
+                      {tripDetailData.passengers.map((pax, idx) => (
+                        <View key={pax.id || idx} style={[styles.tripPaxCard, { borderColor: c.border, backgroundColor: c.background }]}>
+                          <View style={styles.tripPaxHeader}>
+                            <View style={[styles.paxBadge, { backgroundColor: c.primary + '15' }]}>
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: c.primary }}>{idx + 1}</Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.tripPaxName, { color: c.text }]}>{pax.passengerName || 'Unnamed'}</Text>
+                              {pax.passengerPhone ? (
+                                <Text style={[styles.tripPaxMeta, { color: c.textMuted }]}>{pax.passengerPhone}</Text>
+                              ) : null}
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={styles.tripPaxFare}>R{(pax.amount || 0).toFixed(2)}</Text>
+                              <Text style={[styles.tripPaxMeta, { color: c.textMuted }]}>{pax.paymentMethod || 'Cash'}</Text>
+                            </View>
+                          </View>
+
+                          <View style={[styles.tripPaxDetails, { borderTopColor: c.border }]}>
+                            <View style={styles.tripPaxDetailItem}>
+                              <Ionicons name="location-outline" size={12} color={c.textMuted} />
+                              <Text style={[styles.tripPaxDetailTxt, { color: c.textMuted }]}>
+                                {pax.arrivalStation || '—'}
+                              </Text>
+                            </View>
+                            {(pax.nextOfKinName || pax.nextOfKinContact) ? (
+                              <View style={styles.tripPaxDetailItem}>
+                                <Ionicons name="people-outline" size={12} color="#f59e0b" />
+                                <Text style={[styles.tripPaxDetailTxt, { color: c.textMuted }]}>
+                                  NOK: {pax.nextOfKinName || '—'}{pax.nextOfKinContact ? ` (${pax.nextOfKinContact})` : ''}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        </View>
+                      ))}
+                    </>
+                  ) : (
+                    <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                      <Ionicons name="people-outline" size={28} color={c.textMuted} />
+                      <Text style={{ color: c.textMuted, fontSize: 13, marginTop: 6 }}>No passenger records</Text>
+                    </View>
+                  )}
+                </>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Sub-components
 // ══════════════════════════════════════════════════════════════════════════════
 
 function StatPill({ icon, label, value, color, c, styles }) {
@@ -894,6 +1810,12 @@ function QueueCard({ entry, isFirst, isLast, c, styles, onDispatch, onRemove, on
               <Ionicons name="time" size={10} color={c.textMuted} style={{ marginRight: 3 }} />
               <Text style={[styles.metaChipTxt, { color: c.textMuted }]}>{entry.joinedAt}</Text>
             </View>
+            {entry.estimatedDepartureTime ? (
+              <View style={styles.metaChip}>
+                <Ionicons name="log-out" size={10} color="#f59e0b" style={{ marginRight: 3 }} />
+                <Text style={[styles.metaChipTxt, { color: '#f59e0b' }]}>ETD {new Date(entry.estimatedDepartureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
         {entry.queuePosition === 1 && (
@@ -925,23 +1847,52 @@ function QueueCard({ entry, isFirst, isLast, c, styles, onDispatch, onRemove, on
   );
 }
 
-function DispatchedCard({ entry, c, styles }) {
-  const time = entry.departedAt ? new Date(entry.departedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+function DispatchedCard({ entry, c, styles, onPress, variant = 'dispatched' }) {
+  const isCompleted = variant === 'completed';
+  const accent = isCompleted ? '#16a34a' : '#22c55e';
+  const badgeLabel = isCompleted ? 'DONE' : 'GONE';
+  const iconName = isCompleted ? 'flag-outline' : 'checkmark-circle';
+  const label = isCompleted ? 'Completed' : 'Departed';
+  const timeValue = isCompleted ? (entry.completedAt || entry.updatedAt || entry.departedAt) : entry.departedAt;
+  const time = timeValue ? new Date(timeValue).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
   return (
-    <View style={[styles.dispatchedCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-      <View style={[styles.doneBadge, { backgroundColor: '#22c55e15' }]}>
-        <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
+    <TouchableOpacity
+      style={[styles.dispatchedCard, { backgroundColor: c.surface, borderColor: c.border }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.doneBadge, { backgroundColor: `${accent}15` }]}>
+        <Ionicons name={iconName} size={16} color={accent} />
       </View>
       <View style={{ flex: 1, marginLeft: 10 }}>
         <Text style={[styles.queueReg, { color: c.text }]}>{entry.vehicleRegistration || 'Unknown'}</Text>
         <Text style={[styles.metaChipTxt, { color: c.textMuted }]}>
-          Departed {time}{entry.passengerCount ? ` · ${entry.passengerCount} pax` : ''}
+          {label} {time}{entry.passengerCount ? ` · ${entry.passengerCount} pax` : ''}
         </Text>
+        {(entry.routeName || entry.dispatchedByName) ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+            {entry.routeName ? (
+              <View style={[styles.dCardChip, { backgroundColor: c.primary + '15' }]}>
+                <Ionicons name="navigate-outline" size={10} color={c.primary} />
+                <Text style={[styles.dCardChipTxt, { color: c.primary }]}>{entry.routeName}</Text>
+              </View>
+            ) : null}
+            {entry.dispatchedByName ? (
+              <View style={[styles.dCardChip, { backgroundColor: '#8b5cf615' }]}>
+                <Ionicons name="person-outline" size={10} color="#8b5cf6" />
+                <Text style={[styles.dCardChipTxt, { color: '#8b5cf6' }]}>{entry.dispatchedByName}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
-      <View style={[styles.goneTag, { backgroundColor: '#22c55e15' }]}>
-        <Text style={{ fontSize: 10, fontWeight: '700', color: '#22c55e' }}>GONE</Text>
+      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        <View style={[styles.goneTag, { backgroundColor: `${accent}15` }]}>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: accent }}>{badgeLabel}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={14} color={c.textMuted} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -1132,7 +2083,6 @@ function createStyles(c) {
       borderRadius: 14,
       padding: 12,
       marginBottom: 10,
-      opacity: 0.7,
     },
     doneBadge: {
       width: 36, height: 36, borderRadius: 10,
@@ -1141,6 +2091,108 @@ function createStyles(c) {
     goneTag: {
       paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
     },
+    dCardChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 3,
+      paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+    },
+    dCardChipTxt: { fontSize: 10, fontWeight: '600' },
+
+    // ── Dispatched Filter Card
+    dfCard: {
+      borderWidth: 1, borderRadius: 18,
+      marginTop: 20, marginBottom: 14,
+      overflow: 'hidden',
+      ...Platform.select({
+        ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+        android: { elevation: 3 },
+      }),
+    },
+    dfHeader: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      backgroundColor: '#22c55e',
+      paddingHorizontal: 14, paddingVertical: 10,
+    },
+    dfHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    dfHeaderIcon: {
+      width: 26, height: 26, borderRadius: 8,
+      backgroundColor: '#ffffff25',
+      alignItems: 'center', justifyContent: 'center',
+    },
+    dfHeaderTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
+    dfCountBadge: {
+      backgroundColor: '#fff',
+      paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10,
+    },
+    dfCountTxt: { fontSize: 12, fontWeight: '800', color: '#22c55e' },
+    dfCountSub: { fontSize: 11, fontWeight: '600', color: '#ffffffcc' },
+    dfResetBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: '#ffffff25',
+      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10,
+    },
+    dfResetTxt: { fontSize: 11, fontWeight: '700', color: '#fff' },
+    dfDateRow: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingHorizontal: 12, paddingVertical: 10,
+      borderBottomWidth: 1,
+    },
+    dfDateArrow: {
+      width: 30, height: 30, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    dfDatePill: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 6, marginHorizontal: 8,
+      paddingVertical: 7, borderRadius: 10,
+    },
+    dfDateTxt: { fontSize: 13, fontWeight: '700' },
+    dfTodayBtn: {
+      paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+      marginLeft: 6,
+    },
+    dfTodayBtnTxt: { fontSize: 10, fontWeight: '800', color: '#fff' },
+    dfSearchArea: {
+      padding: 12, gap: 8,
+    },
+    dfSearchField: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      borderWidth: 1, borderRadius: 12,
+      paddingHorizontal: 12,
+    },
+    dfSearchInput: {
+      flex: 1, fontSize: 13,
+      paddingVertical: 9,
+    },
+
+    // ── Trip Detail
+    tripInfoCard: {
+      borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 16,
+    },
+    tripInfoRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingVertical: 8,
+    },
+    tripInfoLabel: { fontSize: 12, fontWeight: '600', width: 90 },
+    tripInfoValue: { fontSize: 14, fontWeight: '700', flex: 1 },
+    tripPaxCard: {
+      borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden',
+    },
+    tripPaxHeader: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      padding: 12,
+    },
+    tripPaxName: { fontSize: 14, fontWeight: '700' },
+    tripPaxMeta: { fontSize: 11, marginTop: 1 },
+    tripPaxFare: { fontSize: 15, fontWeight: '800', color: '#22c55e' },
+    tripPaxDetails: {
+      flexDirection: 'row', flexWrap: 'wrap', gap: 12,
+      paddingHorizontal: 12, paddingVertical: 8,
+      borderTopWidth: 1,
+    },
+    tripPaxDetailItem: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+    },
+    tripPaxDetailTxt: { fontSize: 11 },
 
     // ── List headers
     listHeader: {
@@ -1322,7 +2374,158 @@ function createStyles(c) {
     },
     btnPrimaryTxt: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
-    // ── Dispatch modal extras
+    // ── Modernized Dispatch modal ──
+    dispatchOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    dispatchModalCard: {
+      width: '100%', maxHeight: '95%',
+      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      overflow: 'hidden',
+      ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 12 }, android: { elevation: 12 } }),
+    },
+    dispatchHeader: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 20, paddingVertical: 16,
+    },
+    dispatchHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+    dispatchHeaderIcon: {
+      width: 36, height: 36, borderRadius: 10,
+      backgroundColor: '#22c55e',
+      alignItems: 'center', justifyContent: 'center',
+    },
+    dispatchHeaderTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
+    dispatchHeaderSub: { fontSize: 12, marginTop: 1 },
+    totalBar: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingVertical: 12, paddingHorizontal: 20,
+      marginHorizontal: 16, borderRadius: 14, marginBottom: 4,
+    },
+    totalBarItem: { flex: 1, alignItems: 'center', gap: 2 },
+    totalBarLabel: { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
+    totalBarValue: { fontSize: 18, fontWeight: '800' },
+    totalBarDivider: { width: 1, height: 32, marginHorizontal: 8 },
+    dFieldLabel: {
+      fontSize: 11, fontWeight: '700', textTransform: 'uppercase',
+      letterSpacing: 0.5, marginBottom: 6,
+    },
+    dInput: {
+      borderWidth: 1, borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 10, fontSize: 14,
+    },
+    fareInput: { fontWeight: '700', textAlign: 'right' },
+    dToggle: {
+      flexDirection: 'row', alignItems: 'center',
+      borderWidth: 1, borderRadius: 14, padding: 14,
+      marginTop: 14, gap: 12,
+    },
+    dToggleCheck: {
+      width: 22, height: 22, borderRadius: 6,
+      borderWidth: 2, alignItems: 'center', justifyContent: 'center',
+    },
+    dToggleTitle: { fontSize: 14, fontWeight: '700' },
+    paxCard: {
+      borderWidth: 1, borderRadius: 16,
+      padding: 14, marginBottom: 12,
+    },
+    paxCardHeader: {
+      flexDirection: 'row', alignItems: 'center',
+      marginBottom: 12, gap: 10,
+    },
+    paxBadge: {
+      width: 26, height: 26, borderRadius: 8,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    paxBadgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+    paxCardTitle: { flex: 1, fontSize: 14, fontWeight: '700' },
+    paxFarePill: {
+      paddingHorizontal: 10, paddingVertical: 3,
+      borderRadius: 10,
+    },
+    paxFarePillText: { color: '#22c55e', fontSize: 12, fontWeight: '800' },
+    paxFieldRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+    paxFieldLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 },
+    dAddPaxBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1.5, borderStyle: 'dashed',
+      borderRadius: 14, paddingVertical: 14, marginTop: 6, gap: 10,
+    },
+    dAddPaxIcon: {
+      width: 32, height: 32, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    dAddPaxText: { fontSize: 14, fontWeight: '700' },
+    dispatchFooter: {
+      flexDirection: 'row', gap: 12,
+      paddingHorizontal: 16, paddingVertical: 14,
+      borderTopWidth: 1,
+    },
+    dBtnCancel: {
+      flex: 1, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderRadius: 14, paddingVertical: 14,
+    },
+    dBtnCancelTxt: { fontSize: 14, fontWeight: '600' },
+    dBtnDispatch: {
+      flex: 1.6, flexDirection: 'row',
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: '#22c55e', borderRadius: 14,
+      paddingVertical: 14,
+    },
+    dBtnDispatchTxt: { fontSize: 15, fontWeight: '800', color: '#fff' },
+
+    // ── Destination button (replaces Picker)
+    destButton: {
+      flexDirection: 'row', alignItems: 'center',
+      borderWidth: 1, borderRadius: 10,
+      paddingHorizontal: 12, paddingVertical: 10,
+      gap: 8,
+    },
+    destButtonText: { fontSize: 13, fontWeight: '700' },
+    destButtonFare: { fontSize: 11, fontWeight: '700', marginTop: 1 },
+    destButtonPlaceholder: { flex: 1, fontSize: 13 },
+
+    // ── Destination Picker Sheet ──
+    destPickerOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    destPickerSheet: {
+      borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      paddingBottom: 20,
+      ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.12, shadowRadius: 10 }, android: { elevation: 10 } }),
+    },
+    destPickerHandle: { alignItems: 'center', paddingVertical: 10 },
+    destPickerHandleBar: { width: 40, height: 4, borderRadius: 2 },
+    destPickerHeader: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingHorizontal: 16, paddingBottom: 12, gap: 10,
+    },
+    destPickerHeaderIcon: {
+      width: 34, height: 34, borderRadius: 10,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    destPickerTitle: { flex: 1, fontSize: 16, fontWeight: '800' },
+    destPickerItem: {
+      flexDirection: 'row', alignItems: 'center',
+      borderWidth: 1, borderRadius: 12,
+      padding: 12, marginBottom: 8,
+    },
+    destPickerItemLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    destPickerDot: {
+      width: 24, height: 24, borderRadius: 12,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    destPickerDotText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+    destPickerItemName: { fontSize: 14, fontWeight: '600' },
+    destPickerFareBadge: {
+      paddingHorizontal: 10, paddingVertical: 4,
+      borderRadius: 10, marginLeft: 8,
+    },
+    destPickerFareText: { color: '#22c55e', fontSize: 13, fontWeight: '800' },
+
+    // ── Route assign modal (reused)
     dispatchPreview: {
       flexDirection: 'row', alignItems: 'center',
       borderWidth: 1, borderRadius: 12,
@@ -1335,29 +2538,5 @@ function createStyles(c) {
     },
     dispatchPreviewReg: { fontSize: 16, fontWeight: '800' },
     dispatchPreviewMeta: { fontSize: 12, marginTop: 2 },
-    toggleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
-    toggleBox: {
-      width: 22, height: 22, borderRadius: 6,
-      borderWidth: 2,
-      alignItems: 'center', justifyContent: 'center',
-      marginRight: 10,
-    },
-    toggleLabel: { fontSize: 14, fontWeight: '600' },
-    paxRow: {
-      flexDirection: 'row', alignItems: 'flex-start',
-      borderWidth: 1, borderRadius: 10,
-      padding: 10, marginBottom: 8,
-    },
-    paxNum: { fontSize: 11, fontWeight: '700', width: 28, paddingTop: 8 },
-    paxInput: {
-      borderWidth: 1, borderRadius: 8,
-      padding: 8, fontSize: 13,
-    },
-    addPaxBtn: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderStyle: 'dashed',
-      borderRadius: 10, paddingVertical: 10, marginTop: 4,
-    },
-    addPaxBtnTxt: { fontSize: 13, fontWeight: '600' },
   });
 }

@@ -7,6 +7,7 @@ export async function getUnreadCount(userId) {
 }
 
 export async function getInbox(userId) {
+  if (!userId) return [];
   const resp = await client.get(`/Messages/inbox/${userId}`);
   return resp.data || [];
 }

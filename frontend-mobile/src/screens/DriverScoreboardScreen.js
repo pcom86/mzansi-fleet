@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  StyleSheet, Alert, RefreshControl, Modal, TextInput, FlatList,
+  StyleSheet, Alert, RefreshControl, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -468,15 +468,13 @@ export default function DriverScoreboardScreen({ navigation }) {
                 <Text style={[{ color: c.textMuted, fontSize: 12 }]}>No behavior events recorded</Text>
               </View>
             ) : (
-              <FlatList
-                data={driverEvents}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => {
+              <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+                {driverEvents.map((item) => {
                   const isPositive = item.eventType === 'Positive';
                   const evColor = isPositive ? GREEN : RED;
-                  const catDef = BEHAVIOR_CATEGORIES.find(c => c.key === item.category);
+                  const catDef = BEHAVIOR_CATEGORIES.find(x => x.key === item.category);
                   return (
-                    <View style={[styles.eventCard, { backgroundColor: c.surface, borderColor: c.border, borderLeftColor: evColor, borderLeftWidth: 3 }]}>
+                    <View key={item.id} style={[styles.eventCard, { backgroundColor: c.surface, borderColor: c.border, borderLeftColor: evColor, borderLeftWidth: 3 }]}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <Ionicons name={catDef?.icon || 'ellipsis-horizontal'} size={18} color={evColor} />
                         <View style={{ flex: 1 }}>
@@ -514,8 +512,8 @@ export default function DriverScoreboardScreen({ navigation }) {
                       </View>
                     </View>
                   );
-                }}
-              />
+                })}
+              </ScrollView>
             )}
           </View>
         </View>

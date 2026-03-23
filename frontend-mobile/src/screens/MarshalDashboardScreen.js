@@ -169,28 +169,16 @@ export default function MarshalDashboardScreen({ navigation }) {
         <SectionHeader icon="apps-outline" title="Actions" color={c.text} />
         <View style={styles.cardGrid}>
           <ActionCard
-            icon="calendar-outline" title="View Schedules"
-            desc="Browse today's route schedules"
+            icon="list-outline" title="Trip Management"
+            desc="Manage queues and view trips"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('CreateTripSchedule')}
+            onPress={() => navigation.navigate('TripManagement', { rank: { id: user?.tenantId, name: 'All Ranks' } })}
           />
           <ActionCard
-            icon="checkmark-done-outline" title="Complete Trip"
-            desc="Finalize trip & record earnings"
+            icon="analytics-outline" title="Queue Analytics"
+            desc="View queue performance and statistics"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('CreateTripSchedule')}
-          />
-          <ActionCard
-            icon="list-outline" title="Queue Management"
-            desc="Manage vehicle departure queue"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('QueueManagement', { rank: activeRank })}
-          />
-          <ActionCard
-            icon="document-text-outline" title="Trip History"
-            desc="View your captured trips"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('AdminTripDetails')}
+            onPress={() => navigation.navigate('QueueAnalytics', { rank: { id: user?.tenantId, name: 'All Ranks' } })}
           />
           <ActionCard
             icon="ticket-outline" title="Book a Trip"

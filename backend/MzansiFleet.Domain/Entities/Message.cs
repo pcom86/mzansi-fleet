@@ -7,23 +7,23 @@ namespace MzansiFleet.Domain.Entities
         public Guid Id { get; set; }
         
         // Sender information
-        public string SenderType { get; set; } // Admin, Marshal, Driver, System
+        public string? SenderType { get; set; } // Admin, Marshal, Driver, System
         public Guid? SenderId { get; set; }
-        public string SenderName { get; set; }
+        public string? SenderName { get; set; }
         
         // Recipient information
-        public string RecipientType { get; set; } // Admin, Marshal, Driver, All
+        public string? RecipientType { get; set; } // Admin, Marshal, Driver, All
         public Guid? RecipientId { get; set; }
         public Guid? RecipientMarshalId { get; set; }
         public Guid? RecipientDriverId { get; set; }
         
         // Taxi rank context
-        public Guid TaxiRankId { get; set; }
+        public Guid? TaxiRankId { get; set; }
         
         // Message content
-        public string Subject { get; set; } = string.Empty;
-        public string Content { get; set; } = string.Empty;
-        public string MessageType { get; set; } // Info, Alert, Request, Response
+        public string? Subject { get; set; } = string.Empty;
+        public string? Content { get; set; } = string.Empty;
+        public string? MessageType { get; set; } // Info, Alert, Request, Response
         
         // Status
         public bool IsRead { get; set; }

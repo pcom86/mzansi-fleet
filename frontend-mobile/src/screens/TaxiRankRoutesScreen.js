@@ -29,6 +29,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [routeToDelete, setRouteToDelete] = useState(null);
+  const [deleteWarning, setDeleteWarning] = useState(null);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -317,19 +318,15 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
     // Check if route has active vehicles assigned
     const assignedVehicles = r.routeVehicles?.filter(rv => rv.isActive !== false) || [];
     
-    if (assignedVehicles.length > 0) {
-      const vehicleNames = assignedVehicles
-        .map(rv => rv.vehicle?.registration || rv.vehicle?.registrationNumber || 'Unknown Vehicle')
-        .join(', ');
-      
-      Alert.alert(
-        'Cannot Delete Route', 
-        `This route has ${assignedVehicles.length} vehicle(s) assigned: ${vehicleNames}. Please unassign all vehicles before deleting this route.`,
-        [{ text: 'OK', style: 'default' }]
-      );
-      return;
-    }
-    
+    const vehicleNames = assignedVehicles
+      .map(rv => rv.vehicle?.registration || rv.vehicle?.registrationNumber || 'Unknown Vehicle')
+      .join(', ');
+
+    setDeleteWarning(assignedVehicles.length > 0 ?
+      `Warning: This route has ${assignedVehicles.length} assigned vehicle(s): ${vehicleNames}. Deleting will unassign them.`
+      : null
+    );
+
     setRouteToDelete(r);
     setDeleteModalVisible(true);
   }
@@ -490,8 +487,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                           handleDelete(r);
                         }} 
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        disabled={hasAssignedVehicles}
-                        style={{ opacity: hasAssignedVehicles ? 0.4 : 1 }}
+                        style={{ opacity: hasAssignedVehicles ? 0.6 : 1 }}
                       >
                         <Ionicons 
                           name="trash-outline" 
@@ -786,10 +782,13 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
             </View>
             
             <View style={styles.modalBody}>
-              <Text style={[styles.deleteMessage, { color: c.text, marginBottom: 24 }]}>
+              <Text style={[styles.deleteMessage, { color: c.text, marginBottom: 16 }]}> 
                 Are you sure you want to delete "{routeToDelete?.routeName}"? This action cannot be undone.
               </Text>
-              
+              {deleteWarning ? (
+                <Text style={[styles.deleteWarning, { color: '#d97706', marginBottom: 16 }]}>{deleteWarning}</Text>
+              ) : null}
+
               <View style={styles.deleteActions}>
                 <TouchableOpacity 
                   style={[styles.deleteCancelBtn, { backgroundColor: c.surface, borderColor: c.border }]} 

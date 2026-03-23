@@ -100,6 +100,138 @@ namespace MzansiFleet.Api.Controllers
             return Ok(trip);
         }
 
+        // GET: api/TaxiRankTrips/{id}/details
+        [HttpGet("{id:guid}/details")]
+        public async Task<ActionResult<object>> GetTripDetails(Guid id)
+        {
+            try
+            {
+                var trip = await _context.TaxiRankTrips
+                    .Include(t => t.Vehicle)
+                    .Include(t => t.Driver)
+                    .Include(t => t.Marshal)
+                    .Include(t => t.TaxiRank)
+                    .FirstOrDefaultAsync(t => t.Id == id);
+
+                if (trip == null)
+                    return NotFound(new { message = "Trip not found" });
+
+                // Get passengers for this trip
+                var passengers = await _context.TripPassengers
+                    .Where(p => p.TaxiRankTripId == id)
+                    .OrderBy(p => p.SeatNumber ?? 999)
+                    .ToListAsync();
+
+                // Get costs for this trip
+                var costs = await _context.TripCosts
+                    .Where(c => c.TaxiRankTripId == id)
+                    .OrderByDescending(c => c.CreatedAt)
+                    .ToListAsync();
+
+                var result = new
+                {
+                    Trip = new
+                    {
+                        trip.Id,
+                        trip.TenantId,
+                        trip.VehicleId,
+                        trip.DriverId,
+                        trip.MarshalId,
+                        trip.TaxiRankId,
+                        trip.DepartureStation,
+                        trip.DestinationStation,
+                        trip.DepartureTime,
+                        trip.ArrivalTime,
+                        trip.Status,
+                        trip.PassengerCount,
+                        trip.TotalAmount,
+                        trip.TotalCosts,
+                        trip.NetAmount,
+                        trip.Notes,
+                        trip.CompletedAt,
+                        trip.Latitude,
+                        trip.Longitude,
+                        trip.CreatedAt,
+                        trip.UpdatedAt,
+                        Vehicle = trip.Vehicle != null ? new
+                        {
+                            trip.Vehicle.Id,
+                            trip.Vehicle.Make,
+                            trip.Vehicle.Model,
+                            trip.Vehicle.Registration,
+                            trip.Vehicle.Type,
+                            trip.Vehicle.Capacity,
+                            trip.Vehicle.Year
+                        } : null,
+                        Driver = trip.Driver != null ? new
+                        {
+                            trip.Driver.Id,
+                            trip.Driver.Name,
+                            trip.Driver.Phone
+                        } : null,
+                        Marshal = trip.Marshal != null ? new
+                        {
+                            trip.Marshal.Id,
+                            trip.Marshal.FullName,
+                            trip.Marshal.PhoneNumber,
+                            trip.Marshal.MarshalCode
+                        } : null,
+                        TaxiRank = trip.TaxiRank != null ? new
+                        {
+                            trip.TaxiRank.Id,
+                            trip.TaxiRank.Name,
+                            trip.TaxiRank.Code,
+                            trip.TaxiRank.Address,
+                            trip.TaxiRank.City,
+                            trip.TaxiRank.Province
+                        } : null
+                    },
+                    Passengers = passengers.Select(p => new
+                    {
+                        p.Id,
+                        p.TaxiRankTripId,
+                        p.UserId,
+                        p.PassengerName,
+                        p.PassengerPhone,
+                        p.DepartureStation,
+                        p.ArrivalStation,
+                        p.Amount,
+                        p.PaymentMethod,
+                        p.PaymentReference,
+                        p.SeatNumber,
+                        p.BoardedAt,
+                        p.Notes
+                    }).ToList(),
+                    Costs = costs.Select(c => new
+                    {
+                        c.Id,
+                        c.TaxiRankTripId,
+                        c.AddedByDriverId,
+                        c.Category,
+                        c.Amount,
+                        c.Description,
+                        c.ReceiptNumber,
+                        c.CreatedAt
+                    }).ToList(),
+                    Summary = new
+                    {
+                        TotalPassengers = passengers.Count,
+                        TotalEarnings = passengers.Sum(p => p.Amount),
+                        CashEarnings = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Cash").Sum(p => p.Amount),
+                        CardEarnings = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Card").Sum(p => p.Amount),
+                        TotalCosts = costs.Sum(c => c.Amount),
+                        NetEarnings = passengers.Sum(p => p.Amount) - costs.Sum(c => c.Amount)
+                    }
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
+            }
+        }
+
         // GET: api/TaxiRankTrips/vehicle/{vehicleId}
         [HttpGet("vehicle/{vehicleId:guid}")]
         public async Task<ActionResult<IEnumerable<TaxiRankTrip>>> GetByVehicle(Guid vehicleId)
@@ -116,6 +248,62 @@ namespace MzansiFleet.Api.Controllers
             return Ok(trips);
         }
 
+        // GET: api/TaxiRankTrips/driver/{driverId}/dispatched
+        [HttpGet("driver/{driverId:guid}/dispatched")]
+        public async Task<ActionResult<IEnumerable<object>>> GetDispatchedTripsForDriver(Guid driverId)
+        {
+            try
+            {
+                var trips = await _context.TaxiRankTrips
+                    .Include(t => t.Vehicle)
+                    .Include(t => t.TaxiRank)
+                    .Where(t => t.DriverId == driverId && 
+                                (t.Status == "Departed" || t.Status == "InTransit"))
+                    .OrderByDescending(t => t.DepartureTime)
+                    .ToListAsync();
+
+                var result = trips.Select(trip => new
+                {
+                    trip.Id,
+                    trip.VehicleId,
+                    trip.TaxiRankId,
+                    trip.DepartureStation,
+                    trip.DestinationStation,
+                    trip.DepartureTime,
+                    trip.Status,
+                    trip.PassengerCount,
+                    trip.TotalAmount,
+                    trip.Notes,
+                    trip.CreatedAt,
+                    Vehicle = trip.Vehicle != null ? new
+                    {
+                        trip.Vehicle.Id,
+                        trip.Vehicle.Make,
+                        trip.Vehicle.Model,
+                        trip.Vehicle.Registration,
+                        trip.Vehicle.Type,
+                        trip.Vehicle.Year
+                    } : null,
+                    TaxiRank = trip.TaxiRank != null ? new
+                    {
+                        trip.TaxiRank.Id,
+                        trip.TaxiRank.Name,
+                        trip.TaxiRank.Code,
+                        trip.TaxiRank.Address,
+                        trip.TaxiRank.City,
+                        trip.TaxiRank.Province
+                    } : null,
+                    CanComplete = trip.Status == "Departed" || trip.Status == "InTransit"
+                });
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
+            }
+        }
+
         // GET: api/TaxiRankTrips/marshal/{marshalId}
         [HttpGet("marshal/{marshalId:guid}")]
         public async Task<ActionResult<IEnumerable<TaxiRankTrip>>> GetByMarshal(Guid marshalId)
@@ -124,14 +312,146 @@ namespace MzansiFleet.Api.Controllers
             return Ok(trips);
         }
 
+        // GET: api/TaxiRankTrips/driver/{driverId}/active
+        [HttpGet("driver/{driverId:guid}/active")]
+        public async Task<ActionResult> GetActiveTripsForDriver(Guid driverId)
+        {
+            try
+            {
+                // Find trips directly assigned to this driver
+                var trips = await _context.TaxiRankTrips
+                    .Include(t => t.Vehicle)
+                    .Include(t => t.Driver)
+                    .Include(t => t.Marshal)
+                    .Include(t => t.Passengers)
+                    .Include(t => t.Costs)
+                    .Where(t => t.Status != "Completed" && t.Status != "Cancelled")
+                    .Where(t => t.DriverId == driverId)
+                    .OrderByDescending(t => t.DepartureTime)
+                    .ToListAsync();
+
+                // If no direct match, try fallback via vehicle assignment
+                if (!trips.Any())
+                {
+                    var driverProfile = await _context.DriverProfiles.FindAsync(driverId);
+                    if (driverProfile?.AssignedVehicleId != null)
+                    {
+                        trips = await _context.TaxiRankTrips
+                            .Include(t => t.Vehicle)
+                            .Include(t => t.Driver)
+                            .Include(t => t.Marshal)
+                            .Include(t => t.Passengers)
+                            .Include(t => t.Costs)
+                            .Where(t => t.Status != "Completed" && t.Status != "Cancelled")
+                            .Where(t => t.VehicleId == driverProfile.AssignedVehicleId.Value)
+                            .OrderByDescending(t => t.DepartureTime)
+                            .ToListAsync();
+                    }
+                }
+
+                var result = trips.Select(t =>
+                {
+                    var driverName = t.Driver?.Name;
+                    var driverPhone = t.Driver?.Phone;
+
+                    return new
+                    {
+                        t.Id, t.TenantId, t.VehicleId, t.DriverId, t.MarshalId, t.TaxiRankId,
+                        t.DepartureStation, t.DestinationStation, t.DepartureTime, t.ArrivalTime,
+                        t.TotalAmount, t.TotalCosts, t.NetAmount, t.Status, t.PassengerCount,
+                        t.Notes, t.CompletedAt, t.Latitude, t.Longitude, t.CreatedAt, t.UpdatedAt,
+                        driverName,
+                        driverPhone,
+                        vehicle = t.Vehicle == null ? null : new
+                        {
+                            t.Vehicle.Id, t.Vehicle.Registration, t.Vehicle.Make, t.Vehicle.Model,
+                            t.Vehicle.Type, t.Vehicle.Capacity
+                        },
+                        driver = driverName != null ? new { name = driverName, phone = driverPhone } : null,
+                        marshal = t.Marshal == null ? null : new { t.Marshal.Id, name = t.Marshal.FullName },
+                        passengers = (t.Passengers ?? new List<TripPassenger>()).Select(p => new
+                        {
+                            p.Id, p.PassengerName, p.PassengerPhone, p.DepartureStation, p.ArrivalStation,
+                            p.Amount, p.PaymentMethod, p.SeatNumber
+                        }),
+                        costs = (t.Costs ?? new List<TripCost>()).Select(c => new
+                        {
+                            c.Id, c.Category, c.Description, c.Amount, c.ReceiptNumber
+                        }),
+                    };
+                });
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
+            }
+        }
+
         // GET: api/TaxiRankTrips/rank/{taxiRankId}
         [HttpGet("rank/{taxiRankId:guid}")]
-        public async Task<ActionResult<IEnumerable<TaxiRankTrip>>> GetByTaxiRank(Guid taxiRankId)
+        public async Task<ActionResult> GetByTaxiRank(Guid taxiRankId)
         {
             try
             {
                 var trips = await _tripRepository.GetByTaxiRankIdAsync(taxiRankId);
-                return Ok(trips);
+
+                // Build a lookup of driver names by VehicleId for fallback
+                var vehicleIds = trips.Where(t => t.Driver == null).Select(t => t.VehicleId).Distinct().ToList();
+                var driverNameLookup = new Dictionary<Guid, string>();
+                var driverPhoneLookup = new Dictionary<Guid, string>();
+                if (vehicleIds.Any())
+                {
+                    var fallbackDrivers = await _context.DriverProfiles
+                        .Where(d => d.AssignedVehicleId != null && vehicleIds.Contains(d.AssignedVehicleId.Value))
+                        .Select(d => new { VehicleId = d.AssignedVehicleId!.Value, d.Name, d.Phone })
+                        .ToListAsync();
+                    foreach (var fd in fallbackDrivers)
+                    {
+                        driverNameLookup[fd.VehicleId] = fd.Name;
+                        driverPhoneLookup[fd.VehicleId] = fd.Phone;
+                    }
+                }
+
+                var result = trips.Select(t =>
+                {
+                    var driverName = t.Driver?.Name;
+                    var driverPhone = t.Driver?.Phone;
+                    if (string.IsNullOrEmpty(driverName))
+                    {
+                        driverNameLookup.TryGetValue(t.VehicleId, out driverName);
+                        driverPhoneLookup.TryGetValue(t.VehicleId, out driverPhone);
+                    }
+
+                    return new
+                    {
+                        t.Id, t.TenantId, t.VehicleId, t.DriverId, t.MarshalId, t.TaxiRankId,
+                        t.DepartureStation, t.DestinationStation, t.DepartureTime, t.ArrivalTime,
+                        t.TotalAmount, t.TotalCosts, t.NetAmount, t.Status, t.PassengerCount,
+                        t.Notes, t.CompletedAt, t.Latitude, t.Longitude, t.CreatedAt, t.UpdatedAt,
+                        driverName,
+                        driverPhone,
+                        vehicle = t.Vehicle == null ? null : new
+                        {
+                            t.Vehicle.Id, t.Vehicle.Registration, t.Vehicle.Make, t.Vehicle.Model,
+                            t.Vehicle.Type, t.Vehicle.Capacity
+                        },
+                        driver = driverName != null ? new { name = driverName, phone = driverPhone } : null,
+                        marshal = t.Marshal == null ? null : new { t.Marshal.Id, name = t.Marshal.FullName },
+                        passengers = (t.Passengers ?? new List<TripPassenger>()).Select(p => new
+                        {
+                            p.Id, p.PassengerName, p.PassengerPhone, p.DepartureStation, p.ArrivalStation,
+                            p.Amount, p.PaymentMethod, p.SeatNumber, p.NextOfKinName, p.NextOfKinContact
+                        }),
+                        costs = (t.Costs ?? new List<TripCost>()).Select(c => new
+                        {
+                            c.Id, c.Category, c.Description, c.Amount, c.ReceiptNumber
+                        }),
+                    };
+                });
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
@@ -699,11 +1019,34 @@ namespace MzansiFleet.Api.Controllers
                 if (trip.Status == "Completed")
                     return BadRequest(new { message = "Trip is already completed" });
 
+                // Driver-specific guard: a driver can only complete their own trip.
+                if (dto.CompletedByDriverId.HasValue && dto.CompletedByDriverId.Value != Guid.Empty)
+                {
+                    if (!trip.DriverId.HasValue || trip.DriverId.Value == Guid.Empty)
+                    {
+                        // Auto-assign the completing driver to this trip
+                        trip.DriverId = dto.CompletedByDriverId.Value;
+                    }
+                    else if (trip.DriverId.Value != dto.CompletedByDriverId.Value)
+                    {
+                        return Forbid();
+                    }
+                }
+
+                var completedAt = dto.CompletedAt.HasValue
+                    ? (dto.CompletedAt.Value.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(dto.CompletedAt.Value, DateTimeKind.Utc)
+                        : dto.CompletedAt.Value.ToUniversalTime())
+                    : DateTime.UtcNow;
+
                 // Update trip status and arrival time
                 trip.Status = "Completed";
-                trip.ArrivalTime = DateTime.UtcNow;
+                trip.ArrivalTime = completedAt;
+                trip.CompletedAt = completedAt;
+                trip.Latitude = dto.Latitude;
+                trip.Longitude = dto.Longitude;
                 trip.Notes = string.IsNullOrEmpty(dto.Notes) ? trip.Notes : dto.Notes;
-                trip.UpdatedAt = DateTime.UtcNow;
+                trip.UpdatedAt = completedAt;
                 await _tripRepository.UpdateAsync(trip);
 
                 // Get actual passengers and totals
@@ -963,6 +1306,10 @@ namespace MzansiFleet.Api.Controllers
     public class CompleteTripDto
     {
         public string Notes { get; set; } = string.Empty;
+        public Guid? CompletedByDriverId { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
     }
 
     public class UpdateTripDto

@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTableModule } from '@angular/material/table';
@@ -17,7 +18,7 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { FormsModule } from '@angular/forms';
 
-import { QueueManagementService, QueueOverview, AvailableVehicle, AssignVehicleDto, Route } from '../../services/queue-management.service';
+import { QueueManagementService, QueueOverview, RouteQueue, AvailableVehicle, AssignVehicleDto, Route } from '../../services/queue-management.service';
 import { DispatchDialogComponent } from './dispatch-dialog.component';
 import { Subject } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -42,6 +43,7 @@ import { ActivatedRoute, Router } from '@angular/router';
     MatDialogModule,
     MatDatepickerModule,
     MatNativeDateModule,
+    MatButtonToggleModule,
     FormsModule,
     DispatchDialogComponent
   ],
@@ -56,6 +58,7 @@ export class QueueManagementComponent implements OnInit, OnDestroy {
   loading = false;
   selectedTaxiRankId: string | undefined = undefined;
   selectedRouteId: string | undefined = undefined;
+  estimatedDepartureTime: string = '';
   activeTabIndex = 0;
   selectedPeriod = 'today';
   
@@ -189,6 +192,7 @@ export class QueueManagementComponent implements OnInit, OnDestroy {
       routeId: this.selectedRouteId,
       vehicleId: vehicle.vehicleId,
       tenantId: this.getCurrentTenantId(),
+      estimatedDepartureTime: this.estimatedDepartureTime || undefined,
       notes: `Assigned via queue management`
     };
 
@@ -244,6 +248,60 @@ export class QueueManagementComponent implements OnInit, OnDestroy {
       case 'dispatched': return 'warn';
       default: return '';
     }
+  }
+
+  getWaitingPercentage(): number {
+    if (!this.queueOverview) return 0;
+    const { waiting, loading, dispatched } = this.queueOverview.totalStats;
+    const total = waiting + loading + dispatched;
+    return total === 0 ? 0 : Math.round((waiting / total) * 100);
+  }
+
+  getLoadingPercentage(): number {
+    if (!this.queueOverview) return 0;
+    const { waiting, loading, dispatched } = this.queueOverview.totalStats;
+    const total = waiting + loading + dispatched;
+    return total === 0 ? 0 : Math.round((loading / total) * 100);
+  }
+
+  getDispatchedPercentage(): number {
+    if (!this.queueOverview) return 0;
+    const { waiting, loading, dispatched } = this.queueOverview.totalStats;
+    const total = waiting + loading + dispatched;
+    return total === 0 ? 0 : Math.round((dispatched / total) * 100);
+  }
+
+  getTotalVehicles(): number {
+    if (!this.queueOverview) return 0;
+    const { waiting, loading, dispatched } = this.queueOverview.totalStats;
+    return waiting + loading + dispatched;
+  }
+
+  onTabChange(index: number): void {
+    this.activeTabIndex = index;
+    if (index === 0) {
+      this.loadQueueData();
+    }
+  }
+
+  getRouteStatusColor(routeQueue: RouteQueue): string {
+    if (routeQueue.dispatchedVehicles > 0) {
+      return 'warn';
+    }
+    if (routeQueue.loadingVehicles > 0) {
+      return 'accent';
+    }
+    if (routeQueue.waitingVehicles > 0) {
+      return 'primary';
+    }
+    return '';
+  }
+
+  getRouteStatus(routeQueue: RouteQueue): string {
+    if (routeQueue.dispatchedVehicles > 0) return 'Dispatched';
+    if (routeQueue.loadingVehicles > 0) return 'Loading';
+    if (routeQueue.waitingVehicles > 0) return 'Waiting';
+    return 'Idle';
   }
 
   getWaitTimeColor(waitTime: number): string {

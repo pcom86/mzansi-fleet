@@ -386,10 +386,58 @@ namespace MzansiFleet.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Trip>>> GetAll([FromQuery] string? vehicleIds = null)
+        public async Task<ActionResult<IEnumerable<Trip>>> GetAll(
+            [FromQuery] string? vehicleIds = null,
+            [FromQuery] Guid? tenantId = null,
+            [FromQuery] Guid? taxiRankId = null,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null)
         {
             var query = _context.Trips
                 .Include(t => t.Passengers).AsQueryable();
+
+            if (startDate.HasValue)
+            {
+                var start = startDate.Value.Kind == DateTimeKind.Unspecified
+                    ? DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc)
+                    : startDate.Value.ToUniversalTime().Date;
+                query = query.Where(t => t.TripDate.Date >= start.Date);
+            }
+
+            if (endDate.HasValue)
+            {
+                var end = endDate.Value.Kind == DateTimeKind.Unspecified
+                    ? DateTime.SpecifyKind(endDate.Value.Date, DateTimeKind.Utc)
+                    : endDate.Value.ToUniversalTime().Date;
+                query = query.Where(t => t.TripDate.Date <= end.Date);
+            }
+
+            if (tenantId.HasValue && tenantId.Value != Guid.Empty)
+            {
+                var tenantVehicleIds = await _context.Set<Vehicle>()
+                    .Where(v => v.TenantId == tenantId.Value)
+                    .Select(v => v.Id)
+                    .ToListAsync();
+
+                query = query.Where(t => tenantVehicleIds.Contains(t.VehicleId));
+            }
+
+            if (taxiRankId.HasValue && taxiRankId.Value != Guid.Empty)
+            {
+                var rankVehicleIds = await _context.Set<VehicleTaxiRank>()
+                    .Where(vtr => vtr.TaxiRankId == taxiRankId.Value && vtr.IsActive)
+                    .Select(vtr => vtr.VehicleId)
+                    .ToListAsync();
+
+                if (rankVehicleIds.Any())
+                {
+                    query = query.Where(t => rankVehicleIds.Contains(t.VehicleId));
+                }
+                else
+                {
+                    return Ok(new List<Trip>());
+                }
+            }
             
             // Filter by vehicle IDs if provided (comma-separated)
             if (!string.IsNullOrEmpty(vehicleIds))

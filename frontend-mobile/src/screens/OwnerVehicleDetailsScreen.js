@@ -228,8 +228,27 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
     setDriverSearch('');
     setLinkModalOpen(true);
     try {
-      const r = await client.get('/Drivers');
-      setAllDrivers(Array.isArray(r.data) ? r.data : []);
+      const tenantId = user?.tenantId;
+      const url = tenantId ? `/Drivers?tenantId=${tenantId}` : '/Drivers';
+      const r = await client.get(url);
+      let drivers = Array.isArray(r.data) ? r.data : [];
+
+      // Fallback to broader endpoints if tenant-scoped result is unexpectedly empty.
+      if (drivers.length === 0 && tenantId) {
+        try {
+          const all = await client.get('/Drivers');
+          drivers = Array.isArray(all.data) ? all.data : [];
+        } catch {
+          try {
+            const legacy = await client.get('/Identity/driverprofiles');
+            drivers = Array.isArray(legacy.data) ? legacy.data : [];
+          } catch {
+            drivers = [];
+          }
+        }
+      }
+
+      setAllDrivers(drivers);
     } catch {
       setAllDrivers([]);
     }

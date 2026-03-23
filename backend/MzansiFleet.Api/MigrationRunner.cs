@@ -205,6 +205,9 @@ namespace MzansiFleet.Api
                         ""Status"" text NOT NULL,
                         ""PassengerCount"" integer NOT NULL,
                         ""Notes"" text NULL,
+                        ""CompletedAt"" timestamp with time zone NULL,
+                        ""Latitude"" numeric NULL,
+                        ""Longitude"" numeric NULL,
                         ""CreatedAt"" timestamp with time zone NOT NULL,
                         ""UpdatedAt"" timestamp with time zone NULL,
                         CONSTRAINT ""PK_TaxiRankTrips"" PRIMARY KEY (""Id"")

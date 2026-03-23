@@ -17,17 +17,17 @@ export async function getQueueByRoute(routeId, date) {
 }
 
 // Add a vehicle to the queue
-export async function addToQueue({ taxiRankId, routeId, vehicleId, driverId, tenantId, queueDate, notes }) {
+export async function addToQueue({ taxiRankId, routeId, vehicleId, driverId, tenantId, queueDate, estimatedDepartureTime, notes }) {
   const resp = await client.post('/DailyTaxiQueue', {
-    taxiRankId, routeId, vehicleId, driverId, tenantId, queueDate, notes,
+    taxiRankId, routeId, vehicleId, driverId, tenantId, queueDate, estimatedDepartureTime, notes,
   });
   return resp.data;
 }
 
 // Dispatch a vehicle (mark as departed)
-export async function dispatchVehicle(queueEntryId, { dispatchedByUserId, passengerCount, passengers } = {}) {
+export async function dispatchVehicle(queueEntryId, { dispatchedByUserId, passengerCount, passengers, fareAmount } = {}) {
   const resp = await client.put(`/DailyTaxiQueue/${queueEntryId}/dispatch`, {
-    dispatchedByUserId, passengerCount, passengers,
+    dispatchedByUserId, passengerCount, passengers, fareAmount,
   });
   return resp.data;
 }
@@ -59,6 +59,16 @@ export async function getQueueStats(rankId, date) {
   return resp.data;
 }
 
+// Get queue view for a specific driver's assigned vehicle
+export async function getDriverQueueView(driverId, date) {
+  const params = new URLSearchParams();
+  if (driverId) params.append('driverId', driverId);
+  if (date) params.append('date', date);
+  const qs = params.toString();
+  const resp = await client.get(`/DailyTaxiQueue/my-queue${qs ? `?${qs}` : ''}`);
+  return resp.data;
+}
+
 // Get route stops for destination selection
 export async function getRouteStops(routeId) {
   const resp = await client.get(`/Routes/${routeId}`);
@@ -81,9 +91,9 @@ export async function getAvailableVehicles(taxiRankId) {
 }
 
 // Assign vehicle to queue with enhanced options
-export async function assignVehicleToQueue({ taxiRankId, routeId, vehicleId, driverId, tenantId, notes }) {
+export async function assignVehicleToQueue({ taxiRankId, routeId, vehicleId, driverId, tenantId, estimatedDepartureTime, notes }) {
   const resp = await client.post('/QueueManagement/assign-vehicle', {
-    taxiRankId, routeId, vehicleId, driverId, tenantId, notes,
+    taxiRankId, routeId, vehicleId, driverId, tenantId, estimatedDepartureTime, notes,
   });
   return resp.data;
 }
@@ -226,4 +236,27 @@ export function validateVehicleAssignment(vehicle, existingQueue) {
     canAssign: !isAlreadyQueued,
     reason: isAlreadyQueued ? 'Vehicle is already in queue' : null,
   };
+}
+
+// ── Queue Trip Management API ─────────────────────────────────────
+
+// Get trip details for a queue entry
+export async function getQueueTripDetails(queueEntryId) {
+  const resp = await client.get(`/DailyTaxiQueue/${queueEntryId}/trip-details`);
+  return resp.data;
+}
+
+// Complete a trip from queue context
+export async function completeQueueTrip(queueEntryId, { notes, completedByDriverId, completedAt, latitude, longitude } = {}) {
+  const resp = await client.put(`/DailyTaxiQueue/${queueEntryId}/complete-trip`, {
+    notes, completedByDriverId, completedAt, latitude, longitude,
+  });
+  return resp.data;
+}
+
+// Get driver's dispatched trips
+export async function getDriverDispatchedTrips(driverId, date) {
+  const params = date ? `?date=${date}` : '';
+  const resp = await client.get(`/DailyTaxiQueue/driver/${driverId}/dispatched-trips${params}`);
+  return resp.data;
 }

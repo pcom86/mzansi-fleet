@@ -1023,18 +1023,15 @@ export default function AdminTripDetailsScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalSheet, { backgroundColor: c.background }]}>
             <ModalHeader title={captureMode === 'schedule' ? "Select Scheduled Trip" : "Select Route"} onClose={() => setRouteModalVisible(false)} c={c} />
-            <FlatList
-              data={schedules.filter(s => s.isActive)}
-              keyExtractor={item => item.id}
-              contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item }) => {
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
+              {schedules.filter(s => s.isActive).map((item) => {
                 const rvCount = item.routeVehicles?.filter(rv => rv.isActive !== false)?.length || 0;
                 const isSelected = captureMode === 'schedule' 
                   ? selectedSchedule?.id === item.id 
                   : selectedRouteId === item.id;
                 
                 return (
-                  <View style={[styles.listItem, { backgroundColor: isSelected ? GOLD_LIGHT : c.surface, borderColor: isSelected ? GOLD : c.border }]}>
+                  <View key={item.id} style={[styles.listItem, { backgroundColor: isSelected ? GOLD_LIGHT : c.surface, borderColor: isSelected ? GOLD : c.border }]}>
                     <TouchableOpacity
                       style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
                       onPress={() => selectScheduleRoute(item)}
@@ -1064,8 +1061,11 @@ export default function AdminTripDetailsScreen({ navigation }) {
                     )}
                   </View>
                 );
-              }}
-            />
+              })}
+              {schedules.filter(s => s.isActive).length === 0 ? (
+                <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 40 }]}>No routes available</Text>
+              ) : null}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1118,14 +1118,12 @@ export default function AdminTripDetailsScreen({ navigation }) {
                 </Text>
               </View>
             )}
-            <FlatList
-              data={displayVehicles}
-              keyExtractor={item => item.id || item.vehicleId}
-              contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item }) => {
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
+              {displayVehicles.map((item) => {
                 const vId = item.vehicleId || item.id;
                 return (
                   <TouchableOpacity
+                    key={vId}
                     style={[styles.listItem, { backgroundColor: vId === selectedVehicleId ? GOLD_LIGHT : c.surface, borderColor: vId === selectedVehicleId ? GOLD : c.border }]}
                     onPress={() => { setSelectedVehicleId(vId); setVehicleModalVisible(false); }}
                   >
@@ -1137,9 +1135,11 @@ export default function AdminTripDetailsScreen({ navigation }) {
                     {vId === selectedVehicleId && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
                   </TouchableOpacity>
                 );
-              }}
-              ListEmptyComponent={<Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 40 }]}>No vehicles assigned to this route</Text>}
-            />
+              })}
+              {displayVehicles.length === 0 ? (
+                <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center', marginTop: 40 }]}>No vehicles assigned to this route</Text>
+              ) : null}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1149,14 +1149,12 @@ export default function AdminTripDetailsScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalSheet, { backgroundColor: c.background }]}>
             <ModalHeader title="Select Driver" onClose={() => setDriverModalVisible(false)} c={c} />
-            <FlatList
-              data={drivers}
-              keyExtractor={item => item.id}
-              contentContainerStyle={{ padding: 16 }}
-              renderItem={({ item }) => {
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
+              {drivers.map((item) => {
                 const isAssigned = item.assignedVehicleId === selectedVehicleId;
                 return (
                   <TouchableOpacity
+                    key={item.id}
                     style={[styles.listItem, { backgroundColor: item.id === selectedDriverId ? GOLD_LIGHT : c.surface, borderColor: item.id === selectedDriverId ? GOLD : c.border }]}
                     onPress={() => { setSelectedDriverId(item.id); setDriverModalVisible(false); }}
                   >
@@ -1173,9 +1171,11 @@ export default function AdminTripDetailsScreen({ navigation }) {
                     {item.id === selectedDriverId && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
                   </TouchableOpacity>
                 );
-              }}
-              ListEmptyComponent={<Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center' }]}>No drivers</Text>}
-            />
+              })}
+              {drivers.length === 0 ? (
+                <Text style={[styles.emptyText, { color: c.textMuted, textAlign: 'center' }]}>No drivers</Text>
+              ) : null}
+            </ScrollView>
           </View>
         </View>
       </Modal>

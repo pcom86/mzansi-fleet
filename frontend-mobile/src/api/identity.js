@@ -15,6 +15,11 @@ export async function createTenant(body) {
   return resp.data;
 }
 
+export async function fetchAllTenants() {
+  const resp = await client.get('/Identity/tenants');
+  return resp.data || [];
+}
+
 export async function createUser(body) {
   const resp = await client.post('/Identity/users', body);
   return resp.data;

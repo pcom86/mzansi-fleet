@@ -277,17 +277,26 @@ export class OwnerTripsComponent implements OnInit {
     return vehicle ? `${vehicle.registration} - ${vehicle.make} ${vehicle.model}` : 'Unknown Vehicle';
   }
 
-  getDriverName(driverId: string): string {
+  getDriverName(driverId?: string): string {
     if (!driverId) {
       return 'No Driver Assigned';
     }
     const driver = this.drivers.find(d => d.id === driverId);
-    if (!driver) {
-      console.warn('Driver not found for ID:', driverId);
+    if (driver) {
+      const fullName = `${driver.firstName || ''} ${driver.lastName || ''}`.trim();
+      if (fullName) return fullName;
+      if (driver.firstName) return driver.firstName;
       return 'Unknown Driver';
     }
-    const fullName = `${driver.firstName} ${driver.lastName}`.trim();
-    return fullName || driver.firstName || 'Unknown Driver';
+
+    // Fallback: sometimes trips can include a direct driverName property
+    const trip = this.trips?.find(t => t.driverId === driverId) as any;
+    if (trip?.driverName) {
+      return trip.driverName;
+    }
+
+    console.warn('Driver not found for ID:', driverId);
+    return 'No Driver Assigned';
   }
 
   getRouteName(routeId: string): string {

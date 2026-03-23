@@ -528,10 +528,10 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
               <Text style={[styles.sectionTitle, { color: c.text }]}>Routes</Text>
               <TouchableOpacity
                 style={[styles.createButton, { backgroundColor: GOLD }]}
-                onPress={() => navigation.navigate('CreateTripSchedule')}
+                onPress={() => navigation.navigate('TaxiRankRoutes', { rank: { id: user?.tenantId, name: 'All Ranks' } })}
               >
                 <Ionicons name="add" size={16} color="#000" />
-                <Text style={styles.createButtonText}>Create Route</Text>
+                <Text style={styles.createButtonText}>Manage Routes</Text>
               </TouchableOpacity>
             </View>
             <FlatList
@@ -546,10 +546,10 @@ export default function VehicleRouteAssignmentScreen({ navigation }) {
                   </Text>
                   <TouchableOpacity
                     style={[styles.createEmptyButton, { backgroundColor: GOLD }]}
-                    onPress={() => navigation.navigate('CreateTripSchedule')}
+                    onPress={() => navigation.navigate('TaxiRankRoutes', { rank: { id: user?.tenantId, name: 'All Ranks' } })}
                   >
                     <Ionicons name="add" size={16} color="#000" />
-                    <Text style={styles.createButtonText}>Create Your First Route</Text>
+                    <Text style={styles.createButtonText}>Manage Routes</Text>
                   </TouchableOpacity>
                 </View>
               }

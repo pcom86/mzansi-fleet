@@ -70,6 +70,8 @@ namespace MzansiFleet.Repository
         public DbSet<ScheduledTripBooking> ScheduledTripBookings { get; set; }
         public DbSet<BookingPassenger> BookingPassengers { get; set; }
         public DbSet<DailyTaxiQueue> DailyTaxiQueues { get; set; }
+        public DbSet<QueueBooking> QueueBookings { get; set; }
+        public DbSet<QueueBookingPassenger> QueueBookingPassengers { get; set; }
         
         // Queue Marshal Module
         public DbSet<QueueMarshal> QueueMarshals { get; set; }
@@ -164,6 +166,14 @@ namespace MzansiFleet.Repository
                 .HasOne(u => u.Tenant)
                 .WithMany(t => t.Users)
                 .HasForeignKey(u => u.TenantId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Message → TaxiRank is optional (behavior alerts have no rank)
+            modelBuilder.Entity<Message>()
+                .HasOne(m => m.TaxiRank)
+                .WithMany()
+                .HasForeignKey(m => m.TaxiRankId)
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.SetNull);
 
@@ -314,6 +324,7 @@ namespace MzansiFleet.Repository
             modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.DepartedAt).HasConversion(nullableDateTimeConverter);
             modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.CreatedAt).HasConversion(dateTimeConverter);
             modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.UpdatedAt).HasConversion(nullableDateTimeConverter);
+            modelBuilder.Entity<DailyTaxiQueue>().Property(d => d.EstimatedDepartureTime).HasConversion(nullableDateTimeConverter);
             
             modelBuilder.Entity<DailyTaxiQueue>()
                 .HasOne(d => d.TaxiRank).WithMany(r => r.DailyQueues)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { CommonActions } from '@react-navigation/native';
+import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
   Modal, TextInput, RefreshControl, ActivityIndicator, Platform,
@@ -15,6 +15,7 @@ import { fetchDriverEvents } from '../api/driverBehavior';
 import RatingReviewModal from './RatingReviewModal';
 import ThemeToggle from '../components/ThemeToggle';
 import { startMonitoring, stopMonitoring, isMonitoring, getCurrentSpeed } from '../services/DrivingMonitorService';
+import * as Location from 'expo-location';
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 const API = {
@@ -476,7 +477,7 @@ function DetailRow({ icon, label, value, highlight, c, s }) {
 }
 
 // ── Tab screens ──────────────────────────────────────────────────────────────
-function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onToggle, onAddEarning, onAddExpense, refreshing, onRefresh, monitorActive, monitorSpeed, recentBehaviorEvents, c, s }) {
+function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onToggle, onAddEarning, onAddExpense, onOpenRankQueue, onOpenBehavior, refreshing, onRefresh, monitorActive, monitorSpeed, recentBehaviorEvents, activeTrip, onViewTripDetails, onCompleteTrip, c, s }) {
   const { name: month } = monthRange();
   const earn = earnings.reduce((a, e) => a + (e.amount || 0), 0);
   const exp = expenses.reduce((a, e) => a + (e.amount || 0), 0);
@@ -539,6 +540,66 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
         </View>
       )}
 
+      {/* Active Trip Card */}
+      {activeTrip && (
+        <View style={s.activeTripCard}>
+          <View style={s.activeTripHeader}>
+            <View style={s.activeTripDot} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.activeTripTitle}>Active Trip</Text>
+              <Text style={s.activeTripSub}>
+                {activeTrip.departureStation && activeTrip.destinationStation
+                  ? `${activeTrip.departureStation} → ${activeTrip.destinationStation}`
+                  : activeTrip.departureStation || 'In progress'}
+              </Text>
+            </View>
+            <View style={[s.activeTripBadge, activeTrip.status === 'InProgress' && { backgroundColor: '#3b82f6' }]}>
+              <Text style={s.activeTripBadgeTxt}>{(activeTrip.status || 'ACTIVE').toUpperCase()}</Text>
+            </View>
+          </View>
+
+          <View style={s.activeTripMeta}>
+            <View style={s.activeTripMetaItem}>
+              <Ionicons name="car-outline" size={14} color="#ffffffaa" />
+              <Text style={s.activeTripMetaTxt}>
+                {activeTrip.vehicle?.registration || '—'}
+              </Text>
+            </View>
+            {activeTrip.passengerCount > 0 && (
+              <View style={s.activeTripMetaItem}>
+                <Ionicons name="people-outline" size={14} color="#ffffffaa" />
+                <Text style={s.activeTripMetaTxt}>{activeTrip.passengerCount} pax</Text>
+              </View>
+            )}
+            {activeTrip.departureTime && (
+              <View style={s.activeTripMetaItem}>
+                <Ionicons name="time-outline" size={14} color="#ffffffaa" />
+                <Text style={s.activeTripMetaTxt}>
+                  {new Date(activeTrip.departureTime).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+            )}
+            {activeTrip.totalAmount > 0 && (
+              <View style={s.activeTripMetaItem}>
+                <Ionicons name="cash-outline" size={14} color="#ffffffaa" />
+                <Text style={s.activeTripMetaTxt}>R{activeTrip.totalAmount}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={s.activeTripActions}>
+            <TouchableOpacity style={s.activeTripBtn} onPress={() => onViewTripDetails(activeTrip)}>
+              <Ionicons name="eye-outline" size={16} color="#fff" />
+              <Text style={s.activeTripBtnTxt}>View Details</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.activeTripBtn, s.activeTripBtnGreen]} onPress={() => onCompleteTrip(activeTrip)}>
+              <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+              <Text style={s.activeTripBtnTxt}>Complete Trip</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Vehicle Details */}
       <VehicleDetailsCard vehicle={vehicle} c={c} s={s} />
 
@@ -591,6 +652,28 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
             <Ionicons name="remove-circle-outline" size={24} color="#ef4444" />
           </View>
           <Text style={s.quickActionTxt}>Add Expense</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={[s.quickActions, { marginTop: 10 }]}> 
+        <TouchableOpacity
+          style={s.quickActionBtn}
+          onPress={onOpenBehavior}
+        >
+          <View style={[s.quickActionIcon, { backgroundColor: '#f59e0b20' }]}>
+            <Ionicons name="shield-checkmark-outline" size={24} color="#f59e0b" />
+          </View>
+          <Text style={s.quickActionTxt}>My Behavior</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[s.quickActionBtn, !vehicle && { opacity: 0.45 }]}
+          onPress={vehicle ? onOpenRankQueue : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to view rank queue.')}
+        >
+          <View style={[s.quickActionIcon, { backgroundColor: '#3b82f620' }]}>
+            <Ionicons name="list-outline" size={24} color="#3b82f6" />
+          </View>
+          <Text style={s.quickActionTxt}>Trip Management</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -1115,6 +1198,7 @@ export default function DriverDashboardScreen({ navigation }) {
   const [monitorActive, setMonitorActive] = useState(false);
   const [monitorSpeed, setMonitorSpeed] = useState(0);
   const [recentBehaviorEvents, setRecentBehaviorEvents] = useState([]);
+  const [activeTrip, setActiveTrip] = useState(null);
 
   async function submitReview({ rating, review }) {
     await submitMechanicalRequestReview({
@@ -1165,6 +1249,20 @@ export default function DriverDashboardScreen({ navigation }) {
         setVehicle(veh);
       } catch {}
 
+      // Fetch active trip for this driver
+      if (prof?.id) {
+        try {
+          console.log('[Dashboard] Fetching active trips for driver:', prof.id);
+          const resp = await client.get(`/TaxiRankTrips/driver/${prof.id}/active`);
+          const trips = Array.isArray(resp.data) ? resp.data : [];
+          console.log('[Dashboard] Active trips found:', trips.length);
+          setActiveTrip(trips.length > 0 ? trips[0] : null);
+        } catch (err) {
+          console.warn('[Dashboard] Active trips fetch error:', err?.message, err?.response?.status);
+          setActiveTrip(null);
+        }
+      }
+
       if (veh) {
         const { start, end } = monthRange();
         try {
@@ -1192,9 +1290,27 @@ export default function DriverDashboardScreen({ navigation }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Re-fetch active trip when screen regains focus (e.g. after completing from details)
+  useFocusEffect(useCallback(() => {
+    if (!profile?.id) return;
+    (async () => {
+      try {
+        const resp = await client.get(`/TaxiRankTrips/driver/${profile.id}/active`);
+        const trips = Array.isArray(resp.data) ? resp.data : [];
+        setActiveTrip(trips.length > 0 ? trips[0] : null);
+      } catch {
+        setActiveTrip(null);
+      }
+    })();
+  }, [profile?.id]));
+
   async function toggleAvailability() {
     if (!profile) return;
     const goingOnline = !profile.isAvailable;
+    if (!goingOnline && activeTrip) {
+      Alert.alert('Active Trip', 'You cannot go offline while you have an active trip. Please complete the trip first.');
+      return;
+    }
     try {
       await API.updateDriverProfile(profile.id, { ...profile, isAvailable: goingOnline });
       setProfile(p => ({ ...p, isAvailable: goingOnline }));
@@ -1226,6 +1342,30 @@ export default function DriverDashboardScreen({ navigation }) {
       }
     } catch { Alert.alert('Error', 'Could not update availability'); }
   }
+
+  // Auto-start behavior monitoring when there is an active trip
+  useEffect(() => {
+    if (activeTrip && !monitorActive && profile) {
+      (async () => {
+        const alreadyRunning = await isMonitoring();
+        if (alreadyRunning) { setMonitorActive(true); return; }
+        const result = await startMonitoring({
+          driverId: profile.id,
+          vehicleId: vehicle?.id,
+          tenantId: user?.tenantId,
+          reporterId: user?.userId || user?.id,
+          onEvent: (evt) => {
+            setRecentBehaviorEvents(prev => [evt, ...prev].slice(0, 10));
+          },
+          onStatusChange: (status) => {
+            setMonitorActive(status.monitoring);
+            setMonitorSpeed(status.speed || 0);
+          },
+        });
+        if (result.success) setMonitorActive(true);
+      })();
+    }
+  }, [activeTrip, monitorActive, profile]);
 
   // Cleanup monitor on unmount
   useEffect(() => {
@@ -1281,8 +1421,39 @@ export default function DriverDashboardScreen({ navigation }) {
         {tab === 'overview' && (
           <OverviewTab profile={profile} vehicle={vehicle} earnings={earnings} expenses={expenses} maintenance={maintenance}
             onToggle={toggleAvailability} onAddEarning={() => setEarnModal(true)} onAddExpense={() => setExpModal(true)}
+            onOpenBehavior={() => navigation.navigate('DriverBehavior')}
+            onOpenRankQueue={() => navigation.navigate('DriverRankQueue', { driverId: profile?.id })}
             refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
             monitorActive={monitorActive} monitorSpeed={monitorSpeed} recentBehaviorEvents={recentBehaviorEvents}
+            activeTrip={activeTrip}
+            onViewTripDetails={(trip) => navigation.navigate('DriverTripDetails', { tripId: trip.id, driverProfileId: profile?.id })}
+            onCompleteTrip={async (trip) => {
+              Alert.alert('Complete Trip', 'Are you sure you want to complete this trip?', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Complete', onPress: async () => {
+                  try {
+                    let lat, lng;
+                    try {
+                      const { status } = await Location.requestForegroundPermissionsAsync();
+                      if (status === 'granted') {
+                        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                        lat = loc.coords.latitude; lng = loc.coords.longitude;
+                      }
+                    } catch {}
+                    await client.put(`/TaxiRankTrips/${trip.id}/complete`, {
+                      notes: 'Completed from driver dashboard',
+                      completedByDriverId: profile?.id,
+                      completedAt: new Date().toISOString(),
+                      latitude: lat, longitude: lng,
+                    });
+                    Alert.alert('Success', 'Trip completed successfully');
+                    load();
+                  } catch (e) {
+                    Alert.alert('Error', e?.response?.data?.message || e?.message || 'Failed to complete trip');
+                  }
+                }},
+              ]);
+            }}
             c={c} s={s} />
         )}
         {tab === 'maintenance' && (
@@ -1393,6 +1564,30 @@ function createStyles(c) {
     behaviorAlertCat: { fontSize: 12, fontWeight: '800', minWidth: 80 },
     behaviorAlertDesc: { flex: 1, fontSize: 11, color: c.textMuted },
     behaviorAlertPts: { fontSize: 12, fontWeight: '900' },
+
+    // ── Active Trip Card ──
+    activeTripCard: {
+      backgroundColor: '#1a1a2e', borderRadius: 16, padding: 16, marginBottom: 14,
+      borderWidth: 1.5, borderColor: '#22c55e',
+      shadowColor: '#22c55e', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4,
+    },
+    activeTripHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    activeTripDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 10 },
+    activeTripTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
+    activeTripSub: { fontSize: 12, color: '#ffffffaa', marginTop: 1 },
+    activeTripBadge: { backgroundColor: '#22c55e', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+    activeTripBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
+    activeTripMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 14 },
+    activeTripMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    activeTripMetaTxt: { fontSize: 12, color: '#ffffffaa' },
+    activeTripActions: { flexDirection: 'row', gap: 10 },
+    activeTripBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, paddingVertical: 11,
+      borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    },
+    activeTripBtnGreen: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
+    activeTripBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '600' },
 
     // ── Hero profit card ──
     heroCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, borderRadius: 20, padding: 20, marginBottom: 14 },

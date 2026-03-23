@@ -160,6 +160,7 @@ namespace MzansiFleet.Api.Controllers
                 QueuePosition = maxPosition + 1,
                 JoinedAt = DateTime.UtcNow.TimeOfDay,
                 Status = "Waiting",
+                EstimatedDepartureTime = dto.EstimatedDepartureTime,
                 Notes = dto.Notes,
                 CreatedAt = DateTime.UtcNow
             };
@@ -465,6 +466,7 @@ namespace MzansiFleet.Api.Controllers
         public Guid VehicleId { get; set; }
         public Guid? DriverId { get; set; }
         public Guid TenantId { get; set; }
+        public DateTime? EstimatedDepartureTime { get; set; }
         public string? Notes { get; set; }
     }
 

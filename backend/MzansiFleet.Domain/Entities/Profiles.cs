@@ -14,29 +14,29 @@ namespace MzansiFleet.Domain.Entities
     {
         public Guid Id { get; set; }
         public Guid UserId { get; set; }
-        public string Name { get; set; }
-        public string IdNumber { get; set; }
-        public string Phone { get; set; }
-        public string Email { get; set; }
-        public string PhotoUrl { get; set; }
+        public string? Name { get; set; }
+        public string? IdNumber { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? PhotoUrl { get; set; }
         
         // License Information
-        public string LicenseNumber { get; set; }
-        public string LicenseCopy { get; set; }
+        public string? LicenseNumber { get; set; }
+        public string? LicenseCopy { get; set; }
         public DateTime? LicenseExpiryDate { get; set; }
-        public string Category { get; set; }
+        public string? Category { get; set; }
         
         // PDP Information
         public bool HasPdp { get; set; }
-        public string PdpCopy { get; set; }
+        public string? PdpCopy { get; set; }
         public DateTime? PdpExpiryDate { get; set; }
         
         // Professional Info
-        public string Experience { get; set; }
+        public string? Experience { get; set; }
         public bool IsActive { get; set; }
         public bool IsAvailable { get; set; }
         public Guid? AssignedVehicleId { get; set; }
-        public User User { get; set; }
+        public User? User { get; set; }
     }
 
     public class PassengerProfile

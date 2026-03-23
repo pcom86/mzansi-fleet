@@ -36,6 +36,7 @@ import { approveMechanicalRequest, completeMechanicalRequest, declineMechanicalR
 import { getUnreadCount } from '../api/messaging';
 import { getCurrentMonthRange, getOwnerAnalyticsDashboard } from '../api/analytics';
 import { fetchDriverScoreboard } from '../api/driverBehavior';
+import client from '../api/client';
 import { useAppTheme } from '../theme';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -81,6 +82,8 @@ export default function OwnerDashboardScreen({ navigation }) {
   const [requestsBusy, setRequestsBusy] = useState(false);
   const [requestsPage, setRequestsPage] = useState(1);
   const [driverScores, setDriverScores] = useState([]);
+  const [fleetDrivers, setFleetDrivers] = useState([]);
+  const [driverRevenueMap, setDriverRevenueMap] = useState({});
 
   const monthRange = useMemo(() => getCurrentMonthRange(), []);
 
@@ -111,7 +114,15 @@ export default function OwnerDashboardScreen({ navigation }) {
         if (!mounted) return;
         setRecentTenders(recent.slice(0, 3));
         setAllTenders(all || []);
-        const ownerVehicles = (vehicles || []).filter(v => v.ownerId === user?.tenantId || v.ownerId === user?.id || v.ownerId === user?.userId);
+        const ownerRefIds = [user?.tenantId, user?.id, user?.userId]
+          .filter(Boolean)
+          .map(x => String(x).toLowerCase());
+        const ownerVehicles = (vehicles || []).filter(v => {
+          const refs = [v?.ownerId, v?.OwnerId, v?.tenantId, v?.TenantId]
+            .filter(Boolean)
+            .map(x => String(x).toLowerCase());
+          return refs.some(r => ownerRefIds.includes(r));
+        });
         setVehiclesCount(ownerVehicles.length);
 
         setAnalytics(analyticsData);
@@ -123,7 +134,12 @@ export default function OwnerDashboardScreen({ navigation }) {
         const dayAfter = new Date(tomorrow);
         dayAfter.setDate(dayAfter.getDate() + 1);
 
-        const ownerVehicleIds = new Set(ownerVehicles.map(v => v.id));
+        const ownerVehicleIds = new Set(
+          ownerVehicles
+            .map(v => v?.id || v?.Id)
+            .filter(Boolean)
+            .map(x => String(x).toLowerCase())
+        );
         const ownerRequests = (mechRequests || []).filter(r => ownerVehicleIds.has(r.vehicleId));
 
         // Keep maintenance requests list for owner vehicles
@@ -153,11 +169,68 @@ export default function OwnerDashboardScreen({ navigation }) {
         setMaintenanceTomorrow(countTomorrow);
         setUnreadMessages(unread || 0);
 
-        // Load driver scores (non-blocking)
+        // Load fleet drivers + scores + revenue (non-blocking)
         try {
-          const scores = await fetchDriverScoreboard(user?.tenantId);
-          if (mounted) setDriverScores(scores || []);
-        } catch { /* ignore - drivers tab will show empty */ }
+          const tenantId = user?.tenantId;
+          const fromIso = monthRange?.startDate ? new Date(monthRange.startDate).toISOString() : null;
+          const toIso = monthRange?.endDate ? new Date(monthRange.endDate).toISOString() : null;
+
+          const [driversResp, scores] = await Promise.all([
+            client.get(tenantId ? `/Drivers?tenantId=${tenantId}` : '/Drivers').catch(() => ({ data: [] })),
+            fetchDriverScoreboard(tenantId).catch(() => []),
+          ]);
+
+          let drivers = Array.isArray(driversResp.data) ? driversResp.data : [];
+          if (drivers.length === 0 && tenantId) {
+            try {
+              const all = await client.get('/Drivers');
+              drivers = Array.isArray(all.data) ? all.data : [];
+            } catch {
+              try {
+                const legacy = await client.get('/Identity/driverprofiles');
+                drivers = Array.isArray(legacy.data) ? legacy.data : [];
+              } catch {
+                drivers = [];
+              }
+            }
+          }
+
+          const tenantKey = tenantId ? String(tenantId).toLowerCase() : null;
+          const fleetScoped = drivers.filter(d => {
+            const assignedVehicleId = d?.assignedVehicleId || d?.AssignedVehicleId;
+            const assignedToOwnerVehicle = assignedVehicleId && ownerVehicleIds.has(String(assignedVehicleId).toLowerCase());
+            const driverTenant = d?.user?.tenantId || d?.user?.TenantId;
+            const tenantMatch = tenantKey && driverTenant && String(driverTenant).toLowerCase() === tenantKey;
+            return Boolean(assignedToOwnerVehicle || tenantMatch);
+          });
+
+          const visibleDrivers = fleetScoped.length > 0 ? fleetScoped : drivers;
+          const driverIdsCsv = visibleDrivers
+            .map(d => d?.id || d?.Id)
+            .filter(Boolean)
+            .join(',');
+          const revenueUrl = driverIdsCsv
+            ? `/Drivers/revenue?driverIds=${encodeURIComponent(driverIdsCsv)}${fromIso ? `&from=${encodeURIComponent(fromIso)}` : ''}${toIso ? `&to=${encodeURIComponent(toIso)}` : ''}`
+            : (tenantId
+              ? `/Drivers/revenue?tenantId=${tenantId}${fromIso ? `&from=${encodeURIComponent(fromIso)}` : ''}${toIso ? `&to=${encodeURIComponent(toIso)}` : ''}`
+              : null);
+
+          const revenueResp = revenueUrl
+            ? await client.get(revenueUrl).catch(() => ({ data: [] }))
+            : { data: [] };
+          const revenueRows = Array.isArray(revenueResp.data) ? revenueResp.data : [];
+          const revenueMap = revenueRows.reduce((acc, row) => {
+            if (!row?.driverId) return acc;
+            acc[row.driverId] = row;
+            return acc;
+          }, {});
+
+          if (mounted) {
+            setFleetDrivers(visibleDrivers);
+            setDriverScores(scores || []);
+            setDriverRevenueMap(revenueMap);
+          }
+        } catch { /* ignore */ }
       } catch (err) {
         console.warn('Error loading owner dashboard data', err);
       } finally {
@@ -319,9 +392,10 @@ export default function OwnerDashboardScreen({ navigation }) {
 
   const TABS = [
     { key: 'overview',     label: 'Overview',     icon: 'grid-outline',        activeIcon: 'grid' },
-    { key: 'drivers',      label: 'Drivers',      icon: 'people-outline',      activeIcon: 'people', badge: lowScoreDrivers },
+    { key: 'drivers',      label: 'Drivers',      icon: 'people-outline',      activeIcon: 'people', badge: fleetDrivers.length || lowScoreDrivers },
     { key: 'vehicles',     label: 'Vehicles',     icon: 'car-outline',         activeIcon: 'car' },
     { key: 'maintenance',  label: 'Maint.',        icon: 'construct-outline',   activeIcon: 'construct', badge: pendingMaint },
+    { key: 'messages',     label: 'Messages',     icon: 'chatbubble-outline',  activeIcon: 'chatbubble', badge: unreadMessages },
     { key: 'profile',      label: 'Profile',      icon: 'person-outline',      activeIcon: 'person' },
   ];
 
@@ -464,6 +538,34 @@ export default function OwnerDashboardScreen({ navigation }) {
               ))}
             </View>
 
+            {/* Quick Actions */}
+            <View style={styles.quickActions}>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerRankQueue')}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#8b5cf620' }]}>
+                  <Ionicons name="location-outline" size={22} color="#8b5cf6" />
+                </View>
+                <Text style={styles.quickActionTxt}>Rank Queues</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerVehicles')}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#3b82f620' }]}>
+                  <Ionicons name="car-outline" size={22} color="#3b82f6" />
+                </View>
+                <Text style={styles.quickActionTxt}>My Fleet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerBookService')}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#22c55e20' }]}>
+                  <Ionicons name="construct-outline" size={22} color="#22c55e" />
+                </View>
+                <Text style={styles.quickActionTxt}>Book Service</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerTenders')}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#f59e0b20' }]}>
+                  <Ionicons name="document-text-outline" size={22} color="#f59e0b" />
+                </View>
+                <Text style={styles.quickActionTxt}>Tenders</Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Chart */}
             <View style={styles.chartCard}>
               <View style={styles.chartHeader}>
@@ -569,146 +671,123 @@ export default function OwnerDashboardScreen({ navigation }) {
         {/* ── DRIVERS ── */}
         {tab === 'drivers' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-            {/* Driver Performance Header */}
+            {/* Fleet Drivers Header */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Driver Performance</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('DriverScoreboard')}>
-                <Text style={styles.sectionLink}>Full Scoreboard</Text>
-              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>Fleet Drivers ({fleetDrivers.length})</Text>
+              {driverScores.length > 0 ? (
+                <TouchableOpacity onPress={() => navigation.navigate('DriverScoreboard')}>
+                  <Text style={styles.sectionLink}>Scoreboard</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
-            {/* Summary Cards */}
-            {driverScores.length > 0 && (() => {
-              const avgScore = Math.round(driverScores.reduce((s, d) => s + d.score, 0) / driverScores.length);
-              const topDriver = driverScores[0];
-              const totalNeg = driverScores.reduce((s, d) => s + d.negativeEvents, 0);
-              const totalPos = driverScores.reduce((s, d) => s + d.positiveEvents, 0);
-              const avgGradeColor = avgScore >= 90 ? '#22c55e' : avgScore >= 75 ? '#3b82f6' : avgScore >= 60 ? '#f59e0b' : '#ef4444';
-              return (
-                <View style={styles.metricsGrid}>
-                  <View style={styles.metricCard}>
-                    <View style={[styles.metricIcon, { backgroundColor: avgGradeColor + '20' }]}>
-                      <Ionicons name="speedometer-outline" size={18} color={avgGradeColor} />
-                    </View>
-                    <Text style={styles.metricValue}>{avgScore}/100</Text>
-                    <Text style={styles.metricLabel}>Fleet Avg Score</Text>
-                  </View>
-                  <View style={styles.metricCard}>
-                    <View style={[styles.metricIcon, { backgroundColor: '#3b82f620' }]}>
-                      <Ionicons name="people-outline" size={18} color="#3b82f6" />
-                    </View>
-                    <Text style={styles.metricValue}>{driverScores.length}</Text>
-                    <Text style={styles.metricLabel}>Total Drivers</Text>
-                  </View>
-                  <View style={styles.metricCard}>
-                    <View style={[styles.metricIcon, { backgroundColor: '#22c55e20' }]}>
-                      <Ionicons name="checkmark-circle-outline" size={18} color="#22c55e" />
-                    </View>
-                    <Text style={styles.metricValue}>{totalPos}</Text>
-                    <Text style={styles.metricLabel}>Positive Events</Text>
-                  </View>
-                  <View style={styles.metricCard}>
-                    <View style={[styles.metricIcon, { backgroundColor: '#ef444420' }]}>
-                      <Ionicons name="alert-circle-outline" size={18} color="#ef4444" />
-                    </View>
-                    <Text style={styles.metricValue}>{totalNeg}</Text>
-                    <Text style={styles.metricLabel}>Negative Events</Text>
-                  </View>
-                </View>
-              );
-            })()}
-
-            {/* Driver Rankings */}
-            {driverScores.length === 0 ? (
+            {fleetDrivers.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="people-outline" size={48} color={c.textMuted} />
                 <Text style={styles.emptyTitle}>No Drivers Found</Text>
-                <Text style={styles.emptyTxt}>Add drivers to your fleet to start tracking performance</Text>
+                <Text style={styles.emptyTxt}>Link drivers to your fleet from the vehicle details screen</Text>
               </View>
             ) : (
               <>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Driver Rankings</Text>
-                </View>
-                {driverScores.map((driver, idx) => {
-                  const gc = driver.score >= 90 ? '#22c55e' : driver.score >= 75 ? '#3b82f6' : driver.score >= 60 ? '#f59e0b' : driver.score >= 40 ? '#f97316' : '#ef4444';
-                  const trendColor = driver.trend === 'Improving' ? '#22c55e' : driver.trend === 'Declining' ? '#ef4444' : '#6b7280';
-                  const trendIcn = driver.trend === 'Improving' ? 'trending-up' : driver.trend === 'Declining' ? 'trending-down' : 'remove-outline';
+                {fleetDrivers.map((driver) => {
+                  const driverId = driver.id || driver.Id;
+                  const scoreEntry = driverScores.find(s => s.driverId === driverId);
+                  const revenueEntry = driverRevenueMap[driverId] || null;
+                  const revenue = Number(revenueEntry?.revenue || 0);
+                  const tripCount = Number(revenueEntry?.tripCount || 0);
+                  const gc = scoreEntry
+                    ? (scoreEntry.score >= 90 ? '#22c55e' : scoreEntry.score >= 75 ? '#3b82f6' : scoreEntry.score >= 60 ? '#f59e0b' : '#ef4444')
+                    : '#6b7280';
                   return (
-                    <TouchableOpacity
-                      key={driver.driverId}
+                    <View
+                      key={driverId}
                       style={[styles.driverPerfCard, { backgroundColor: c.surface, borderColor: c.border }]}
-                      activeOpacity={0.85}
-                      onPress={() => navigation.navigate('DriverScoreboard')}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {/* Rank */}
-                        <View style={[styles.driverRankBadge, { backgroundColor: idx < 3 ? c.primary + '15' : c.background }]}>
-                          <Text style={[styles.driverRankTxt, { color: idx < 3 ? c.primary : c.textMuted }]}>#{idx + 1}</Text>
+                        {/* Avatar */}
+                        <View style={[styles.driverRankBadge, { backgroundColor: driver.isActive ? '#22c55e20' : '#ef444420' }]}>
+                          <Ionicons name="person" size={18} color={driver.isActive ? '#22c55e' : '#ef4444'} />
                         </View>
 
                         {/* Info */}
                         <View style={{ flex: 1, marginLeft: 10 }}>
-                          <Text style={[styles.driverPerfName, { color: c.text }]}>{driver.driverName}</Text>
+                          <Text style={[styles.driverPerfName, { color: c.text }]}>{driver.name || driver.user?.fullName || '—'}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                            <Ionicons name={trendIcn} size={12} color={trendColor} />
-                            <Text style={{ fontSize: 11, color: trendColor, fontWeight: '600' }}>{driver.trend}</Text>
-                            {driver.topCategory ? (
-                              <Text style={{ fontSize: 10, color: c.textMuted }}>· Top: {driver.topCategory}</Text>
+                            {driver.phone ? (
+                              <Text style={{ fontSize: 11, color: c.textMuted }}>{driver.phone}</Text>
                             ) : null}
+                            {driver.isActive ? (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' }} />
+                                <Text style={{ fontSize: 10, color: '#22c55e', fontWeight: '600' }}>Active</Text>
+                              </View>
+                            ) : (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' }} />
+                                <Text style={{ fontSize: 10, color: '#ef4444', fontWeight: '600' }}>Inactive</Text>
+                              </View>
+                            )}
                           </View>
                         </View>
 
-                        {/* Score Circle */}
-                        <View style={[styles.driverScoreCircle, { borderColor: gc }]}>
-                          <Text style={[styles.driverScoreNum, { color: gc }]}>{driver.score}</Text>
-                          <Text style={[styles.driverScoreGrade, { color: gc }]}>{driver.grade}</Text>
-                        </View>
+                        {/* Score if available */}
+                        {scoreEntry ? (
+                          <View style={[styles.driverScoreCircle, { borderColor: gc }]}>
+                            <Text style={[styles.driverScoreNum, { color: gc }]}>{scoreEntry.score}</Text>
+                            <Text style={[styles.driverScoreGrade, { color: gc }]}>{scoreEntry.grade}</Text>
+                          </View>
+                        ) : (
+                          <View style={[styles.driverScoreCircle, { borderColor: c.border }]}>
+                            <Ionicons name="remove-outline" size={14} color={c.textMuted} />
+                            <Text style={{ fontSize: 8, color: c.textMuted }}>N/A</Text>
+                          </View>
+                        )}
                       </View>
 
-                      {/* Stats row */}
+                      {/* Details row */}
                       <View style={[styles.driverPerfStats, { borderColor: c.border }]}>
                         <View style={styles.driverPerfStatItem}>
-                          <Ionicons name="checkmark-circle" size={13} color="#22c55e" />
-                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{driver.positiveEvents}</Text>
-                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>Good</Text>
+                          <Ionicons name="cash" size={13} color="#10b981" />
+                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{currency(revenue)}</Text>
+                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>Revenue</Text>
                         </View>
                         <View style={styles.driverPerfStatItem}>
-                          <Ionicons name="close-circle" size={13} color="#ef4444" />
-                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{driver.negativeEvents}</Text>
-                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>Bad</Text>
+                          <Ionicons name="trending-up" size={13} color="#6366f1" />
+                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{tripCount}</Text>
+                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>Trips</Text>
                         </View>
                         <View style={styles.driverPerfStatItem}>
-                          <Ionicons name="alert-circle" size={13} color="#f59e0b" />
-                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{driver.unresolvedEvents}</Text>
-                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>Open</Text>
+                          <Ionicons name="car" size={13} color="#3b82f6" />
+                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>{driver.assignedVehicleId ? 'Assigned' : 'Unassigned'}</Text>
                         </View>
-                        <View style={styles.driverPerfStatItem}>
-                          <Ionicons name="calendar" size={13} color="#3b82f6" />
-                          <Text style={[styles.driverPerfStatNum, { color: c.text }]}>{driver.last30DaysEvents}</Text>
-                          <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>30d</Text>
-                        </View>
+                        {driver.licenseNumber ? (
+                          <View style={styles.driverPerfStatItem}>
+                            <Ionicons name="card" size={13} color="#8b5cf6" />
+                            <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>{driver.licenseNumber}</Text>
+                          </View>
+                        ) : null}
+                        {driver.isAvailable != null ? (
+                          <View style={styles.driverPerfStatItem}>
+                            <Ionicons name={driver.isAvailable ? 'checkmark-circle' : 'time'} size={13} color={driver.isAvailable ? '#22c55e' : '#f59e0b'} />
+                            <Text style={[styles.driverPerfStatLbl, { color: c.textMuted }]}>{driver.isAvailable ? 'Available' : 'Busy'}</Text>
+                          </View>
+                        ) : null}
                       </View>
-
-                      {/* Score bar */}
-                      <View style={{ marginTop: 8 }}>
-                        <View style={[styles.healthBar, { backgroundColor: c.border }]}>
-                          <View style={[styles.healthBarFill, { width: `${driver.score}%`, backgroundColor: gc }]} />
-                        </View>
-                      </View>
-                    </TouchableOpacity>
+                    </View>
                   );
                 })}
 
                 {/* View full scoreboard CTA */}
-                <TouchableOpacity
-                  style={[styles.viewAllBtn, { borderColor: c.primary }]}
-                  onPress={() => navigation.navigate('DriverScoreboard')}
-                >
-                  <Ionicons name="speedometer-outline" size={16} color={c.primary} />
-                  <Text style={[styles.viewAllBtnTxt, { color: c.primary }]}>View Full Scoreboard & Record Events</Text>
-                  <Ionicons name="chevron-forward" size={16} color={c.primary} />
-                </TouchableOpacity>
+                {driverScores.length > 0 ? (
+                  <TouchableOpacity
+                    style={[styles.viewAllBtn, { borderColor: c.primary }]}
+                    onPress={() => navigation.navigate('DriverScoreboard')}
+                  >
+                    <Ionicons name="speedometer-outline" size={16} color={c.primary} />
+                    <Text style={[styles.viewAllBtnTxt, { color: c.primary }]}>View Full Scoreboard & Record Events</Text>
+                    <Ionicons name="chevron-forward" size={16} color={c.primary} />
+                  </TouchableOpacity>
+                ) : null}
               </>
             )}
           </ScrollView>
@@ -777,6 +856,12 @@ export default function OwnerDashboardScreen({ navigation }) {
                   <Ionicons name="car-outline" size={22} color="#3b82f6" />
                 </View>
                 <Text style={styles.quickActionTxt}>My Fleet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerRankQueue')}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#8b5cf620' }]}>
+                  <Ionicons name="location-outline" size={22} color="#8b5cf6" />
+                </View>
+                <Text style={styles.quickActionTxt}>Rank Queues</Text>
               </TouchableOpacity>
             </View>
 

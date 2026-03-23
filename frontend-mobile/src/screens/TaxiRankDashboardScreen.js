@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
-import { fetchTaxiRanks, fetchMarshals, fetchTrips, fetchAllTaxiRanks, linkTaxiRankToAssociation } from '../api/taxiRanks';
+import { fetchTaxiRanks, fetchMarshals, fetchTrips, fetchTripsByRank, fetchAllTaxiRanks, linkTaxiRankToAssociation } from '../api/taxiRanks';
 import ThemeToggle from '../components/ThemeToggle';
 
 const GOLD = '#D4AF37';
@@ -27,6 +27,7 @@ export default function TaxiRankDashboardScreen({ navigation }) {
   const [taxiRanks, setTaxiRanks] = useState([]);
   const [marshals, setMarshals] = useState([]);
   const [trips, setTrips] = useState([]);
+  const [rankTrips, setRankTrips] = useState([]);
   const [activeRank, setActiveRank] = useState(null);
 
   // Link taxi rank modal state
@@ -48,12 +49,14 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       setActiveRank(rank);
 
       if (rank?.id) {
-        const [mResp, tResp] = await Promise.all([
+        const [mResp, tResp, rtResp] = await Promise.all([
           fetchMarshals(rank.id).catch(() => ({ data: [] })),
           fetchTrips(rank.id, user?.tenantId).catch(() => ({ data: [] })),
+          fetchTripsByRank(rank.id).catch(() => ({ data: [] })),
         ]);
         setMarshals(mResp.data || mResp || []);
         setTrips(tResp.data || tResp || []);
+        setRankTrips(rtResp.data || rtResp || []);
       }
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Unknown error';
@@ -122,30 +125,59 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       )
     : allRanks;
 
-  // Derived stats - revenue API already returns today's trips
+  const parseMoney = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const toDate = (value) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const isSameDay = (d1, d2) => d1 && d2
+    && d1.getFullYear() === d2.getFullYear()
+    && d1.getMonth() === d2.getMonth()
+    && d1.getDate() === d2.getDate();
+
+  const now = new Date();
   const todayTrips = trips || [];
-  
-  // Debug: Log the actual data structure
-  if (typeof __DEV__ !== 'undefined' && __DEV__ && todayTrips.length > 0) {
-    console.log('[Dashboard] First trip data structure:', todayTrips[0]);
-    console.log('[Dashboard] All trips keys:', todayTrips.map(t => Object.keys(t)));
-  }
-  
+  const departedStatuses = new Set(['Departed', 'InTransit', 'Arrived', 'Completed']);
+
+  const departedTodayRevenue = (rankTrips || [])
+    .filter((t) => {
+      const d = toDate(t?.departureTime || t?.tripDate || t?.date || t?.createdAt);
+      return departedStatuses.has(t?.status) && isSameDay(d, now);
+    })
+    .reduce((sum, t) => sum + parseMoney(t?.totalAmount || t?.totalFare || t?.revenue), 0);
+
+  const departedMonthRevenue = (rankTrips || [])
+    .filter((t) => {
+      const d = toDate(t?.departureTime || t?.tripDate || t?.date || t?.createdAt);
+      return departedStatuses.has(t?.status)
+        && d
+        && d.getMonth() === now.getMonth()
+        && d.getFullYear() === now.getFullYear();
+    })
+    .reduce((sum, t) => sum + parseMoney(t?.totalAmount || t?.totalFare || t?.revenue), 0);
+
   const totalPassengers = todayTrips.reduce((sum, t) => sum + (t.passengerCount || t.passengers || 0), 0);
-  const todayRevenue = todayTrips.reduce((sum, t) => sum + (t.totalFare || t.fare || t.revenue || 0), 0);
+  const todayTripRevenue = todayTrips.reduce((sum, t) => sum + parseMoney(t.totalFare || t.fare || t.revenue), 0);
+  const todayRevenue = todayTripRevenue + departedTodayRevenue;
   const activeTrips = trips.filter(t => t.status === 'InProgress' || t.status === 'Active');
 
   // Calculate current month trips and revenue
   const monthTrips = trips.filter(t => {
     if (t.tripDate || t.date) {
       const tripDate = new Date(t.tripDate || t.date);
-      const now = new Date();
       return tripDate.getMonth() === now.getMonth() && tripDate.getFullYear() === now.getFullYear();
     }
     return false;
   });
 
-  const currentMonthRevenue = monthTrips.reduce((sum, t) => sum + (t.totalFare || t.fare || t.revenue || 0), 0);
+  const currentMonthTripRevenue = monthTrips.reduce((sum, t) => sum + parseMoney(t.totalFare || t.fare || t.revenue), 0);
+  const currentMonthRevenue = currentMonthTripRevenue + departedMonthRevenue;
 
   const roleLabel = user?.role === 'TaxiRankAdmin' ? 'Rank Manager' : 'Taxi Marshal';
 
@@ -306,34 +338,22 @@ export default function TaxiRankDashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('TaxiRankRoutes', { rank: activeRank })}
           />
           <ActionCard
-            icon="calendar-outline" title="Trip Schedules"
-            desc="Plan daily rosters and assign vehicles"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('CreateTripSchedule')}
-          />
-          <ActionCard
             icon="car-outline" title="Fleet Management"
             desc="Assign vehicles to routes and ranks"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
             onPress={() => navigation.navigate('VehicleRouteAssignment')}
           />
           <ActionCard
-            icon="list-outline" title="Queue Management"
-            desc="FIFO vehicle queue per route"
+            icon="list-outline" title="Trip Management"
+            desc="Manage queues, view trips and trip details"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('QueueManagement', { rank: activeRank })}
+            onPress={() => navigation.navigate('TripManagement', { rank: activeRank })}
           />
           <ActionCard
-            icon="document-text-outline" title="Trip Capture"
-            desc="Record trips, view history & analytics"
+            icon="analytics-outline" title="Queue Analytics"
+            desc="View queue performance and statistics"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('AdminTripDetails')}
-          />
-          <ActionCard
-            icon="checkmark-done-outline" title="Complete Trip"
-            desc="Finalize trip, record earnings & notify owner"
-            bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('CreateTripSchedule')}
+            onPress={() => navigation.navigate('QueueAnalytics', { rank: activeRank })}
           />
         </View>
 
@@ -481,7 +501,7 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       {/* ====== BOTTOM BAR ====== */}
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <BottomTab icon="grid-outline" label="Dashboard" active onPress={() => {}} textColor={c.text} muted={c.textMuted} />
-        <BottomTab icon="add-circle-outline" label="Capture" onPress={() => navigation.navigate('AdminTripDetails')} textColor={c.text} muted={c.textMuted} />
+        <BottomTab icon="list-outline" label="Trips" onPress={() => navigation.navigate('TripManagement', { rank: activeRank })} textColor={c.text} muted={c.textMuted} />
         <BottomTab icon="shield-outline" label="Marshals" onPress={() => navigation.navigate('MarshalManagement', { adminId: user?.userId })} textColor={c.text} muted={c.textMuted} />
         <BottomTab icon="chatbubble-outline" label="Messages" onPress={() => {}} textColor={c.text} muted={c.textMuted} />
         <BottomTab icon="log-out-outline" label="Logout" onPress={() => { signOut(); navigation.reset({ index: 0, routes: [{ name: 'Login' }] }); }} textColor={c.text} muted={c.textMuted} />

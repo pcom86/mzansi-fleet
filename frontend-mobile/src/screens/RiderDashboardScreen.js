@@ -119,10 +119,10 @@ export default function RiderDashboardScreen({ navigation }) {
             onPress={() => navigation.navigate('MyBookings')}
           />
           <QuickAction
-            icon="wallet-outline" label="Wallet"
-            desc="Coming soon"
+            icon="car-outline" label="Live Queue"
+            desc="Book a seat now"
             color={GREEN} bg="rgba(25,135,84,0.1)"
-            onPress={() => {}}
+            onPress={() => navigation.navigate('RiderQueue')}
           />
           <QuickAction
             icon="star-outline" label="History"

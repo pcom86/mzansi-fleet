@@ -9,7 +9,7 @@ export default function ProfileSelectionScreen({ navigation }) {
   const c = theme.colors;
 
   const profiles = [
-    { key: 'user', title: 'Normal User / Passenger', subtitle: 'Book rides and track trips', icon: 'person-outline', onPress: () => navigation.navigate('Onboarding', { role: 'User' }) },
+    { key: 'user', title: 'Passenger', subtitle: 'Book rides and track trips', icon: 'person-outline', onPress: () => navigation.navigate('Onboarding', { role: 'User' }) },
     { key: 'rank', title: 'Taxi Rank User', subtitle: 'Manage rank operations', icon: 'business-outline', onPress: () => navigation.navigate('TaxiRankRoleSelection') },
     { key: 'driver', title: 'Driver', subtitle: 'Register and start driving', icon: 'car-sport-outline', onPress: () => navigation.navigate('DriverRegistration') },
     { key: 'service', title: 'Service Provider', subtitle: 'Offer maintenance services', icon: 'construct-outline', onPress: () => navigation.navigate('ServiceProviderRegistration') },

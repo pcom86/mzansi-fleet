@@ -22,7 +22,7 @@ export default function RiderBookingScreen({ navigation }) {
   // Form state
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [paymentMethod, setPaymentMethod] = useState(''); // 'ozow' | 'wallet' | 'cash'
+  const [paymentMethod, setPaymentMethod] = useState(''); // 'ozow' | 'wallet' | 'cash' | 'card'
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,7 +34,9 @@ export default function RiderBookingScreen({ navigation }) {
     email: '',
     idNumber: '',
     address: '',
-    destination: ''
+    destination: '',
+    nextOfKinName: '',
+    nextOfKinContact: ''
   });
 
   // UI state
@@ -245,6 +247,8 @@ export default function RiderBookingScreen({ navigation }) {
       email: currentPassenger.email.trim() || '',
       idNumber: currentPassenger.idNumber.trim() || '',
       address: currentPassenger.address.trim() || '',
+      nextOfKinName: currentPassenger.nextOfKinName.trim() || '',
+      nextOfKinContact: currentPassenger.nextOfKinContact.trim() || '',
       destination: currentPassenger.destination.trim() || selectedSchedule?.destinationStation || '',
     };
 
@@ -313,18 +317,8 @@ export default function RiderBookingScreen({ navigation }) {
           email: p.email || null,
           idNumber: p.idNumber || null,
           address: p.address || null,
-          destination: p.destination || selectedSchedule.destinationStation,
-        })),
-        paymentMethod,
-        notes: notes.trim() || null,
-      };
-
-      const resp = await client.post('/ScheduledTripBookings', bookingData);
-      Alert.alert('Booking Successful!', `${passengerCart.length} passenger(s) booked successfully! Booking ID: ${resp.data?.id}`);
-      
-      // Reset everything
-      setSelectedSchedule(null);
-      setPassengerCart([]);
+        nextOfKinName: p.nextOfKinName || null,
+        nextOfKinContact: p.nextOfKinContact || null,
       setCurrentPassenger({
         name: '',
         contactNumber: '',
@@ -405,6 +399,32 @@ export default function RiderBookingScreen({ navigation }) {
                 placeholderTextColor={c.textMuted}
                 value={currentPassenger.idNumber}
                 onChangeText={(value) => updateCurrentPassenger('idNumber', value)}
+              />
+            </View>
+          </View>
+
+          <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Emergency / Next of Kin</Text>
+          <View style={styles.formRow}>
+            <View style={styles.formHalf}>
+              <Text style={[styles.label, { color: c.textMuted }]}>Name</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                placeholder="Next of kin name"
+                placeholderTextColor={c.textMuted}
+                value={currentPassenger.nextOfKinName}
+                onChangeText={(value) => updateCurrentPassenger('nextOfKinName', value)}
+              />
+            </View>
+            
+            <View style={styles.formHalf}>
+              <Text style={[styles.label, { color: c.textMuted }]}>Phone</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                placeholder="Next of kin phone"
+                placeholderTextColor={c.textMuted}
+                value={currentPassenger.nextOfKinContact}
+                onChangeText={(value) => updateCurrentPassenger('nextOfKinContact', value)}
+                keyboardType="phone-pad"
               />
             </View>
           </View>
@@ -497,6 +517,9 @@ export default function RiderBookingScreen({ navigation }) {
                 </View>
                 <Text style={[styles.cartItemDetail, { color: c.text }]}>Name: {passenger.name}</Text>
                 <Text style={[styles.cartItemDetail, { color: c.text }]}>Phone: {passenger.contactNumber}</Text>
+                {passenger.nextOfKinName ? (
+                  <Text style={[styles.cartItemDetail, { color: c.text }]}>Next of Kin: {passenger.nextOfKinName} ({passenger.nextOfKinContact || 'no contact'})</Text>
+                ) : null}
                 {passenger.destination && (
                   <Text style={[styles.cartItemDetail, { color: c.text }]}>Destination: {passenger.destination}</Text>
                 )}
@@ -607,13 +630,16 @@ export default function RiderBookingScreen({ navigation }) {
             >
               <Ionicons name="card-outline" size={18} color={GOLD} />
               <Text style={[styles.pickerText, { color: paymentMethod ? c.text : c.textMuted }]}>
-                {paymentMethod === 'ozow' ? 'Ozow (EFT)' : paymentMethod === 'wallet' ? 'Mzansi Wallet' : paymentMethod === 'cash' ? 'Cash' : 'Select payment method'}
+                {paymentMethod === 'ozow' ? 'Ozow (EFT)' : paymentMethod === 'wallet' ? 'Mzansi Wallet' : paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'card' ? 'Card (tap/insert)' : 'Select payment method'}
               </Text>
-              <Ionicons name="chevron-down" size={16} color={c.textMuted} />
-            </TouchableOpacity>
 
-            {/* Notes */}
-            <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Additional Notes</Text>
+              {paymentMethod === 'card' && (
+                <View style={[styles.cardPrompt, { backgroundColor: GOLD_LIGHT, borderColor: GOLD, padding: 10, borderRadius: 10, marginTop: 12 }]}> 
+                  <Ionicons name="card-outline" size={18} color={GOLD} style={{ marginRight: 8 }} />
+                  <Text style={[styles.cardPromptText, { color: GOLD }]}>Tap or insert your card into the payment device to proceed.</Text>
+                </View>
+              )}
+
             <TextInput
               style={[styles.textArea, { backgroundColor: c.surface, borderColor: c.border, color: c.text }]}
               placeholder="Any special requirements or notes"
@@ -733,6 +759,18 @@ export default function RiderBookingScreen({ navigation }) {
                   <Text style={[styles.paymentSub, { color: c.textMuted }]}>Pay cash to the driver</Text>
                 </View>
                 {paymentMethod === 'cash' && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.paymentOption, { backgroundColor: paymentMethod === 'card' ? GOLD_LIGHT : c.surface, borderColor: c.border }]}
+                onPress={() => selectPayment('card')}
+              >
+                <Ionicons name="card-outline" size={24} color={GOLD} />
+                <View style={{ flex: 1, marginLeft: 16 }}>
+                  <Text style={[styles.paymentTitle, { color: c.text }]}>Card</Text>
+                  <Text style={[styles.paymentSub, { color: c.textMuted }]}>Tap or insert card into the device</Text>
+                </View>
+                {paymentMethod === 'card' && <Ionicons name="checkmark-circle" size={20} color={GOLD} />}
               </TouchableOpacity>
             </View>
           </View>

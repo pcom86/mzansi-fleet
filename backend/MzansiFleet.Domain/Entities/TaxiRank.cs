@@ -193,6 +193,9 @@ namespace MzansiFleet.Domain.Entities
         
         // Metadata
         public string? Notes { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         
@@ -233,6 +236,9 @@ namespace MzansiFleet.Domain.Entities
         
         // Metadata
         public string? Notes { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
         
@@ -319,6 +325,7 @@ namespace MzansiFleet.Domain.Entities
         public int QueuePosition { get; set; } // FIFO position (1 = next to depart)
         public TimeSpan JoinedAt { get; set; } // Time of day the vehicle joined the queue
         public string Status { get; set; } = "Waiting"; // Waiting, Loading, Dispatched, Removed
+        public DateTime? EstimatedDepartureTime { get; set; } // Estimated time this vehicle will depart
         
         // Dispatch Details
         public DateTime? DepartedAt { get; set; } // When the vehicle was dispatched
@@ -434,6 +441,74 @@ namespace MzansiFleet.Domain.Entities
         
         // Navigation Properties
         public ScheduledTripBooking? Booking { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a rider booking a seat on a vehicle in the live daily queue
+    /// </summary>
+    public class QueueBooking
+    {
+        public Guid Id { get; set; }
+        public Guid UserId { get; set; }
+        public Guid QueueEntryId { get; set; } // Links to DailyTaxiQueue
+        public Guid TaxiRankId { get; set; }
+        public Guid? RouteId { get; set; }
+        public Guid VehicleId { get; set; }
+        
+        // Booking Details
+        public int SeatsBooked { get; set; } = 1;
+        public decimal TotalFare { get; set; }
+        
+        // Payment Information
+        public string PaymentMethod { get; set; } = "EFT"; // EFT, Cash, Card, Wallet
+        public string PaymentStatus { get; set; } = "Pending"; // Pending, Paid, Failed, Refunded
+        public string? PaymentReference { get; set; } // EFT reference number
+        public string? BankReference { get; set; } // Bank-generated reference
+        public DateTime? PaidAt { get; set; }
+        
+        // EFT Details (populated when payment method is EFT)
+        public string? EftAccountName { get; set; }
+        public string? EftBank { get; set; }
+        public string? EftAccountNumber { get; set; }
+        public string? EftBranchCode { get; set; }
+        
+        // Status: Pending, Confirmed, Cancelled, Completed, NoShow, Expired
+        public string Status { get; set; } = "Pending";
+        public string? Notes { get; set; }
+        public string? CancellationReason { get; set; }
+        
+        // Metadata
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
+        public DateTime? ConfirmedAt { get; set; }
+        public DateTime? CancelledAt { get; set; }
+        
+        // Navigation Properties
+        public User? User { get; set; }
+        public DailyTaxiQueue? QueueEntry { get; set; }
+        public TaxiRank? TaxiRank { get; set; }
+        public Route? Route { get; set; }
+        public Vehicle? Vehicle { get; set; }
+        public ICollection<QueueBookingPassenger> Passengers { get; set; } = new List<QueueBookingPassenger>();
+    }
+
+    /// <summary>
+    /// Passenger details for a queue booking
+    /// </summary>
+    public class QueueBookingPassenger
+    {
+        public Guid Id { get; set; }
+        public Guid QueueBookingId { get; set; }
+        
+        public string Name { get; set; } = string.Empty;
+        public string ContactNumber { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string? Destination { get; set; }
+        
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        
+        // Navigation Properties
+        public QueueBooking? QueueBooking { get; set; }
     }
 
     /// <summary>

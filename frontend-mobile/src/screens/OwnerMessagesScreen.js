@@ -23,7 +23,8 @@ export default function OwnerMessagesScreen({ navigation }) {
         if (!mounted) return;
         setMessages(Array.isArray(inbox) ? inbox : []);
       } catch (e) {
-        Alert.alert('Error', 'Failed to load messages');
+        console.warn('Failed to load messages:', e?.message, e?.response?.status);
+        Alert.alert('Error', `Failed to load messages: ${e?.message || 'Unknown error'}`);
       } finally {
         if (mounted) setLoading(false);
       }

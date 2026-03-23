@@ -80,7 +80,7 @@ namespace MzansiFleet.Api.Controllers
 
                 // Orphaned routes (routes without taxi rank assignment)
                 var orphanedRoutes = queueEntries
-                    .Where(q => q.Route == null || q.Route.TaxiRankId == null)
+                    .Where(q => q.Route == null || q.Route.TaxiRankId == Guid.Empty)
                     .Select(q => new
                     {
                         QueueId = q.Id,
@@ -102,7 +102,7 @@ namespace MzansiFleet.Api.Controllers
 
                 // Mismatched taxi ranks
                 var mismatchedRoutes = queueEntries
-                    .Where(q => q.Route != null && q.Route.TaxiRankId != null && q.Route.TaxiRankId != taxiRankId)
+                    .Where(q => q.Route != null && q.Route.TaxiRankId != Guid.Empty && q.Route.TaxiRankId != taxiRankId)
                     .Select(q => new
                     {
                         QueueId = q.Id,

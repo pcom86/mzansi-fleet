@@ -14,6 +14,8 @@ export interface QueueOverview {
 export interface RouteQueue {
   routeId?: string;
   routeName?: string;
+  departureStation?: string;
+  destinationStation?: string;
   totalVehicles: number;
   waitingVehicles: number;
   loadingVehicles: number;
@@ -67,6 +69,7 @@ export interface AssignVehicleDto {
   vehicleId: string;
   driverId?: string;
   tenantId: string;
+  estimatedDepartureTime?: string;
   notes?: string;
 }
 

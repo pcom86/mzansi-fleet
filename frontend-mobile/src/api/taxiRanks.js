@@ -183,8 +183,13 @@ export async function updateTripStatus(tripId, status) {
 }
 
 // Complete a trip — finalizes earnings and notifies the vehicle owner
-export async function completeTrip(tripId, notes = '') {
-  const resp = await client.put(`/TaxiRankTrips/${tripId}/complete`, { notes });
+export async function completeTrip(tripId, notes = '', completedByDriverId = null, completionContext = null) {
+  const payload = { notes };
+  if (completedByDriverId) payload.completedByDriverId = completedByDriverId;
+  if (completionContext?.completedAt) payload.completedAt = completionContext.completedAt;
+  if (completionContext?.latitude != null) payload.latitude = completionContext.latitude;
+  if (completionContext?.longitude != null) payload.longitude = completionContext.longitude;
+  const resp = await client.put(`/TaxiRankTrips/${tripId}/complete`, payload);
   return resp.data;
 }
 

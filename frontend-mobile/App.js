@@ -11,6 +11,9 @@ import ProfileSelectionScreen from './src/screens/ProfileSelectionScreen';
 import OnboardingWizardScreen from './src/screens/OnboardingWizardScreen';
 import DriverRegistrationScreen from './src/screens/DriverRegistrationScreen';
 import DriverDashboardScreen from './src/screens/DriverDashboardScreen';
+import DriverRankQueueScreen from './src/screens/DriverRankQueueScreen';
+import DriverTripDetailsScreen from './src/screens/DriverTripDetailsScreen';
+import DriverBehaviorScreen from './src/screens/DriverBehaviorScreen';
 import DriverOnboardingStep2Screen from './src/screens/DriverOnboardingStep2Screen';
 import ServiceProviderRegistrationScreen from './src/screens/ServiceProviderRegistrationScreen';
 import ServiceProviderDashboardScreen from './src/screens/ServiceProviderDashboardScreen';
@@ -36,21 +39,21 @@ import OwnerMessageDetailsScreen from './src/screens/OwnerMessageDetailsScreen';
 import OwnerComposeMessageScreen from './src/screens/OwnerComposeMessageScreen';
 import OwnerMaintenanceRequestDetailsScreen from './src/screens/OwnerMaintenanceRequestDetailsScreen';
 import OwnerTendersScreen from './src/screens/OwnerTendersScreen';
+import OwnerRankQueueScreen from './src/screens/OwnerRankQueueScreen';
 import RentalMarketplaceScreen from './src/screens/RentalMarketplaceScreen';
 import TaxiRankRoleSelectionScreen from './src/screens/TaxiRankRoleSelectionScreen';
 import TaxiRankRoutesScreen from './src/screens/TaxiRankRoutesScreen';
 import TaxiRankEditScreen from './src/screens/TaxiRankEditScreen';
 import TaxiRankVehiclesScreen from './src/screens/TaxiRankVehiclesScreen';
+import TripManagementScreen from './src/screens/TripManagementScreen';
 import BookTripScreen from './src/screens/BookTripScreen';
-import CaptureTripScreen from './src/screens/CaptureTripScreen';
 import MyBookingsScreen from './src/screens/MyBookingsScreen';
-import AdminTripDetailsScreen from './src/screens/AdminTripDetailsScreen';
-import CreateTripScheduleScreen from './src/screens/CreateTripScheduleScreen';
 import VehicleRouteAssignmentScreen from './src/screens/VehicleRouteAssignmentScreen';
 import MarshalDashboardScreen from './src/screens/MarshalDashboardScreen';
 import CompleteTripScreen from './src/screens/CompleteTripScreen';
 import RiderDashboardScreen from './src/screens/RiderDashboardScreen';
 import RiderTripBrowserScreen from './src/screens/RiderTripBrowserScreen';
+import RiderQueueScreen from './src/screens/RiderQueueScreen';
 import DriverScoreboardScreen from './src/screens/DriverScoreboardScreen';
 import QueueManagementScreen from './src/screens/QueueManagementScreen';
 import DispatchedItemsScreen from './src/screens/DispatchedItemsScreen';
@@ -121,6 +124,9 @@ function AppNavigator() {
           <Stack.Screen name="TaxiRankRoleSelection" component={TaxiRankRoleSelectionScreen} options={{ title: 'Taxi Rank Registration' }} />
           <Stack.Screen name="DriverRegistration" component={DriverRegistrationScreen} />
           <Stack.Screen name="DriverDashboard" component={DriverDashboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DriverRankQueue" component={DriverRankQueueScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DriverTripDetails" component={DriverTripDetailsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DriverBehavior" component={DriverBehaviorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverOnboardingStep2" component={DriverOnboardingStep2Screen} options={{ title: 'Driver Details' }} />
           <Stack.Screen name="ServiceProviderRegistration" component={ServiceProviderRegistrationScreen} />
           <Stack.Screen name="ServiceProviderDashboard" component={ServiceProviderDashboardScreen} options={{ headerShown: false }} />
@@ -144,22 +150,22 @@ function AppNavigator() {
           <Stack.Screen name="OwnerComposeMessage" component={OwnerComposeMessageScreen} />
           <Stack.Screen name="OwnerMaintenanceRequestDetails" component={OwnerMaintenanceRequestDetailsScreen} />
           <Stack.Screen name="OwnerTenders" component={OwnerTendersScreen} />
+          <Stack.Screen name="OwnerRankQueue" component={OwnerRankQueueScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RentalMarketplace" component={RentalMarketplaceScreen} />
           <Stack.Screen name="TaxiRankDashboard" component={TaxiRankDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TaxiRankDetails" component={TaxiRankDetailsScreen} />
           <Stack.Screen name="TaxiRankRoutes" component={TaxiRankRoutesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TaxiRankEdit" component={TaxiRankEditScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TaxiRankVehicles" component={TaxiRankVehiclesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TripManagement" component={TripManagementScreen} options={{ headerShown: false }} />
           <Stack.Screen name="BookTrip" component={BookTripScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="TripDetails" component={CaptureTripScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MyBookings" component={MyBookingsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="AdminTripDetails" component={AdminTripDetailsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CreateTripSchedule" component={CreateTripScheduleScreen} options={{ headerShown: false }} />
           <Stack.Screen name="VehicleRouteAssignment" component={VehicleRouteAssignmentScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MarshalDashboard" component={MarshalDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CompleteTrip" component={CompleteTripScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RiderDashboard" component={RiderDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RiderTripBrowser" component={RiderTripBrowserScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="RiderQueue" component={RiderQueueScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverScoreboard" component={DriverScoreboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="QueueManagement" component={QueueManagementScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DispatchedItems" component={DispatchedItemsScreen} options={{ title: 'Dispatched Items' }} />

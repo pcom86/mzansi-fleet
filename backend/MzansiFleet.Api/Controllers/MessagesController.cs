@@ -24,48 +24,67 @@ namespace MzansiFleet.Api.Controllers
 
         // GET: api/Messages/inbox/{userId}
         [HttpGet("inbox/{userId}")]
-        public async Task<ActionResult<IEnumerable<MessageDto>>> GetInbox(Guid userId)
+        public async Task<ActionResult<IEnumerable<MessageDto>>> GetInbox(string userId)
         {
-            var messages = await _context.Messages
-                .Where(m => (m.RecipientId == userId || m.RecipientDriverId == userId || m.RecipientMarshalId == userId) && !m.IsDeletedByReceiver)
-                .OrderByDescending(m => m.CreatedAt)
-                .ToListAsync();
-
-            var messageDtos = messages.Select(m => new MessageDto
+            if (!Guid.TryParse(userId, out var userGuid))
             {
-                Id = m.Id,
-                SenderId = m.SenderId ?? Guid.Empty,
-                ReceiverId = m.RecipientId,
-                SenderType = m.SenderType,
-                SenderName = m.SenderName,
-                RecipientType = m.RecipientType,
-                RecipientDriverId = m.RecipientDriverId,
-                RecipientMarshalId = m.RecipientMarshalId,
-                TaxiRankId = m.TaxiRankId,
-                Subject = m.Subject,
-                Content = m.Content,
-                MessageType = m.MessageType,
-                IsRead = m.IsRead,
-                CreatedAt = m.CreatedAt,
-                ReadAt = m.ReadAt,
-                ExpiresAt = m.ExpiresAt,
-                RelatedEntityType = m.RelatedEntityType,
-                RelatedEntityId = m.RelatedEntityId,
-                ParentMessageId = m.ParentMessageId,
-                SenderEmail = GetUserEmail(m.SenderId ?? Guid.Empty),
-                ReceiverName = GetUserName(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty),
-                ReceiverEmail = GetUserEmail(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty)
-            }).ToList();
+                return BadRequest(new { message = "Invalid userId format" });
+            }
 
-            return Ok(messageDtos);
+            try
+            {
+                var messages = await _context.Messages
+                    .Where(m => (m.RecipientId == userGuid || m.RecipientDriverId == userGuid || m.RecipientMarshalId == userGuid) && !m.IsDeletedByReceiver)
+                    .OrderByDescending(m => m.CreatedAt)
+                    .ToListAsync();
+
+                var messageDtos = messages.Select(m => new MessageDto
+                {
+                    Id = m.Id,
+                    SenderId = m.SenderId ?? Guid.Empty,
+                    ReceiverId = m.RecipientId,
+                    SenderType = m.SenderType ?? string.Empty,
+                    SenderName = m.SenderName ?? string.Empty,
+                    RecipientType = m.RecipientType ?? string.Empty,
+                    RecipientDriverId = m.RecipientDriverId,
+                    RecipientMarshalId = m.RecipientMarshalId,
+                    TaxiRankId = m.TaxiRankId,
+                    Subject = m.Subject ?? string.Empty,
+                    Content = m.Content ?? string.Empty,
+                    MessageType = m.MessageType ?? string.Empty,
+                    IsRead = m.IsRead,
+                    CreatedAt = m.CreatedAt,
+                    ReadAt = m.ReadAt,
+                    ExpiresAt = m.ExpiresAt,
+                    RelatedEntityType = m.RelatedEntityType,
+                    RelatedEntityId = m.RelatedEntityId,
+                    ParentMessageId = m.ParentMessageId,
+                    SenderEmail = GetUserEmail(m.SenderId ?? Guid.Empty),
+                    ReceiverName = GetUserName(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty),
+                    ReceiverEmail = GetUserEmail(m.RecipientId ?? m.RecipientDriverId ?? m.RecipientMarshalId ?? Guid.Empty)
+                }).ToList();
+
+                return Ok(messageDtos);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GetInbox] Error: {ex.Message}");
+                Console.WriteLine($"[GetInbox] Inner: {ex.InnerException?.Message}");
+                return StatusCode(500, new { error = ex.Message, inner = ex.InnerException?.Message });
+            }
         }
 
         // GET: api/Messages/sent/{userId}
         [HttpGet("sent/{userId}")]
-        public async Task<ActionResult<IEnumerable<MessageDto>>> GetSent(Guid userId)
+        public async Task<ActionResult<IEnumerable<MessageDto>>> GetSent(string userId)
         {
+            if (!Guid.TryParse(userId, out var userGuid))
+            {
+                return BadRequest(new { message = "Invalid userId format" });
+            }
+
             var messages = await _context.Messages
-                .Where(m => m.SenderId == userId && !m.IsDeletedBySender)
+                .Where(m => m.SenderId == userGuid && !m.IsDeletedBySender)
                 .OrderByDescending(m => m.CreatedAt)
                 .ToListAsync();
 
@@ -361,7 +380,7 @@ namespace MzansiFleet.Api.Controllers
         public string RecipientType { get; set; } = string.Empty;
         public Guid? RecipientDriverId { get; set; }
         public Guid? RecipientMarshalId { get; set; }
-        public Guid TaxiRankId { get; set; }
+        public Guid? TaxiRankId { get; set; }
         public string Subject { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
         public string MessageType { get; set; } = string.Empty;
@@ -386,7 +405,7 @@ namespace MzansiFleet.Api.Controllers
         public string RecipientType { get; set; } = "User";
         public Guid? RecipientDriverId { get; set; }
         public Guid? RecipientMarshalId { get; set; }
-        public Guid TaxiRankId { get; set; }
+        public Guid? TaxiRankId { get; set; }
         public string Subject { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
         public string MessageType { get; set; } = "Info";
