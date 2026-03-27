@@ -157,6 +157,15 @@ namespace MzansiFleet.Api.Controllers
             return CreatedAtAction(nameof(GetQueueMarshal), new { id = created.Id }, created);
         }
 
+        // POST: api/QueueMarshals/create-with-user
+        // Temporarily disabled due to compilation issues
+        // [HttpPost("create-with-user")]
+        // public async Task<ActionResult<QueueMarshal>> CreateMarshalWithUserAccount(CreateQueueMarshalWithUserDto dto)
+        // {
+        //     // User account creation functionality will be re-enabled later
+        //     return BadRequest(new { message = "User account creation temporarily disabled" });
+        // }
+
         // PUT: api/QueueMarshals/{id}
         [HttpPut("{id}")]
         public async Task<ActionResult<QueueMarshal>> UpdateQueueMarshal(Guid id, UpdateQueueMarshalDto dto)
@@ -241,6 +250,12 @@ namespace MzansiFleet.Api.Controllers
         public string Experience { get; set; }
         public MarshalPermissions Permissions { get; set; }
         public string Status { get; set; }
+    }
+
+    public class CreateQueueMarshalWithUserDto : CreateQueueMarshalDto
+    {
+        public string Username { get; set; }
+        public string Password { get; set; }
     }
 }
 

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MzansiFleet.Repository;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MzansiFleet.Repository.Migrations
 {
     [DbContext(typeof(MzansiFleetDbContext))]
-    partial class MzansiFleetDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260325090600_AddMissingQueueBookingColumns")]
+    partial class AddMissingQueueBookingColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1150,12 +1153,6 @@ namespace MzansiFleet.Repository.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("NextOfKinContact")
-                        .HasColumnType("text");
-
-                    b.Property<string>("NextOfKinName")
                         .HasColumnType("text");
 
                     b.Property<Guid>("QueueBookingId")

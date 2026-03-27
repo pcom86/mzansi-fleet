@@ -21,6 +21,13 @@
         <button mat-icon-button class="refresh-btn" (click)="loadQueueData()">
           <mat-icon>refresh</mat-icon>
         </button>
+        <button mat-icon-button 
+                class="theme-toggle-btn" 
+                (click)="toggleTheme()"
+                [matTooltip]="isDarkTheme ? 'Switch to light theme' : 'Switch to dark theme'"
+                matTooltipPosition="below">
+          <mat-icon>{{ isDarkTheme ? 'light_mode' : 'dark_mode' }}</mat-icon>
+        </button>
       </div>
     </div>
   </div>

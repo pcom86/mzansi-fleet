@@ -7,6 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import { fetchAvailableSchedules, createTripBooking } from '../api/taxiRanks';
+import VoiceRecorderButton from '../components/VoiceRecorderButton';
+import AIService from '../services/AIService';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -39,6 +41,52 @@ export default function BookTripScreen({ navigation }) {
   const [passengerName, setPassengerName] = useState(user?.fullName || '');
   const [passengerPhone, setPassengerPhone] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Voice command state
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
+  const aiService = new AIService();
+
+  // Handle voice command result
+  async function handleVoiceCommand(audioBlob) {
+    setVoiceProcessing(true);
+    try {
+      const result = await aiService.processVoiceCommand(audioBlob);
+      if (!result || !result.action) {
+        Alert.alert('Voice Command', 'Sorry, I could not understand your command.');
+        return;
+      }
+      if (result.action === 'book_trip') {
+        // Example: "Book a trip to [destination] on [date] for [n] passengers"
+        // You may want to parse parameters more robustly depending on backend
+        if (schedules.length > 0) {
+          // Try to find a matching schedule by destination if provided
+          let schedule = schedules[0];
+          if (result.parameters && result.parameters.destination) {
+            schedule = schedules.find(s => (s.destinationStation || '').toLowerCase().includes(result.parameters.destination.toLowerCase())) || schedules[0];
+          }
+          openBooking(schedule);
+          // Optionally pre-fill form fields
+          if (result.parameters) {
+            if (result.parameters.date) setTravelDate(result.parameters.date);
+            if (result.parameters.seats) setSeats(String(result.parameters.seats));
+            if (result.parameters.name) setPassengerName(result.parameters.name);
+          }
+        }
+      } else if (result.action === 'add_passenger') {
+        // Example: "Add passenger John Doe"
+        if (result.parameters && result.parameters.name) {
+          setPassengerName(result.parameters.name);
+          Alert.alert('Voice Command', `Passenger name set to ${result.parameters.name}`);
+        }
+      } else {
+        Alert.alert('Voice Command', `Recognized action: ${result.action}`);
+      }
+    } catch (err) {
+      Alert.alert('Voice Command Error', err.message || 'Failed to process voice command.');
+    } finally {
+      setVoiceProcessing(false);
+    }
+  }
 
   // Generate next 7 available dates for the selected schedule
   const [availableDates, setAvailableDates] = useState([]);
@@ -88,6 +136,19 @@ export default function BookTripScreen({ navigation }) {
     if (!travelDate) return Alert.alert('Validation', 'Please select a travel date');
     if (!passengerName.trim()) return Alert.alert('Validation', 'Passenger name is required');
 
+    // Check minimum booking lead time (must be at least 1 hour before departure)
+    const MIN_BOOKING_LEAD_MINUTES = 60;
+    if (selected.departureTime && travelDate) {
+      const [hh, mm] = (selected.departureTime || '00:00').split(':').map(Number);
+      const depDate = new Date(travelDate);
+      depDate.setHours(hh, mm, 0, 0);
+      const minutesUntilDeparture = (depDate.getTime() - Date.now()) / 60000;
+      if (minutesUntilDeparture < MIN_BOOKING_LEAD_MINUTES) {
+        const hours = MIN_BOOKING_LEAD_MINUTES / 60;
+        return Alert.alert('Too Late to Book', `Bookings must be made at least ${hours} hour(s) before departure time (${selected.departureTime}).`);
+      }
+    }
+
     const body = {
       userId: user?.userId || user?.id,
       tripScheduleId: selected.id,
@@ -125,8 +186,9 @@ export default function BookTripScreen({ navigation }) {
     );
   }
 
+
   return (
-    <View style={[styles.root, { backgroundColor: c.background }]}>
+    <View style={[styles.root, { backgroundColor: c.background }]}> 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -139,6 +201,12 @@ export default function BookTripScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.navigate('MyBookings')} style={styles.historyBtn}>
           <Ionicons name="receipt-outline" size={20} color={GOLD} />
         </TouchableOpacity>
+      </View>
+
+      {/* Voice Command Button */}
+      <View style={{ alignItems: 'center', marginVertical: 12 }}>
+        <VoiceRecorderButton onRecordingComplete={handleVoiceCommand} />
+        {voiceProcessing && <Text style={{ color: c.textMuted, marginTop: 6 }}>Processing voice command…</Text>}
       </View>
 
       <ScrollView
@@ -155,12 +223,12 @@ export default function BookTripScreen({ navigation }) {
           schedules.map((s) => (
             <TouchableOpacity key={s.id} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => openBooking(s)} activeOpacity={0.85}>
               <View style={styles.cardTop}>
-                <View style={[styles.cardIcon, { backgroundColor: GOLD_LIGHT }]}>
+                <View style={[styles.cardIcon, { backgroundColor: GOLD_LIGHT }]}> 
                   <Ionicons name="bus-outline" size={22} color={GOLD} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.cardTitle, { color: c.text }]}>{s.routeName}</Text>
-                  <Text style={[styles.cardRoute, { color: c.textMuted }]}>
+                  <Text style={[styles.cardRoute, { color: c.textMuted }]}> 
                     {s.departureStation} → {s.destinationStation}
                   </Text>
                 </View>

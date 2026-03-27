@@ -9,8 +9,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import client from '../api/client';
-import { getQueueByRank, getQueueStats, addToQueue, dispatchVehicle, removeFromQueue } from '../api/queueManagement';
+import { getQueueByRank, getQueueStats, addToQueue, dispatchVehicle, removeFromQueue, updateQueueEntry } from '../api/queueManagement';
 import { fetchTrips, fetchTripsByRank, fetchVehiclesByRankId, fetchTaxiRanks } from '../api/taxiRanks';
+import { fetchQueueEntryBookings, fetchRankBookings, allocateSeats } from '../api/queueBooking';
+import VoiceRecorderButton from '../components/VoiceRecorderButton';
+import AIService from '../services/AIService';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -47,6 +50,33 @@ export default function TripManagementScreen({ navigation, route }) {
   const [addingVehicle, setAddingVehicle] = useState(false);
   const [estimatedDeparture, setEstimatedDeparture] = useState('');
   const [showETDPicker, setShowETDPicker] = useState(false);
+  
+  // Voice command state
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
+  const aiService = AIService;
+
+  // Edit queue entry modal
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
+  const [editDriverId, setEditDriverId] = useState(null);
+  const [editVehicleId, setEditVehicleId] = useState(null);
+  const [editRouteId, setEditRouteId] = useState(null);
+  const [editEstimatedDeparture, setEditEstimatedDeparture] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editStatus, setEditStatus] = useState('Waiting');
+  const [editBusy, setEditBusy] = useState(false);
+  const [showEditETDPicker, setShowEditETDPicker] = useState(false);
+
+  // Bookings state
+  const [rankBookings, setRankBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [queueEntryBookingsVisible, setQueueEntryBookingsVisible] = useState(false);
+  const [queueEntryBookings, setQueueEntryBookings] = useState([]);
+  const [queueEntryBookingsLoading, setQueueEntryBookingsLoading] = useState(false);
+  const [queueEntryForBookings, setQueueEntryForBookings] = useState(null);
+  const [queueEntryTotalBooked, setQueueEntryTotalBooked] = useState(0);
+  const [seatAllocations, setSeatAllocations] = useState({});
+  const [allocatingSeats, setAllocatingSeats] = useState(false);
 
   const formatDateLabel = (dateStr) => {
     const d = new Date(`${dateStr}T00:00:00`);
@@ -79,6 +109,187 @@ export default function TripManagementScreen({ navigation, route }) {
   };
 
   const filteredQueueData = getFilteredQueueData();
+
+  // Handle voice command result
+  async function handleVoiceCommand(audioBlob) {
+    setVoiceProcessing(true);
+    try {
+      const result = await aiService.processVoiceCommand(audioBlob);
+      if (!result || !result.action) {
+        Alert.alert('Voice Command', 'Sorry, I could not understand your command.');
+        return;
+      }
+
+      switch (result.action) {
+        case 'add_to_queue':
+          // Example: "Add vehicle ABC 123 to queue"
+          if (result.parameters?.vehicle) {
+            const vehicle = vehicles.find(v => 
+              v.registration?.toLowerCase().includes(result.parameters.vehicle.toLowerCase()) ||
+              v.make?.toLowerCase().includes(result.parameters.vehicle.toLowerCase()) ||
+              v.model?.toLowerCase().includes(result.parameters.vehicle.toLowerCase())
+            );
+            
+            if (vehicle) {
+              setSelectedVehicle(vehicle);
+              setAddVehicleModalVisible(true);
+              Alert.alert('Voice Command', `Selected vehicle ${vehicle.registration}. Please complete the details.`);
+            } else {
+              Alert.alert('Vehicle Not Found', `Could not find vehicle "${result.parameters.vehicle}"`);
+            }
+          } else {
+            Alert.alert('Voice Command', 'Please specify which vehicle to add to the queue.');
+          }
+          break;
+
+        case 'dispatch_vehicle':
+          // Example: "Dispatch vehicle ABC 123" or "Dispatch first vehicle"
+          if (result.parameters?.vehicle) {
+            const entry = queueData.find(q => 
+              q.vehicleRegistration?.toLowerCase().includes(result.parameters.vehicle.toLowerCase())
+            );
+            
+            if (entry) {
+              Alert.alert(
+                'Confirm Dispatch',
+                `Dispatch ${entry.vehicleRegistration}?`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Dispatch', 
+                    style: 'default',
+                    onPress: async () => {
+                      try {
+                        await dispatchVehicle(entry.id, { dispatchedByUserId: user?.userId });
+                        Alert.alert('Success', 'Vehicle dispatched successfully');
+                        loadQueueData();
+                        loadTripsData();
+                      } catch (err) {
+                        Alert.alert('Error', 'Failed to dispatch vehicle');
+                      }
+                    }
+                  }
+                ]
+              );
+            } else {
+              Alert.alert('Vehicle Not Found', `Could not find vehicle "${result.parameters.vehicle}" in queue.`);
+            }
+          } else if (queueData.length > 0) {
+            const firstEntry = queueData[0];
+            Alert.alert(
+              'Confirm Dispatch',
+              `Dispatch ${firstEntry.vehicleRegistration} (first in queue)?`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Dispatch', 
+                  style: 'default',
+                  onPress: async () => {
+                    try {
+                      await dispatchVehicle(firstEntry.id, { dispatchedByUserId: user?.userId });
+                      Alert.alert('Success', 'Vehicle dispatched successfully');
+                      loadQueueData();
+                      loadTripsData();
+                    } catch (err) {
+                      Alert.alert('Error', 'Failed to dispatch vehicle');
+                    }
+                  }
+                }
+              ]
+            );
+          }
+          break;
+
+        case 'remove_from_queue':
+          // Example: "Remove vehicle ABC 123 from queue"
+          if (result.parameters?.vehicle) {
+            const entry = queueData.find(q => 
+              q.vehicleRegistration?.toLowerCase().includes(result.parameters.vehicle.toLowerCase())
+            );
+            
+            if (entry) {
+              Alert.alert(
+                'Confirm Removal',
+                `Remove ${entry.vehicleRegistration} from the queue?`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Remove', 
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await removeFromQueue(entry.id);
+                        Alert.alert('Success', 'Vehicle removed from queue');
+                        loadQueueData();
+                      } catch (err) {
+                        Alert.alert('Error', 'Failed to remove vehicle from queue');
+                      }
+                    }
+                  }
+                ]
+              );
+            } else {
+              Alert.alert('Vehicle Not Found', `Could not find vehicle "${result.parameters.vehicle}" in queue.`);
+            }
+          }
+          break;
+
+        case 'complete_trip':
+          // Example: "Complete trip ABC 123"
+          if (result.parameters?.vehicle) {
+            const trip = trips.find(t => 
+              t.vehicleRegistration?.toLowerCase().includes(result.parameters.vehicle.toLowerCase()) &&
+              t.status !== 'Completed'
+            );
+            
+            if (trip) {
+              Alert.alert(
+                'Complete Trip',
+                `Mark trip for ${trip.vehicleRegistration} as complete?`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Complete', 
+                    style: 'default',
+                    onPress: async () => {
+                      try {
+                        await client.put(`/Trips/${trip.id}/complete`);
+                        Alert.alert('Success', 'Trip marked as complete');
+                        loadTripsData();
+                      } catch (err) {
+                        Alert.alert('Error', 'Failed to complete trip');
+                      }
+                    }
+                  }
+                ]
+              );
+            } else {
+              Alert.alert('Trip Not Found', `Could not find active trip for vehicle "${result.parameters.vehicle}"`);
+            }
+          }
+          break;
+
+        case 'switch_to_trips':
+          // Example: "Show trips" or "Switch to trips"
+          setActiveTab('trips');
+          Alert.alert('Voice Command', 'Switched to trips view');
+          break;
+
+        case 'switch_to_queues':
+          // Example: "Show queues" or "Switch to queues"
+          setActiveTab('queues');
+          Alert.alert('Voice Command', 'Switched to queues view');
+          break;
+
+        default:
+          Alert.alert('Voice Command', `Command "${result.action}" is not supported.`);
+      }
+    } catch (err) {
+      Alert.alert('Voice Command Error', err.message || 'Failed to process voice command.');
+    } finally {
+      setVoiceProcessing(false);
+    }
+  }
 
   const loadQueueData = useCallback(async () => {
     if (!rank?.id) return;
@@ -170,12 +381,63 @@ export default function TripManagementScreen({ navigation, route }) {
   };
 
   const handleDispatchVehicle = (queueEntry) => {
-    // Navigate to QueueManagementScreen with the entry pre-selected for dispatch
     navigation.navigate('QueueManagement', { 
       rank, 
       dispatchEntry: queueEntry,
       openDispatchModal: true 
     });
+  };
+
+  // ── Bookings handlers ──
+  const loadRankBookings = useCallback(async () => {
+    if (!rank?.id) return;
+    setBookingsLoading(true);
+    try {
+      const data = await fetchRankBookings(rank.id, selectedDate);
+      setRankBookings(Array.isArray(data) ? data : []);
+    } catch { setRankBookings([]); }
+    finally { setBookingsLoading(false); }
+  }, [rank?.id, selectedDate]);
+
+  const handleViewQueueEntryBookings = async (entry) => {
+    setQueueEntryForBookings(entry);
+    setQueueEntryBookingsVisible(true);
+    setQueueEntryBookingsLoading(true);
+    setQueueEntryBookings([]);
+    setSeatAllocations({});
+    try {
+      const data = await fetchQueueEntryBookings(entry.id);
+      setQueueEntryBookings(data.bookings || []);
+      setQueueEntryTotalBooked(data.totalBookedSeats || 0);
+    } catch (err) {
+      console.warn('Load queue entry bookings error', err?.message);
+      Alert.alert('Error', 'Failed to load bookings for this vehicle');
+    } finally {
+      setQueueEntryBookingsLoading(false);
+    }
+  };
+
+  const handleAllocateSeatsForEntry = async (booking) => {
+    const allocations = (booking.passengers || [])
+      .filter(p => seatAllocations[p.id])
+      .map(p => ({ passengerId: p.id, seatNumber: parseInt(seatAllocations[p.id], 10) }));
+    if (allocations.length === 0) return Alert.alert('Required', 'Please assign at least one seat number');
+    if (allocations.some(a => isNaN(a.seatNumber) || a.seatNumber < 1)) return Alert.alert('Invalid', 'Seat numbers must be positive numbers');
+    setAllocatingSeats(true);
+    try {
+      await allocateSeats(booking.id, allocations);
+      Alert.alert('Success', 'Seats allocated successfully');
+      setSeatAllocations({});
+      if (queueEntryForBookings) {
+        const data = await fetchQueueEntryBookings(queueEntryForBookings.id);
+        setQueueEntryBookings(data.bookings || []);
+        setQueueEntryTotalBooked(data.totalBookedSeats || 0);
+      }
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to allocate seats');
+    } finally {
+      setAllocatingSeats(false);
+    }
   };
 
   const handleAddVehicle = async () => {
@@ -202,6 +464,46 @@ export default function TripManagementScreen({ navigation, route }) {
       Alert.alert('Error', e?.response?.data?.message || e?.message || 'Failed to add vehicle');
     } finally {
       setAddingVehicle(false);
+    }
+  };
+
+  const openEditModal = (entry) => {
+    setEditEntry(entry);
+    setEditDriverId(entry.driverId || null);
+    setEditVehicleId(entry.vehicleId || null);
+    setEditRouteId(entry.routeId || null);
+    setEditEstimatedDeparture(
+      entry.estimatedDepartureTime
+        ? new Date(entry.estimatedDepartureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+        : ''
+    );
+    setEditNotes(entry.notes || '');
+    setEditStatus(entry.status || 'Waiting');
+    setEditModalVisible(true);
+  };
+
+  const handleUpdateQueueEntry = async () => {
+    if (!editEntry) return;
+    setEditBusy(true);
+    try {
+      const payload = {};
+      if (editDriverId !== (editEntry.driverId || null)) payload.driverId = editDriverId || '00000000-0000-0000-0000-000000000000';
+      if (editVehicleId && editVehicleId !== editEntry.vehicleId) payload.vehicleId = editVehicleId;
+      if (editRouteId !== (editEntry.routeId || null)) payload.routeId = editRouteId || '00000000-0000-0000-0000-000000000000';
+      if (editEstimatedDeparture) {
+        payload.estimatedDepartureTime = new Date(`${selectedDate}T${editEstimatedDeparture}`).toISOString();
+      }
+      if (editStatus !== editEntry.status) payload.status = editStatus;
+      if (editNotes !== (editEntry.notes || '')) payload.notes = editNotes;
+
+      await updateQueueEntry(editEntry.id, payload);
+      setEditModalVisible(false);
+      setEditEntry(null);
+      await loadQueueData();
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to update queue entry');
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -269,19 +571,24 @@ export default function TripManagementScreen({ navigation, route }) {
           <Text style={s.hdrTitle}>Trip Management</Text>
           <Text style={s.hdrSub}>{rank?.name || 'Taxi Rank'}</Text>
         </View>
+        <VoiceRecorderButton
+          onRecordingComplete={handleVoiceCommand}
+          processing={voiceProcessing}
+          buttonStyle={{ backgroundColor: 'rgba(34,197,94,0.15)', padding: 8, borderRadius: 20 }}
+          iconColor="#22c55e"
+          size={18}
+        />
       </View>
 
       {/* ── Tabs ── */}
       <View style={s.tabs}>
-        {['queues', 'trips'].map(t => (
+        {[{ key: 'queues', label: `Queues (${queueData.length})` }, { key: 'bookings', label: `Bookings (${rankBookings.length})` }, { key: 'trips', label: `Trips (${trips.length})` }].map(t => (
           <TouchableOpacity
-            key={t}
-            style={[s.tab, activeTab === t && s.tabActive]}
-            onPress={() => setActiveTab(t)}
+            key={t.key}
+            style={[s.tab, activeTab === t.key && s.tabActive]}
+            onPress={() => { setActiveTab(t.key); if (t.key === 'bookings') loadRankBookings(); }}
           >
-            <Text style={[s.tabTxt, activeTab === t && s.tabTxtActive]}>
-              {t === 'queues' ? `Queues (${queueData.length})` : `Trips (${trips.length})`}
-            </Text>
+            <Text style={[s.tabTxt, activeTab === t.key && s.tabTxtActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -295,6 +602,14 @@ export default function TripManagementScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => changeDate(1)} style={s.dateArrow}>
           <Ionicons name="chevron-forward" size={18} color="#64748b" />
         </TouchableOpacity>
+      </View>
+
+      {/* ── Voice Command Tip ── */}
+      <View style={s.voiceTip}>
+        <Ionicons name="mic-outline" size={16} color="#22c55e" />
+        <Text style={s.voiceTipText}>
+          Try: "Add vehicle ABC 123 to queue" · "Dispatch first vehicle" · "Complete trip XYZ 789"
+        </Text>
       </View>
 
       {/* ── Inline Filter (queues only) ── */}
@@ -381,6 +696,14 @@ export default function TripManagementScreen({ navigation, route }) {
                     {/* Row 3: actions */}
                     {(item.status === 'Waiting' || item.status === 'Loading') && (
                       <View style={s.cardActions}>
+                        <TouchableOpacity style={s.btnEdit} onPress={() => openEditModal(item)}>
+                          <Ionicons name="create-outline" size={14} color="#8b5cf6" />
+                          <Text style={s.btnEditTxt}>Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={s.btnBk} onPress={() => handleViewQueueEntryBookings(item)}>
+                          <Ionicons name="receipt-outline" size={14} color={GOLD} />
+                          <Text style={s.btnBkTxt}>Bookings</Text>
+                        </TouchableOpacity>
                         <TouchableOpacity style={s.btnGo} onPress={() => handleDispatchVehicle(item)}>
                           <Ionicons name="send" size={14} color="#fff" />
                           <Text style={s.btnGoTxt}>Dispatch</Text>
@@ -395,6 +718,98 @@ export default function TripManagementScreen({ navigation, route }) {
                 </View>
               );
             })
+          )
+        ) : activeTab === 'bookings' ? (
+          /* ══════ BOOKINGS TAB ══════ */
+          bookingsLoading ? (
+            <View style={s.empty}>
+              <ActivityIndicator size="large" color={GOLD} />
+              <Text style={{ marginTop: 10, color: '#94a3b8' }}>Loading bookings…</Text>
+            </View>
+          ) : rankBookings.length === 0 ? (
+            <View style={s.empty}>
+              <View style={s.emptyCircle}><Ionicons name="receipt-outline" size={32} color="#cbd5e1" /></View>
+              <Text style={s.emptyTitle}>No bookings yet</Text>
+              <Text style={s.emptySub}>Rider bookings for vehicles in the queue will appear here</Text>
+            </View>
+          ) : (
+            Object.values(
+              rankBookings.reduce((groups, bk) => {
+                const key = bk.vehicleRegistration || 'Unknown';
+                if (!groups[key]) groups[key] = { reg: key, bookings: [], totalSeats: 0, totalFare: 0 };
+                groups[key].bookings.push(bk);
+                groups[key].totalSeats += bk.seatsBooked || 0;
+                groups[key].totalFare += bk.totalFare || 0;
+                return groups;
+              }, {})
+            ).map(group => (
+              <View key={group.reg} style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                  <Ionicons name="car" size={16} color={GOLD} />
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: '#1e293b' }}>{group.reg}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b' }}>{group.totalSeats} seats</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#198754' }}>R{group.totalFare.toFixed(2)}</Text>
+                  </View>
+                </View>
+                {group.bookings.map((bk, bkIdx) => {
+                  const allAllocated = (bk.passengers || []).every(p => p.seatNumber);
+                  return (
+                    <View key={bk.id || bkIdx} style={[s.card, { marginBottom: 8 }]}>
+                      <View style={[s.cardAccent, { backgroundColor: allAllocated ? '#22c55e' : GOLD }]} />
+                      <View style={s.cardBody}>
+                        <View style={s.cardRow}>
+                          <Text style={[s.regText, { flex: 1 }]}>{bk.riderName || 'Unknown Rider'}</Text>
+                          <View style={{ flexDirection: 'row', gap: 4 }}>
+                            <View style={[s.badge, { backgroundColor: bk.status === 'Confirmed' ? '#22c55e' : '#f59e0b' }]}>
+                              <Text style={s.badgeText}>{bk.status}</Text>
+                            </View>
+                            <View style={[s.badge, { backgroundColor: bk.paymentStatus === 'Paid' ? '#22c55e' : '#f59e0b' }]}>
+                              <Text style={s.badgeText}>{bk.paymentStatus || 'Unpaid'}</Text>
+                            </View>
+                          </View>
+                        </View>
+                        <View style={s.cardMeta}>
+                          {bk.riderPhone ? (
+                            <View style={s.metaItem}>
+                              <Ionicons name="call-outline" size={13} color="#64748b" />
+                              <Text style={s.metaText}>{bk.riderPhone}</Text>
+                            </View>
+                          ) : null}
+                          <View style={s.metaItem}>
+                            <Ionicons name="people-outline" size={13} color="#64748b" />
+                            <Text style={s.metaText}>{bk.seatsBooked || 0} seats</Text>
+                          </View>
+                          <View style={s.metaItem}>
+                            <Ionicons name="cash-outline" size={13} color="#198754" />
+                            <Text style={[s.metaText, { color: '#198754', fontWeight: '700' }]}>R{(bk.totalFare || 0).toFixed(2)}</Text>
+                          </View>
+                        </View>
+                        {(bk.passengers || []).length > 0 && (
+                          <View style={{ marginTop: 8 }}>
+                            {bk.passengers.map((p, pi) => (
+                              <View key={p.id || pi} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                                <Text style={{ fontSize: 12, color: '#334155' }}>{pi + 1}. {p.name}</Text>
+                                {p.destination ? <Text style={{ fontSize: 11, color: '#64748b' }}>→ {p.destination}</Text> : null}
+                                {p.seatNumber ? (
+                                  <View style={{ backgroundColor: '#dcfce7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#198754' }}>Seat {p.seatNumber}</Text>
+                                  </View>
+                                ) : (
+                                  <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: '600', color: '#b45309' }}>No seat</Text>
+                                  </View>
+                                )}
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ))
           )
         ) : (
           /* ══════ TRIPS TAB ══════ */
@@ -613,6 +1028,349 @@ export default function TripManagementScreen({ navigation, route }) {
         </View>
       </Modal>
 
+      {/* ── Queue Entry Bookings Modal ── */}
+      <Modal visible={queueEntryBookingsVisible} transparent animationType="slide" onRequestClose={() => setQueueEntryBookingsVisible(false)}>
+        <View style={s.modalBg}>
+          <View style={[s.modalCard, { maxHeight: '90%' }]}>
+            {/* Header */}
+            <View style={s.modalHdr}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.modalTitle}>{queueEntryForBookings?.vehicleRegistration || queueEntryForBookings?.vehicle?.registration || 'Vehicle'} — Bookings</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setQueueEntryBookingsVisible(false); setQueueEntryForBookings(null); setQueueEntryBookings([]); setSeatAllocations({}); }} hitSlop={12}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Summary */}
+            {queueEntryForBookings && (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: GOLD }}>{queueEntryTotalBooked}</Text>
+                  <Text style={{ fontSize: 10, color: '#94a3b8' }}>Seats Booked</Text>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#1e293b' }}>{queueEntryBookings.length}</Text>
+                  <Text style={{ fontSize: 10, color: '#94a3b8' }}>Bookings</Text>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#22c55e' }}>
+                    {(queueEntryForBookings.vehicleCapacity || queueEntryForBookings.vehicle?.capacity) ? ((queueEntryForBookings.vehicleCapacity || queueEntryForBookings.vehicle?.capacity) - queueEntryTotalBooked) : '—'}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: '#94a3b8' }}>Available</Text>
+                </View>
+              </View>
+            )}
+
+            {queueEntryBookingsLoading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={GOLD} />
+                <Text style={{ marginTop: 10, color: '#94a3b8' }}>Loading bookings…</Text>
+              </View>
+            ) : queueEntryBookings.length === 0 ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <Ionicons name="receipt-outline" size={48} color="#e2e8f0" />
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#94a3b8', marginTop: 10 }}>No bookings yet</Text>
+                <Text style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginTop: 4 }}>Riders haven't booked seats on this vehicle yet.</Text>
+              </View>
+            ) : (
+              <ScrollView contentContainerStyle={{ padding: 12 }}>
+                {queueEntryBookings.map((bk, bkIdx) => {
+                  const allAllocated = (bk.passengers || []).every(p => p.seatNumber);
+                  return (
+                    <View key={bk.id || bkIdx} style={{
+                      backgroundColor: '#fff', borderRadius: 12, marginBottom: 12,
+                      borderWidth: 1, borderColor: allAllocated ? '#bbf7d0' : '#fde68a', overflow: 'hidden',
+                    }}>
+                      {/* Booking header row */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: allAllocated ? '#f0fdf4' : '#fffbeb' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: '#1e293b' }}>{bk.riderName || 'Unknown Rider'}</Text>
+                          {bk.riderPhone ? <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{bk.riderPhone}</Text> : null}
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                          <View style={[s.badge, { backgroundColor: bk.status === 'Confirmed' ? '#22c55e' : '#f59e0b' }]}>
+                            <Text style={s.badgeText}>{bk.status}</Text>
+                          </View>
+                          <View style={[s.badge, { backgroundColor: bk.paymentStatus === 'Paid' ? '#22c55e' : '#f59e0b' }]}>
+                            <Text style={s.badgeText}>{bk.paymentStatus || 'Unpaid'}</Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Route & fare */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#f1f5f9' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                          <Ionicons name="navigate" size={12} color="#64748b" style={{ marginRight: 4 }} />
+                          <Text style={{ fontSize: 11, color: '#64748b' }} numberOfLines={1}>
+                            {bk.departureStation && bk.destinationStation
+                              ? `${bk.departureStation} → ${bk.destinationStation}`
+                              : bk.routeName || '—'}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 13, fontWeight: '900', color: '#198754' }}>R{(bk.totalFare || 0).toFixed(2)}</Text>
+                      </View>
+
+                      {/* Passengers with seat allocation */}
+                      <View style={{ padding: 12, paddingTop: 6 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#94a3b8', marginBottom: 6 }}>PASSENGERS ({(bk.passengers || []).length})</Text>
+                        {(bk.passengers || []).map((p, pi) => (
+                          <View key={p.id || pi} style={{
+                            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                            backgroundColor: '#f8fafc', borderRadius: 8, padding: 10, marginBottom: 6,
+                            borderWidth: 1, borderColor: p.seatNumber ? '#bbf7d0' : '#fde68a',
+                          }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#1e293b' }}>{pi + 1}. {p.name}</Text>
+                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+                                {p.contactNumber ? <Text style={{ fontSize: 10, color: '#64748b' }}>{p.contactNumber}</Text> : null}
+                                {p.destination ? (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Ionicons name="location" size={10} color="#3b82f6" style={{ marginRight: 2 }} />
+                                    <Text style={{ fontSize: 10, color: '#3b82f6' }}>{p.destination}</Text>
+                                  </View>
+                                ) : null}
+                                {p.fare ? <Text style={{ fontSize: 10, fontWeight: '700', color: '#198754' }}>R{p.fare.toFixed(2)}</Text> : null}
+                              </View>
+                            </View>
+                            <View style={{ alignItems: 'center', minWidth: 70 }}>
+                              {p.seatNumber ? (
+                                <View style={{ backgroundColor: '#dcfce7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                                  <Text style={{ fontSize: 14, fontWeight: '900', color: '#198754' }}>Seat {p.seatNumber}</Text>
+                                </View>
+                              ) : (
+                                <View style={{ alignItems: 'center' }}>
+                                  <Text style={{ fontSize: 9, color: '#94a3b8', marginBottom: 2 }}>Seat #</Text>
+                                  <TextInput
+                                    style={{
+                                      width: 56, height: 34, borderRadius: 8, borderWidth: 1.5,
+                                      borderColor: seatAllocations[p.id] ? GOLD : '#e2e8f0',
+                                      backgroundColor: '#fff', textAlign: 'center',
+                                      fontSize: 15, fontWeight: '800', color: '#1e293b',
+                                    }}
+                                    keyboardType="number-pad"
+                                    value={seatAllocations[p.id] || ''}
+                                    onChangeText={val => setSeatAllocations(prev => ({ ...prev, [p.id]: val }))}
+                                    placeholder="—"
+                                    placeholderTextColor="#cbd5e1"
+                                  />
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        ))}
+
+                        {(bk.passengers || []).some(p => !p.seatNumber) && (
+                          <TouchableOpacity
+                            style={{
+                              backgroundColor: GOLD, borderRadius: 10, paddingVertical: 10,
+                              alignItems: 'center', marginTop: 4, opacity: allocatingSeats ? 0.6 : 1,
+                            }}
+                            onPress={() => handleAllocateSeatsForEntry(bk)}
+                            disabled={allocatingSeats}
+                          >
+                            {allocatingSeats ? (
+                              <ActivityIndicator color="#000" size="small" />
+                            ) : (
+                              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Ionicons name="checkmark-circle" size={16} color="#000" style={{ marginRight: 6 }} />
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: '#000' }}>Allocate Seats</Text>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Edit Queue Entry Modal ── */}
+      <Modal visible={editModalVisible} transparent animationType="slide" onRequestClose={() => setEditModalVisible(false)}>
+        <View style={s.modalBg}>
+          <View style={[s.modalCard, { maxHeight: '85%' }]}>
+            <View style={s.modalHdr}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#8b5cf615', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="create" size={16} color="#8b5cf6" />
+                </View>
+                <Text style={s.modalTitle}>Edit Queue Entry</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setEditModalVisible(false); setEditEntry(null); }} hitSlop={12}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={s.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Current entry info */}
+              {editEntry && (
+                <View style={[s.vehicleOption, { borderColor: '#8b5cf630', backgroundColor: '#8b5cf608', marginTop: 12 }]}>
+                  <Ionicons name="car-sport" size={20} color="#8b5cf6" />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={s.vehicleReg}>{editEntry.vehicleRegistration || getVehicleReg(editEntry)}</Text>
+                    <Text style={s.vehicleMeta}>Position #{editEntry.queuePosition} · {editEntry.status}</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Status */}
+              <Text style={s.fieldLabel}>Status</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
+                {['Waiting', 'Loading'].map(st => (
+                  <TouchableOpacity
+                    key={st}
+                    style={[s.pickerChip, editStatus === st && s.pickerChipOn]}
+                    onPress={() => setEditStatus(st)}
+                  >
+                    <Text style={[s.pickerChipTxt, editStatus === st && s.pickerChipTxtOn]}>{st}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Driver */}
+              <Text style={s.fieldLabel}>Driver</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pickerRow}>
+                <TouchableOpacity
+                  style={[s.pickerChip, !editDriverId && s.pickerChipOn]}
+                  onPress={() => setEditDriverId(null)}
+                >
+                  <Text style={[s.pickerChipTxt, !editDriverId && s.pickerChipTxtOn]}>None</Text>
+                </TouchableOpacity>
+                {drivers.map(d => (
+                  <TouchableOpacity
+                    key={d.id}
+                    style={[s.pickerChip, editDriverId === d.id && s.pickerChipOn]}
+                    onPress={() => setEditDriverId(d.id)}
+                  >
+                    <Text style={[s.pickerChipTxt, editDriverId === d.id && s.pickerChipTxtOn]}>{d.name || d.Name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Vehicle */}
+              <Text style={s.fieldLabel}>Vehicle</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pickerRow}>
+                {vehicles.map(v => (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[s.pickerChip, editVehicleId === v.id && s.pickerChipOn]}
+                    onPress={() => setEditVehicleId(v.id)}
+                  >
+                    <Text style={[s.pickerChipTxt, editVehicleId === v.id && s.pickerChipTxtOn]}>{v.registration || v.registrationNumber}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Route */}
+              <Text style={s.fieldLabel}>Route</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pickerRow}>
+                <TouchableOpacity
+                  style={[s.pickerChip, !editRouteId && s.pickerChipOn]}
+                  onPress={() => setEditRouteId(null)}
+                >
+                  <Text style={[s.pickerChipTxt, !editRouteId && s.pickerChipTxtOn]}>None</Text>
+                </TouchableOpacity>
+                {routes.filter(r => r.isActive !== false).map(r => (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[s.pickerChip, editRouteId === r.id && s.pickerChipOn]}
+                    onPress={() => setEditRouteId(r.id)}
+                  >
+                    <Text style={[s.pickerChipTxt, editRouteId === r.id && s.pickerChipTxtOn]}>
+                      {r.routeName || r.name || `${r.departureStation} → ${r.destinationStation}`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Estimated Departure Time */}
+              <Text style={s.fieldLabel}>Estimated Departure Time</Text>
+              <TouchableOpacity
+                style={[s.vehicleOption, { justifyContent: 'space-between' }]}
+                onPress={() => {
+                  if (Platform.OS === 'web') {
+                    const t = window.prompt('Enter estimated departure time (HH:MM)', editEstimatedDeparture || '');
+                    if (t && /^\d{1,2}:\d{2}$/.test(t.trim())) setEditEstimatedDeparture(t.trim());
+                  } else {
+                    setShowEditETDPicker(true);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="time-outline" size={16} color={GOLD} />
+                  <Text style={{ color: editEstimatedDeparture ? '#1e293b' : '#94a3b8', fontSize: 14 }}>
+                    {editEstimatedDeparture || 'Tap to set time'}
+                  </Text>
+                </View>
+                {editEstimatedDeparture ? (
+                  <TouchableOpacity onPress={() => setEditEstimatedDeparture('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={16} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
+              </TouchableOpacity>
+              {showEditETDPicker && Platform.OS !== 'web' && (
+                <DateTimePicker
+                  value={editEstimatedDeparture ? new Date(`2000-01-01T${editEstimatedDeparture}:00`) : new Date()}
+                  mode="time"
+                  is24Hour={true}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(event, selectedTime) => {
+                    setShowEditETDPicker(Platform.OS === 'ios');
+                    if (selectedTime) {
+                      const hh = String(selectedTime.getHours()).padStart(2, '0');
+                      const mm = String(selectedTime.getMinutes()).padStart(2, '0');
+                      setEditEstimatedDeparture(`${hh}:${mm}`);
+                    }
+                  }}
+                />
+              )}
+
+              {/* Notes */}
+              <Text style={s.fieldLabel}>Notes</Text>
+              <TextInput
+                style={[s.vehicleOption, { height: 80, textAlignVertical: 'top', color: '#1e293b', fontSize: 14 }]}
+                placeholder="Optional notes..."
+                placeholderTextColor="#94a3b8"
+                value={editNotes}
+                onChangeText={setEditNotes}
+                multiline
+              />
+            </ScrollView>
+
+            {/* Footer buttons */}
+            <View style={s.modalFooter}>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={[s.addBtn, { flex: 1, backgroundColor: '#f1f5f9' }]}
+                  onPress={() => { setEditModalVisible(false); setEditEntry(null); }}
+                >
+                  <Text style={[s.addBtnTxt, { color: '#64748b' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.addBtn, { flex: 2, backgroundColor: '#8b5cf6' }]}
+                  onPress={handleUpdateQueueEntry}
+                  disabled={editBusy}
+                >
+                  {editBusy ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                      <Text style={[s.addBtnTxt, { color: '#fff' }]}>Save Changes</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* ── Trip Detail Modal ── */}
       <Modal visible={tripModalVisible} transparent animationType="slide" onRequestClose={() => setTripModalVisible(false)}>
         <View style={s.modalBg}>
@@ -770,6 +1528,18 @@ const s = StyleSheet.create({
     backgroundColor: '#22c55e', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
   },
   btnGoTxt: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  btnBk: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: GOLD_LIGHT, paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
+    borderWidth: 1, borderColor: GOLD + '40',
+  },
+  btnBkTxt: { color: GOLD, fontSize: 12, fontWeight: '600' },
+  btnEdit: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#f5f3ff', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
+    borderWidth: 1, borderColor: '#ddd6fe',
+  },
+  btnEditTxt: { color: '#8b5cf6', fontSize: 12, fontWeight: '600' },
   btnRm: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: '#fef2f2', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
@@ -868,4 +1638,22 @@ const s = StyleSheet.create({
     backgroundColor: GOLD, paddingVertical: 14, borderRadius: 12,
   },
   addBtnTxt: { fontSize: 15, fontWeight: '700', color: '#000' },
+
+  // Voice command tip
+  voiceTip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(34,197,94,0.05)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(34,197,94,0.1)',
+    gap: 8,
+  },
+  voiceTipText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#22c55e',
+  },
 });

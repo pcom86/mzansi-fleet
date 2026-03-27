@@ -69,11 +69,12 @@ $mzansi-gold-palette: (
   )
 );
 
+// Light theme
 $my-primary: mat.define-palette($mzansi-black-palette, 500);
 $my-accent: mat.define-palette($mzansi-gold-palette, 500);
 $my-warn: mat.define-palette($mzansi-gold-palette, 900);
 
-$my-theme: mat.define-light-theme((
+$my-light-theme: mat.define-light-theme((
   color: (
     primary: $my-primary,
     accent: $my-accent,
@@ -85,7 +86,44 @@ $my-theme: mat.define-light-theme((
   density: 0,
 ));
 
-@include mat.all-component-themes($my-theme);
+// Dark theme
+$my-dark-theme: mat.define-dark-theme((
+  color: (
+    primary: $my-primary,
+    accent: $my-accent,
+    warn: $my-warn,
+  ),
+  typography: mat.define-typography-config(
+    $font-family: 'Roboto, "Helvetica Neue", sans-serif',
+  ),
+  density: 0,
+));
+
+// Apply light theme by default
+@include mat.all-component-themes($my-light-theme);
+
+// Dark theme styles
+[data-theme="dark"] {
+  @include mat.all-component-themes($my-dark-theme);
+  
+  // Dark theme overrides
+  .mat-mdc-card {
+    background: #1e1e1e !important;
+    border-color: rgba(212, 175, 55, 0.2) !important;
+  }
+  
+  .mat-mdc-form-field {
+    .mat-mdc-text-field-wrapper {
+      background-color: #2d2d2d !important;
+    }
+  }
+  
+  .mat-mdc-tab-group {
+    .mat-mdc-tab-header {
+      background: #1e1e1e !important;
+    }
+  }
+}
 
 /* Custom Material Overrides */
 .success-snackbar {

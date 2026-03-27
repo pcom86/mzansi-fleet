@@ -5,14 +5,39 @@ class AIService {
   // Voice recognition for hands-free operation
   async processVoiceCommand(audioBlob) {
     try {
-      const formData = new FormData();
-      formData.append('audio', audioBlob);
+      // Mock implementation - simulate voice command processing
+      // In production, this would send to actual speech-to-text API
+      console.log('Processing voice command...');
       
-      const response = await client.post('/ai/speech-to-text', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      return await this.interpretCommand(response.data.text);
+      // Mock some common commands for demo purposes
+      const mockCommands = [
+        { action: 'add_to_queue', parameters: { vehicle: 'ABC 123' } },
+        { action: 'dispatch_vehicle', parameters: { vehicle: 'XYZ 789' } },
+        { action: 'dispatch_vehicle', parameters: {} }, // first vehicle
+        { action: 'complete_trip', parameters: { vehicle: 'DEF 456' } },
+        { action: 'switch_to_trips', parameters: {} },
+        { action: 'switch_to_queues', parameters: {} },
+        { action: 'remove_from_queue', parameters: { vehicle: 'GHI 789' } }
+      ];
+      
+      // Return a random mock command for demonstration
+      const mockCommand = mockCommands[Math.floor(Math.random() * mockCommands.length)];
+      
+      console.log('Voice command processed:', mockCommand);
+      return mockCommand;
+      
+      // Original code (commented out until backend is ready):
+      // const formData = new FormData();
+      // formData.append('audio', audioBlob);
+      // 
+      // const response = await client.post('/ai/speech-to-text', formData, {
+      //   headers: { 'Content-Type': 'multipart/form-data' }
+      // });
+      // 
+      // return await this.interpretCommand(response.data.text);
     } catch (error) {
       console.error('Voice command failed:', error);
       return null;

@@ -97,6 +97,7 @@ namespace MzansiFleet.Api.Controllers
         /// Get a specific route by ID
         /// </summary>
         [HttpGet("{id}")]
+        [AllowAnonymous]
         public async Task<ActionResult<RouteDto>> GetRoute(Guid id)
         {
             var schedule = await _context.Routes

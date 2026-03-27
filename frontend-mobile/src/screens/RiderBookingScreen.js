@@ -296,6 +296,20 @@ export default function RiderBookingScreen({ navigation }) {
     if (!selectedSchedule) return 'Please select a scheduled trip';
     if (!paymentMethod) return 'Please select a payment method';
     if (passengerCart.length === 0) return 'Please add passengers to cart';
+
+    // Check minimum booking lead time (must be at least 1 hour before departure)
+    const MIN_BOOKING_LEAD_MINUTES = 60;
+    if (selectedSchedule.departureTime && selectedDate) {
+      const [hh, mm] = (selectedSchedule.departureTime || '00:00').split(':').map(Number);
+      const depDate = new Date(selectedDate);
+      depDate.setHours(hh, mm, 0, 0);
+      const minutesUntilDeparture = (depDate.getTime() - Date.now()) / 60000;
+      if (minutesUntilDeparture < MIN_BOOKING_LEAD_MINUTES) {
+        const hours = MIN_BOOKING_LEAD_MINUTES / 60;
+        return `Bookings must be made at least ${hours} hour(s) before departure time (${selectedSchedule.departureTime}).`;
+      }
+    }
+
     return null;
   }
 

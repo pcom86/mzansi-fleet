@@ -211,11 +211,15 @@ export default function AdminTripDetailsScreen({ navigation }) {
     if (selectedSchedule) {
       // Use schedule stops + final destination
       const stops = routeStops.map(s => s.stopName);
-      if (selectedSchedule.destinationStation) stops.push(selectedSchedule.destinationStation);
+      const scheduleDestination = selectedSchedule.destinationStation ?? selectedSchedule.DestinationStation ?? selectedSchedule.destination ?? selectedSchedule.Destination;
+      if (scheduleDestination) stops.push(scheduleDestination);
       return stops.filter(Boolean);
     }
     if (!selectedRoute) return [];
-    return [selectedRoute.origin, ...(selectedRoute.stops || []), selectedRoute.destination].filter(Boolean);
+    const routeBaseStops = (selectedRoute.stops || selectedRoute.Stops || []).map(s => s.stopName ?? s.StopName ?? s.name ?? s.Name);
+    const routeDestination = selectedRoute.destinationStation ?? selectedRoute.DestinationStation ?? selectedRoute.destination ?? selectedRoute.Destination;
+    const routeOrigin = selectedRoute.departureStation ?? selectedRoute.DepartureStation ?? selectedRoute.origin ?? selectedRoute.Origin;
+    return [routeOrigin, ...routeBaseStops, routeDestination].filter(Boolean);
   }, [selectedSchedule, routeStops, selectedRoute]);
 
   function selectScheduleRoute(sched) {

@@ -442,16 +442,24 @@ namespace MzansiFleet.Api.Controllers
                 bool _earningsRecorded = false;
 
                 // Create TaxiRankTrip and store passengers if passenger list provided
+                // Resolve route: from queue entry directly, or via vehicle's RouteVehicle assignment
+                var route = entry.RouteId.HasValue
+                    ? await _context.Routes.FindAsync(entry.RouteId.Value)
+                    : null;
+                if (route == null)
+                {
+                    route = await _context.RouteVehicles
+                        .Include(rv => rv.Route)
+                        .Where(rv => rv.VehicleId == entry.VehicleId && rv.IsActive)
+                        .Select(rv => rv.Route)
+                        .FirstOrDefaultAsync();
+                }
+                var taxiRank = await _context.TaxiRanks.FindAsync(entry.TaxiRankId);
+
                 if (passengerList?.Count > 0)
                 {
                     try
                     {
-                        // Get route details for departure/destination
-                        var route = entry.RouteId.HasValue 
-                            ? await _context.Routes.FindAsync(entry.RouteId.Value) 
-                            : null;
-
-                        var taxiRank = await _context.TaxiRanks.FindAsync(entry.TaxiRankId);
 
                         // Create the trip record
                         var trip = new TaxiRankTrip
@@ -500,6 +508,7 @@ namespace MzansiFleet.Api.Controllers
                                 ArrivalStation = passengerDto.Destination ?? route?.DestinationStation ?? "Unknown",
                                 Amount = passengerDto.Amount,
                                 PaymentMethod = passengerDto.PaymentMethod ?? "Cash",
+                                SeatNumber = passengerDto.SeatNumber,
                                     BoardedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
                                 };
                                 _context.TripPassengers.Add(passenger);
@@ -546,11 +555,6 @@ namespace MzansiFleet.Api.Controllers
                     // Quick dispatch with fare info — create trip record without individual passengers
                     try
                     {
-                        var route = entry.RouteId.HasValue 
-                            ? await _context.Routes.FindAsync(entry.RouteId.Value) 
-                            : null;
-                        var taxiRank = await _context.TaxiRanks.FindAsync(entry.TaxiRankId);
-
                         var quickFare = dto.FareAmount ?? 0;
 
                         var trip = new TaxiRankTrip
@@ -606,6 +610,45 @@ namespace MzansiFleet.Api.Controllers
                             failedEntry.State = EntityState.Detached;
                         }
                     }
+                }
+
+                // Auto-confirm bookings for this queue entry on dispatch
+                try
+                {
+                    var activeBookings = await _context.QueueBookings
+                        .Include(b => b.Passengers)
+                        .Where(b => b.QueueEntryId == id && b.Status != "Cancelled" && b.Status != "Expired")
+                        .ToListAsync();
+                    foreach (var bk in activeBookings)
+                    {
+                        if (bk.Status != "Confirmed")
+                        {
+                            bk.Status = "Confirmed";
+                            bk.ConfirmedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                        }
+                        // Auto-allocate seat numbers to booking passengers that don't have them
+                        if (passengerList?.Count > 0)
+                        {
+                            foreach (var bp in bk.Passengers.Where(p => p.SeatNumber == null))
+                            {
+                                var matching = passengerList.FirstOrDefault(dp =>
+                                    dp.FromBooking &&
+                                    string.Equals(dp.Name?.Trim(), bp.Name?.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                                    dp.SeatNumber.HasValue);
+                                if (matching != null)
+                                    bp.SeatNumber = matching.SeatNumber;
+                            }
+                        }
+                    }
+                    if (activeBookings.Count > 0)
+                    {
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation($"[Queue] Confirmed {activeBookings.Count} booking(s) for dispatched queue entry {id}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[Queue] Error confirming bookings on dispatch for queue entry {QueueEntryId}", id);
                 }
 
                 // Shift remaining vehicles up by 1 - handle null RouteId gracefully
@@ -1156,6 +1199,124 @@ namespace MzansiFleet.Api.Controllers
             }
         }
 
+        // PUT: api/DailyTaxiQueue/{id} — Update queue entry details
+        [HttpPut("{id}")]
+        public async Task<ActionResult> UpdateQueueEntry(Guid id, [FromBody] UpdateQueueEntryDto dto)
+        {
+            try
+            {
+                var entry = await _context.DailyTaxiQueues
+                    .Include(q => q.Vehicle)
+                    .Include(q => q.Driver)
+                    .Include(q => q.Route)
+                    .FirstOrDefaultAsync(q => q.Id == id);
+
+                if (entry == null)
+                    return NotFound(new { message = "Queue entry not found" });
+
+                if (entry.Status == "Dispatched")
+                    return BadRequest(new { message = "Cannot update a dispatched queue entry" });
+
+                if (entry.Status == "Removed")
+                    return BadRequest(new { message = "Cannot update a removed queue entry" });
+
+                // Update driver if provided
+                if (dto.DriverId.HasValue)
+                {
+                    if (dto.DriverId.Value != Guid.Empty)
+                    {
+                        var driver = await _context.DriverProfiles.FindAsync(dto.DriverId.Value);
+                        if (driver == null)
+                            return BadRequest(new { message = "Driver not found" });
+                    }
+                    entry.DriverId = dto.DriverId.Value == Guid.Empty ? null : dto.DriverId.Value;
+                }
+
+                // Update vehicle if provided
+                if (dto.VehicleId.HasValue && dto.VehicleId.Value != Guid.Empty)
+                {
+                    var vehicle = await _context.Vehicles.FindAsync(dto.VehicleId.Value);
+                    if (vehicle == null)
+                        return BadRequest(new { message = "Vehicle not found" });
+
+                    // Check if the new vehicle is already in an active queue for the same route today
+                    var duplicate = await _context.DailyTaxiQueues
+                        .AnyAsync(q => q.VehicleId == dto.VehicleId.Value
+                            && q.QueueDate == entry.QueueDate
+                            && q.RouteId == entry.RouteId
+                            && q.Id != entry.Id
+                            && q.Status != "Dispatched" && q.Status != "Removed");
+
+                    if (duplicate)
+                        return BadRequest(new { message = "This vehicle is already in the queue for this route today" });
+
+                    entry.VehicleId = dto.VehicleId.Value;
+                }
+
+                // Update route if provided
+                if (dto.RouteId.HasValue)
+                {
+                    entry.RouteId = dto.RouteId.Value == Guid.Empty ? null : dto.RouteId.Value;
+                }
+
+                // Update estimated departure time if provided
+                if (dto.EstimatedDepartureTime.HasValue)
+                    entry.EstimatedDepartureTime = dto.EstimatedDepartureTime.Value;
+
+                // Update status if provided (only Waiting <-> Loading transitions)
+                if (!string.IsNullOrEmpty(dto.Status))
+                {
+                    var allowed = new[] { "Waiting", "Loading" };
+                    if (!allowed.Contains(dto.Status))
+                        return BadRequest(new { message = $"Status can only be changed to: {string.Join(", ", allowed)}" });
+                    entry.Status = dto.Status;
+                }
+
+                // Update notes if provided
+                if (dto.Notes != null)
+                    entry.Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes;
+
+                entry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                await _context.SaveChangesAsync();
+
+                // Re-fetch with includes
+                var updated = await _context.DailyTaxiQueues
+                    .Include(q => q.Vehicle)
+                    .Include(q => q.Driver)
+                    .Include(q => q.Route)
+                    .FirstOrDefaultAsync(q => q.Id == id);
+
+                return Ok(new
+                {
+                    updated!.Id,
+                    updated.TaxiRankId,
+                    updated.RouteId,
+                    routeName = updated.Route?.RouteName,
+                    updated.VehicleId,
+                    vehicleRegistration = updated.Vehicle?.Registration,
+                    vehicleMake = updated.Vehicle?.Make,
+                    vehicleModel = updated.Vehicle?.Model,
+                    vehicleCapacity = updated.Vehicle?.Capacity,
+                    updated.DriverId,
+                    driverName = updated.Driver?.Name,
+                    driverPhone = updated.Driver?.Phone,
+                    updated.QueueDate,
+                    updated.QueuePosition,
+                    joinedAt = updated.JoinedAt.ToString(@"hh\:mm"),
+                    updated.Status,
+                    updated.EstimatedDepartureTime,
+                    updated.Notes,
+                    updated.CreatedAt,
+                    updated.UpdatedAt,
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Queue] Error updating queue entry {id}: {ex.Message}");
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
         // PUT: api/DailyTaxiQueue/{id}/assign-route — Assign or change route for a queue entry
         [HttpPut("{id}/assign-route")]
         public async Task<ActionResult> AssignRoute(Guid id, [FromBody] AssignRouteDto dto)
@@ -1257,6 +1418,8 @@ namespace MzansiFleet.Api.Controllers
         public string? Destination { get; set; }
         public decimal Amount { get; set; }
         public string? PaymentMethod { get; set; } = "Cash";
+        public int? SeatNumber { get; set; }
+        public bool FromBooking { get; set; }
     }
 
         // GET: api/DailyTaxiQueue/owner/{tenantId}/rank-queues?date=2026-03-20
@@ -1428,6 +1591,16 @@ namespace MzansiFleet.Api.Controllers
     public class AssignRouteDto
     {
         public Guid? RouteId { get; set; }
+    }
+
+    public class UpdateQueueEntryDto
+    {
+        public Guid? DriverId { get; set; }
+        public Guid? VehicleId { get; set; }
+        public Guid? RouteId { get; set; }
+        public DateTime? EstimatedDepartureTime { get; set; }
+        public string? Status { get; set; }
+        public string? Notes { get; set; }
     }
 
     public class CompleteQueueTripDto

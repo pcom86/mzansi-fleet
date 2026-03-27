@@ -477,6 +477,9 @@ namespace MzansiFleet.Domain.Entities
         public string? Notes { get; set; }
         public string? CancellationReason { get; set; }
         
+        // Check-in
+        public DateTime? CheckedInAt { get; set; }
+        
         // Metadata
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
@@ -504,6 +507,10 @@ namespace MzansiFleet.Domain.Entities
         public string ContactNumber { get; set; } = string.Empty;
         public string? Email { get; set; }
         public string? Destination { get; set; }
+        public decimal Fare { get; set; }
+        public int? SeatNumber { get; set; }
+        public string? NextOfKinName { get; set; }
+        public string? NextOfKinContact { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         

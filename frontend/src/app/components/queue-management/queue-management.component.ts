@@ -16,9 +16,11 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { FormsModule } from '@angular/forms';
 
 import { QueueManagementService, QueueOverview, RouteQueue, AvailableVehicle, AssignVehicleDto, Route } from '../../services/queue-management.service';
+import { ThemeService } from '../../services/theme.service';
 import { DispatchDialogComponent } from './dispatch-dialog.component';
 import { Subject } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -44,6 +46,7 @@ import { ActivatedRoute, Router } from '@angular/router';
     MatDatepickerModule,
     MatNativeDateModule,
     MatButtonToggleModule,
+    MatTooltipModule,
     FormsModule,
     DispatchDialogComponent
   ],
@@ -61,6 +64,7 @@ export class QueueManagementComponent implements OnInit, OnDestroy {
   estimatedDepartureTime: string = '';
   activeTabIndex = 0;
   selectedPeriod = 'today';
+  isDarkTheme = false;
   
   private destroy$ = new Subject<void>();
 
@@ -72,10 +76,12 @@ export class QueueManagementComponent implements OnInit, OnDestroy {
     private snackBar: MatSnackBar,
     private route: ActivatedRoute,
     private router: Router,
-    private dialog: MatDialog
+    private dialog: MatDialog,
+    private themeService: ThemeService
   ) {}
 
   ngOnInit(): void {
+    this.initializeTheme();
     this.initializeSignalR();
     this.loadInitialData();
   }
@@ -85,6 +91,12 @@ export class QueueManagementComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
     this.queueService.leaveQueueGroup(this.selectedTaxiRankId);
     this.queueService.stopConnection();
+  }
+
+  private initializeTheme(): void {
+    this.themeService.isDarkTheme$.subscribe((isDark: boolean) => {
+      this.isDarkTheme = isDark;
+    });
   }
 
   private initializeSignalR(): void {
@@ -317,6 +329,10 @@ export class QueueManagementComponent implements OnInit, OnDestroy {
       return user.tenantId;
     }
     return '';
+  }
+
+  toggleTheme(): void {
+    this.themeService.toggleTheme();
   }
 
   private cleanup(): void {

@@ -1,9 +1,14 @@
 #nullable enable
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using MzansiFleet.Domain.Entities;
+using MzansiFleet.Domain.DTOs;
+using MzansiFleet.Application.Commands;
+using MzansiFleet.Application.Handlers;
 using MzansiFleet.Repository;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace MzansiFleet.Api.Controllers
@@ -13,10 +18,46 @@ namespace MzansiFleet.Api.Controllers
     public class AuthController : ControllerBase
     {
         private readonly MzansiFleetDbContext _context;
+        private readonly IConfiguration _configuration;
 
-        public AuthController(MzansiFleetDbContext context)
+        public AuthController(MzansiFleetDbContext context, IConfiguration configuration)
         {
             _context = context;
+            _configuration = configuration;
+        }
+
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequestDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Password))
+                {
+                    return BadRequest(new { message = "Email and password are required" });
+                }
+
+                var loginCommand = new LoginCommand
+                {
+                    Email = dto.Email,
+                    Password = dto.Password
+                };
+
+                var handler = new LoginCommandHandler(_context, _configuration);
+                
+                try
+                {
+                    var result = handler.Handle(loginCommand, CancellationToken.None);
+                    return Ok(result);
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    return Unauthorized(new { message = ex.Message });
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred during login", detail = ex.Message });
+            }
         }
 
         [HttpPost("register")]

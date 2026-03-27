@@ -1,16 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '../contexts/ThemeContext';
+import { useAppTheme } from '../theme';
 import { client } from '../api/client';
 
-const GOLD = '#FFD700';
-const GREEN = '#28a745';
-const RED = '#dc3545';
-
 export default function MarshalLoginScreen({ navigation }) {
-  const { colors: c } = useTheme();
+  const { theme } = useAppTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => createStyles(c), [c]);
   
   const [marshalCode, setMarshalCode] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -217,23 +215,26 @@ export default function MarshalLoginScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
+const createStyles = (c) => StyleSheet.create({
+  container: { 
+    flex: 1, 
+    backgroundColor: c.background 
+  },
   header: {
-    backgroundColor: '#1a1a2e',
+    backgroundColor: c.surface,
     paddingTop: 48,
     paddingBottom: 32,
     paddingHorizontal: 20,
     alignItems: 'center'
   },
   headerTitle: {
-    color: '#fff',
+    color: c.text,
     fontSize: 24,
     fontWeight: '900',
     marginBottom: 4
   },
   headerSubtitle: {
-    color: GOLD,
+    color: c.primary,
     fontSize: 14,
     fontWeight: '600'
   },
@@ -252,7 +253,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(255,215,0,0.1)',
+    backgroundColor: c.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16
@@ -260,11 +261,13 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 20,
     fontWeight: '800',
+    color: c.text,
     marginBottom: 8,
     textAlign: 'center'
   },
   appDescription: {
     fontSize: 14,
+    color: c.textMuted,
     textAlign: 'center',
     lineHeight: 20,
     paddingHorizontal: 20
@@ -279,6 +282,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
+    color: c.text,
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5
@@ -287,18 +291,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
+    borderColor: c.border,
     borderRadius: 12,
     paddingHorizontal: 16,
+    backgroundColor: c.surface,
     gap: 12
   },
   input: {
     flex: 1,
     paddingVertical: 16,
-    fontSize: 16
+    fontSize: 16,
+    color: c.text
   },
 
   loginButton: {
     borderRadius: 12,
+    backgroundColor: c.primary,
     padding: 18,
     alignItems: 'center',
     marginTop: 8,
@@ -306,7 +314,8 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     fontSize: 16,
-    fontWeight: '700'
+    fontWeight: '700',
+    color: c.primaryText
   },
 
   divider: {
@@ -316,12 +325,14 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: 1
+    height: 1,
+    backgroundColor: c.border
   },
   dividerText: {
     paddingHorizontal: 16,
     fontSize: 14,
-    fontWeight: '500'
+    fontWeight: '500',
+    color: c.textMuted
   },
 
   onboardingButton: {
@@ -331,11 +342,14 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 12,
     borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.surface,
     padding: 16
   },
   onboardingButtonText: {
     fontSize: 16,
-    fontWeight: '600'
+    fontWeight: '600',
+    color: c.text
   },
 
   features: {
@@ -344,6 +358,7 @@ const styles = StyleSheet.create({
   featuresTitle: {
     fontSize: 16,
     fontWeight: '700',
+    color: c.text,
     marginBottom: 16,
     textAlign: 'center'
   },
@@ -358,7 +373,8 @@ const styles = StyleSheet.create({
   },
   featureText: {
     fontSize: 14,
-    fontWeight: '500'
+    fontWeight: '500',
+    color: c.text
   },
 
   footer: {
@@ -367,9 +383,11 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
+    color: c.textMuted,
     marginBottom: 4
   },
   versionText: {
-    fontSize: 10
+    fontSize: 10,
+    color: c.textMuted
   }
 });

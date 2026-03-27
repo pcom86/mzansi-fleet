@@ -459,6 +459,19 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
     if (passengerCart.length === 0) return Alert.alert('Validation', 'Please add passengers to cart');
     if (passengerCart.length !== selectedSeats.length) return Alert.alert('Validation', 'Number of passengers must match selected seats');
 
+    // Check minimum booking lead time (must be at least 1 hour before departure)
+    const MIN_BOOKING_LEAD_MINUTES = 60;
+    if (selectedTrip.scheduledDate && selectedTrip.scheduledTime) {
+      const [hh, mm] = (selectedTrip.scheduledTime || '00:00').split(':').map(Number);
+      const depDate = new Date(selectedTrip.scheduledDate);
+      depDate.setHours(hh, mm, 0, 0);
+      const minutesUntilDeparture = (depDate.getTime() - Date.now()) / 60000;
+      if (minutesUntilDeparture < MIN_BOOKING_LEAD_MINUTES) {
+        const hours = MIN_BOOKING_LEAD_MINUTES / 60;
+        return Alert.alert('Too Late to Book', `Bookings must be made at least ${hours} hour(s) before departure time (${selectedTrip.scheduledTime}).`);
+      }
+    }
+
     setSubmitting(true);
     try {
       const routeId = selectedRoute?.id || selectedTrip.routeId || selectedTrip.RouteId;

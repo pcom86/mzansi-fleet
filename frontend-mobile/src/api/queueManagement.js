@@ -52,6 +52,14 @@ export async function updateQueueRoute(queueEntryId, routeId) {
   return resp.data;
 }
 
+// Update a queue entry (driver, vehicle, route, ETD, status, notes)
+export async function updateQueueEntry(queueEntryId, { driverId, vehicleId, routeId, estimatedDepartureTime, status, notes }) {
+  const resp = await client.put(`/DailyTaxiQueue/${queueEntryId}`, {
+    driverId, vehicleId, routeId, estimatedDepartureTime, status, notes,
+  });
+  return resp.data;
+}
+
 // Get queue statistics for a rank
 export async function getQueueStats(rankId, date) {
   const params = date ? `?date=${date}` : '';
@@ -72,7 +80,21 @@ export async function getDriverQueueView(driverId, date) {
 // Get route stops for destination selection
 export async function getRouteStops(routeId) {
   const resp = await client.get(`/Routes/${routeId}`);
-  return resp.data?.stops || [];
+  // route stops can come as `stops` or `Stops` depending on mapping
+  const stops = resp.data?.stops ?? resp.data?.Stops ?? [];
+  return Array.isArray(stops) ? stops : [];
+}
+
+export function normalizeRouteStops(response) {
+  const stopsRaw = response?.stops ?? response?.Stops ?? [];
+  if (!Array.isArray(stopsRaw)) return [];
+  return stopsRaw.map(s => ({
+    id: s.id ?? s.Id ?? s.stopName ?? s.StopName ?? s.name ?? s.Name,
+    stopName: s.stopName ?? s.StopName ?? s.name ?? s.Name ?? '',
+    stopOrder: s.stopOrder ?? s.StopOrder ?? s.order ?? s.Order ?? 0,
+    fareFromOrigin: s.fareFromOrigin ?? s.FareFromOrigin ?? s.fare ?? 0,
+    estimatedMinutesFromDeparture: s.estimatedMinutesFromDeparture ?? s.EstimatedMinutesFromDeparture ?? s.mins ?? 0,
+  })).sort((a, b) => (a.stopOrder || 0) - (b.stopOrder || 0));
 }
 
 // ── Enhanced Queue Management API ─────────────────────────────────────

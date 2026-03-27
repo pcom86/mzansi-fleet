@@ -1,5 +1,6 @@
 #nullable enable
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.Interfaces.IRepositories;
 using MzansiFleet.Repository;
@@ -18,15 +19,18 @@ namespace MzansiFleet.Api.Controllers
         private readonly IScheduledTripBookingRepository _bookingRepository;
         private readonly IRouteRepository _scheduleRepository;
         private readonly MzansiFleetDbContext _context;
+        private readonly IConfiguration _configuration;
 
         public ScheduledTripBookingsController(
             IScheduledTripBookingRepository bookingRepository,
             IRouteRepository scheduleRepository,
-            MzansiFleetDbContext context)
+            MzansiFleetDbContext context,
+            IConfiguration configuration)
         {
             _bookingRepository = bookingRepository;
             _scheduleRepository = scheduleRepository;
             _context = context;
+            _configuration = configuration;
         }
 
         // GET: api/ScheduledTripBookings/schedules?taxiRankId={id}
@@ -94,6 +98,17 @@ namespace MzansiFleet.Api.Controllers
                 // Check if travel date is valid (not in the past, matches day of week)
                 if (dto.TravelDate.Date < DateTime.UtcNow.Date)
                     return BadRequest(new { message = "Travel date cannot be in the past" });
+
+                // Check minimum booking lead time (departure must be at least N minutes from now)
+                var minLeadMinutes = _configuration.GetValue<int>("BookingSettings:MinimumBookingLeadTimeMinutes", 60);
+                var departureDateTime = dto.TravelDate.Date + schedule.DepartureTime;
+                var minutesUntilDeparture = (departureDateTime - DateTime.UtcNow).TotalMinutes;
+                if (minutesUntilDeparture < minLeadMinutes)
+                {
+                    var hours = minLeadMinutes / 60.0;
+                    var timeLabel = hours >= 1 ? $"{hours:0.#} hour(s)" : $"{minLeadMinutes} minute(s)";
+                    return BadRequest(new { message = $"Bookings must be made at least {timeLabel} before departure time ({schedule.DepartureTime:hh\\:mm})" });
+                }
 
                 if (!string.IsNullOrEmpty(schedule.DaysOfWeek))
                 {
@@ -284,10 +299,18 @@ Thank you for booking with MzansiFleet!";
         // GET: api/ScheduledTripBookings/user/{userId}
         // Get all bookings for a user
         [HttpGet("user/{userId}")]
-        public async Task<ActionResult<IEnumerable<ScheduledTripBooking>>> GetUserBookings(Guid userId)
+        public async Task<ActionResult<IEnumerable<ScheduledTripBookingDto>>> GetUserBookings(Guid userId)
         {
-            var bookings = await _bookingRepository.GetByUserIdAsync(userId);
-            return Ok(bookings);
+            try
+            {
+                var bookings = await _bookingRepository.GetByUserIdAsync(userId);
+                var dtos = bookings.Select(b => MapToDto(b)).ToList();
+                return Ok(dtos);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Failed to load user bookings", detail = ex.Message });
+            }
         }
 
         // GET: api/ScheduledTripBookings/{id}
@@ -426,10 +449,56 @@ Thank you for booking with MzansiFleet!";
         // GET: api/ScheduledTripBookings/rank/{taxiRankId}
         // For admins: see all bookings for their rank
         [HttpGet("rank/{taxiRankId}")]
-        public async Task<ActionResult<IEnumerable<ScheduledTripBooking>>> GetRankBookings(Guid taxiRankId)
+        public async Task<ActionResult<IEnumerable<ScheduledTripBookingDto>>> GetRankBookings(Guid taxiRankId)
         {
-            var bookings = await _bookingRepository.GetByTaxiRankIdAsync(taxiRankId);
-            return Ok(bookings);
+            try
+            {
+                var bookings = await _bookingRepository.GetByTaxiRankIdAsync(taxiRankId);
+                var dtos = bookings.Select(b => MapToDto(b)).ToList();
+                return Ok(dtos);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Failed to load rank bookings", detail = ex.Message });
+            }
+        }
+
+        private ScheduledTripBookingDto MapToDto(ScheduledTripBooking booking)
+        {
+            return new ScheduledTripBookingDto
+            {
+                Id = booking.Id,
+                UserId = booking.UserId,
+                RouteId = booking.RouteId,
+                TaxiRankId = booking.TaxiRankId,
+                ScheduledTripId = booking.ScheduledTripId,
+                TravelDate = booking.TravelDate,
+                SeatsBooked = booking.SeatsBooked,
+                SeatNumbers = booking.SeatNumbers,
+                TotalFare = booking.TotalFare,
+                PaymentMethod = booking.PaymentMethod,
+                PaymentStatus = booking.PaymentStatus,
+                Status = booking.Status,
+                Notes = booking.Notes,
+                CancellationReason = booking.CancellationReason,
+                CreatedAt = booking.CreatedAt,
+                UpdatedAt = booking.UpdatedAt,
+                ConfirmedAt = booking.ConfirmedAt,
+                CancelledAt = booking.CancelledAt,
+                RouteName = booking.Route?.RouteName ?? string.Empty,
+                DepartureStation = booking.Route?.DepartureStation ?? string.Empty,
+                DestinationStation = booking.Route?.DestinationStation ?? string.Empty,
+                TaxiRankName = booking.TaxiRank?.Name ?? string.Empty,
+                ScheduledTripVehicleRegistration = booking.ScheduledTrip?.Vehicle?.Registration ?? string.Empty,
+                Passengers = booking.Passengers.Select(p => new BookingPassengerDto
+                {
+                    Id = p.Id,
+                    Name = p.Name,
+                    ContactNumber = p.ContactNumber,
+                    Email = p.Email,
+                    Destination = p.Destination
+                }).ToList()
+            };
         }
     }
 
@@ -447,8 +516,42 @@ Thank you for booking with MzansiFleet!";
         public string? Notes { get; set; }
     }
 
+    public class ScheduledTripBookingDto
+    {
+        public Guid Id { get; set; }
+        public Guid UserId { get; set; }
+        public Guid RouteId { get; set; }
+        public Guid TaxiRankId { get; set; }
+        public Guid? ScheduledTripId { get; set; }
+
+        public DateTime TravelDate { get; set; }
+        public int SeatsBooked { get; set; } = 1;
+        public List<int> SeatNumbers { get; set; } = new();
+        public decimal TotalFare { get; set; }
+
+        public string PaymentMethod { get; set; } = string.Empty;
+        public string PaymentStatus { get; set; } = "Pending";
+        public string Status { get; set; } = "Pending";
+        public string? Notes { get; set; }
+        public string? CancellationReason { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+        public DateTime? ConfirmedAt { get; set; }
+        public DateTime? CancelledAt { get; set; }
+
+        public string RouteName { get; set; } = string.Empty;
+        public string DepartureStation { get; set; } = string.Empty;
+        public string DestinationStation { get; set; } = string.Empty;
+        public string TaxiRankName { get; set; } = string.Empty;
+        public string ScheduledTripVehicleRegistration { get; set; } = string.Empty;
+
+        public List<BookingPassengerDto> Passengers { get; set; } = new();
+    }
+
     public class BookingPassengerDto
     {
+        public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public string ContactNumber { get; set; } = string.Empty;
         public string? Email { get; set; }

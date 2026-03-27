@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MzansiFleet.Repository;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MzansiFleet.Repository.Migrations
 {
     [DbContext(typeof(MzansiFleetDbContext))]
-    partial class MzansiFleetDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260324065335_AddSeatNumberToQueueBookingPassenger")]
+    partial class AddSeatNumberToQueueBookingPassenger
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1045,9 +1048,6 @@ namespace MzansiFleet.Repository.Migrations
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("CheckedInAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1145,17 +1145,8 @@ namespace MzansiFleet.Repository.Migrations
                     b.Property<string>("Email")
                         .HasColumnType("text");
 
-                    b.Property<decimal>("Fare")
-                        .HasColumnType("numeric");
-
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("NextOfKinContact")
-                        .HasColumnType("text");
-
-                    b.Property<string>("NextOfKinName")
                         .HasColumnType("text");
 
                     b.Property<Guid>("QueueBookingId")

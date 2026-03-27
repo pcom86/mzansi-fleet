@@ -142,7 +142,15 @@ export default function TaxiRankDashboardScreen({ navigation }) {
     && d1.getDate() === d2.getDate();
 
   const now = new Date();
-  const todayTrips = trips || [];
+  const dispatchedStatuses = new Set(['Dispatched', 'Departed', 'InTransit', 'Arrived', 'Completed']);
+  
+  // Filter for today's dispatched trips only from rankTrips (which contains all trips)
+  const todayDispatchedTrips = (rankTrips || [])
+    .filter((t) => {
+      const d = toDate(t?.departureTime || t?.tripDate || t?.date || t?.createdAt);
+      return dispatchedStatuses.has(t?.status) && isSameDay(d, now);
+    });
+
   const departedStatuses = new Set(['Departed', 'InTransit', 'Arrived', 'Completed']);
 
   const departedTodayRevenue = (rankTrips || [])
@@ -162,21 +170,22 @@ export default function TaxiRankDashboardScreen({ navigation }) {
     })
     .reduce((sum, t) => sum + parseMoney(t?.totalAmount || t?.totalFare || t?.revenue), 0);
 
-  const totalPassengers = todayTrips.reduce((sum, t) => sum + (t.passengerCount || t.passengers || 0), 0);
-  const todayTripRevenue = todayTrips.reduce((sum, t) => sum + parseMoney(t.totalFare || t.fare || t.revenue), 0);
+  const totalPassengers = todayDispatchedTrips.reduce((sum, t) => sum + (t.passengerCount || t.passengers || 0), 0);
+  const todayTripRevenue = todayDispatchedTrips.reduce((sum, t) => sum + parseMoney(t.totalFare || t.fare || t.revenue), 0);
   const todayRevenue = todayTripRevenue + departedTodayRevenue;
-  const activeTrips = trips.filter(t => t.status === 'InProgress' || t.status === 'Active');
+  const activeTrips = (rankTrips || []).filter(t => 
+  dispatchedStatuses.has(t?.status) && t?.status !== 'Completed'
+);
 
-  // Calculate current month trips and revenue
-  const monthTrips = trips.filter(t => {
-    if (t.tripDate || t.date) {
-      const tripDate = new Date(t.tripDate || t.date);
-      return tripDate.getMonth() === now.getMonth() && tripDate.getFullYear() === now.getFullYear();
-    }
-    return false;
+  // Calculate current month trips and revenue using rankTrips (which has all data)
+  const monthTrips = (rankTrips || []).filter(t => {
+    const d = toDate(t?.departureTime || t?.tripDate || t?.date || t?.createdAt);
+    return d
+      && d.getMonth() === now.getMonth()
+      && d.getFullYear() === now.getFullYear();
   });
 
-  const currentMonthTripRevenue = monthTrips.reduce((sum, t) => sum + parseMoney(t.totalFare || t.fare || t.revenue), 0);
+  const currentMonthTripRevenue = monthTrips.reduce((sum, t) => sum + parseMoney(t?.totalAmount || t?.totalFare || t?.revenue), 0);
   const currentMonthRevenue = currentMonthTripRevenue + departedMonthRevenue;
 
   const roleLabel = user?.role === 'TaxiRankAdmin' ? 'Rank Manager' : 'Taxi Marshal';
@@ -250,7 +259,7 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       >
         {/* ====== STATS OVERVIEW ====== */}
         <View style={styles.statsRow}>
-          <StatCard icon="navigate-outline" label="Today's Trips" value={todayTrips.length} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
+          <StatCard icon="navigate-outline" label="Today's Trips" value={todayDispatchedTrips.length} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
           <StatCard icon="people-outline" label="Passengers" value={totalPassengers} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
           <StatCard icon="cash-outline" label="Today Rev." value={`R${todayRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />
           <StatCard icon="trending-up-outline" label="Month Rev." value={`R${currentMonthRevenue.toFixed(0)}`} bg={c.surface} border={c.border} text={c.text} muted={c.textMuted} />

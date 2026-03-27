@@ -32,36 +32,19 @@ export default function MarshalManagementScreen({ navigation, route }) {
     try {
       setLoading(true);
       
-      // Fetch from both marshal sources
-      const [taxiRankResponse, queueResponse] = await Promise.all([
-        client.get('/TaxiRankUsers/marshals', { 
-          params: filterRank ? { taxiRankId: filterRank } : {} 
-        }).catch(() => ({ data: [] })),
-        client.get('/QueueMarshals').catch(() => ({ data: [] }))
-      ]);
-
-      const taxiRankMarshals = (taxiRankResponse.data || []).map(m => ({
-        ...m,
-        source: 'taxiRankUsers'
-      }));
+      let url = '/TaxiRankUsers/marshals';
+      const params = {};
       
-      const queueMarshals = (queueResponse.data || []).map(m => ({
-        ...m,
-        source: 'queueMarshals'
-      }));
-
-      // Merge and deduplicate by phone number
-      const allMarshals = [...taxiRankMarshals];
-      for (const qm of queueMarshals) {
-        const exists = allMarshals.some(
-          m => m.phoneNumber === qm.phoneNumber || m.marshalCode === qm.marshalCode
-        );
-        if (!exists) {
-          allMarshals.push(qm);
-        }
+      if (filterRank) {
+        params.taxiRankId = filterRank;
       }
-
-      let marshalsData = allMarshals;
+      
+      if (filterStatus !== 'all') {
+        params.status = filterStatus;
+      }
+      
+      const response = await client.get(url, { params });
+      let marshalsData = response.data || [];
       
       // Apply search filter
       if (searchQuery) {
@@ -241,40 +224,22 @@ export default function MarshalManagementScreen({ navigation, route }) {
           </View>
         ) : (
           filteredMarshals.map((marshal) => (
-            <TouchableOpacity
-              key={marshal.id}
-              style={[styles.marshalCard, { backgroundColor: c.surface, borderColor: c.border }]}
-              onPress={() => navigation.navigate('ViewEditMarshal', { marshal, admin })}
-              activeOpacity={0.7}
-            >
+            <View key={marshal.id} style={[styles.marshalCard, { backgroundColor: c.surface, borderColor: c.border }]}>
               <View style={styles.marshalHeader}>
                 <View style={styles.marshalInfo}>
                   <Text style={[styles.marshalName, { color: c.text }]}>{marshal.fullName}</Text>
                   <Text style={[styles.marshalCode, { color: GOLD }]}>Code: {marshal.marshalCode}</Text>
                 </View>
-                <View style={styles.marshalActions}>
+                <View style={styles.marshalStatus}>
                   <View style={[styles.statusBadge, { backgroundColor: getStatusColor(marshal.status) + '20' }]}>
                     <Ionicons name={getStatusIcon(marshal.status)} size={12} color={getStatusColor(marshal.status)} />
                     <Text style={[styles.statusText, { color: getStatusColor(marshal.status) }]}>
                       {marshal.status}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color={c.textMuted} style={{ marginLeft: 8 }} />
                 </View>
               </View>
-              <View style={styles.marshalDetails}>
-                <View style={styles.marshalDetailRow}>
-                  <Ionicons name="call-outline" size={14} color={c.textMuted} />
-                  <Text style={[styles.marshalDetailText, { color: c.textMuted }]}>{marshal.phoneNumber}</Text>
-                </View>
-                {marshal.email ? (
-                  <View style={styles.marshalDetailRow}>
-                    <Ionicons name="mail-outline" size={14} color={c.textMuted} />
-                    <Text style={[styles.marshalDetailText, { color: c.textMuted }]}>{marshal.email}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </TouchableOpacity>
+            </View>
           ))
         )}
       </ScrollView>
@@ -412,26 +377,6 @@ function createStyles(c) {
   marshalCode: {
     fontSize: 12,
     marginTop: 2
-  },
-  marshalActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 12
-  },
-  marshalDetails: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.08)'
-  },
-  marshalDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4
-  },
-  marshalDetailText: {
-    fontSize: 13,
-    marginLeft: 6
   },
   marshalStatus: { marginLeft: 12 },
   statusBadge: {

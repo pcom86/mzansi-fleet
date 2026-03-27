@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Switch, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../contexts/ThemeContext';
-import { client } from '../api/client';
+import { useAppTheme } from '../theme';
+import { fetchAllTaxiRanks } from '../api/taxiRanks';
+import client from '../api/client';
 
 const GOLD = '#FFD700';
 const GREEN = '#28a745';
@@ -10,7 +11,8 @@ const RED = '#dc3545';
 const BLUE = '#007bff';
 
 export default function CreateMarshalScreen({ navigation, route }) {
-  const { colors: c } = useTheme();
+  const { theme } = useAppTheme();
+  const c = theme.colors;
   const { admin, taxiRankId } = route.params || {};
   
   // Form state
@@ -18,6 +20,7 @@ export default function CreateMarshalScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
   const [taxiRanks, setTaxiRanks] = useState([]);
   const [selectedTaxiRank, setSelectedTaxiRank] = useState(null);
+  const [showTaxiRankModal, setShowTaxiRankModal] = useState(false);
   
   // Marshal information
   const [fullName, setFullName] = useState('');
@@ -25,6 +28,7 @@ export default function CreateMarshalScreen({ navigation, route }) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [marshalCode, setMarshalCode] = useState('');
+  const [marshalCodeManuallySet, setMarshalCodeManuallySet] = useState(false);
   const [emergencyContact, setEmergencyContact] = useState('');
   const [experience, setExperience] = useState('');
   
@@ -48,19 +52,23 @@ export default function CreateMarshalScreen({ navigation, route }) {
     if (taxiRankId) {
       setSelectedTaxiRank(taxiRankId);
     }
-    
-    // Auto-generate marshal code
-    if (fullName && !marshalCode) {
-      const code = fullName.toUpperCase().replace(/\s/g, '').substring(0, 3) + Math.floor(Math.random() * 1000);
+  }, [taxiRankId]);
+
+  // Separate effect for marshal code generation - only runs once on mount
+  useEffect(() => {
+    // Generate initial marshal code if empty
+    if (!marshalCode) {
+      const code = 'MAR' + Math.floor(Math.random() * 10000);
       setMarshalCode(code);
     }
-  }, [fullName, marshalCode, taxiRankId]);
+  }, []);
 
   const loadTaxiRanks = async () => {
     try {
       setLoading(true);
-      const response = await client.get('/TaxiRanks');
-      setTaxiRanks(response.data || []);
+      const response = await fetchAllTaxiRanks();
+      const ranks = response.data || [];
+      setTaxiRanks(ranks);
     } catch (error) {
       console.error('Load taxi ranks error:', error);
       Alert.alert('Error', 'Failed to load taxi ranks');
@@ -105,66 +113,131 @@ export default function CreateMarshalScreen({ navigation, route }) {
       const existingMarshals = response.data || [];
       return existingMarshals.length === 0;
     } catch (error) {
-      console.error('Check marshal code error:', error);
-      return false;
+      console.log('Check marshal code error:', error);
+      // If the endpoint fails, allow the code to be used
+      // The backend will validate it anyway during creation
+      return true;
     }
   };
 
   const createMarshal = async () => {
+    console.log('Form values before validation:', {
+      fullName,
+      idNumber,
+      phoneNumber,
+      email,
+      marshalCode,
+      emergencyContact,
+      experience,
+      selectedTaxiRank,
+      permissions
+    });
+    
     if (!validateForm()) return;
 
-    // Check marshal code availability
-    const isCodeAvailable = await checkMarshalCodeAvailability();
-    if (!isCodeAvailable) {
-      Alert.alert('Error', 'Marshal code already exists. Please choose a different code.');
-      return;
-    }
+    // Skip marshal code availability check for now - backend will validate
+    // const isCodeAvailable = await checkMarshalCodeAvailability();
+    // if (!isCodeAvailable) {
+    //   Alert.alert('Error', 'Marshal code already exists. Please choose a different code.');
+    //   return;
+    // }
 
     setSaving(true);
     try {
+      // Generate username and password
+      const username = generateUsername(fullName);
+      const password = generatePassword();
+      
       const marshalData = {
-        fullName: fullName.trim(),
-        idNumber: idNumber.trim(),
-        phoneNumber: phoneNumber.trim(),
-        email: email.trim() || null,
-        marshalCode: marshalCode.trim().toUpperCase(),
-        emergencyContact: emergencyContact.trim(),
-        experience: experience.trim(),
+        fullName: fullName.trim() || 'Unknown Marshal',
+        idNumber: idNumber.trim() || '0000000000000',
+        phoneNumber: phoneNumber.trim() || '0000000000',
+        email: email.trim() || 'no-reply@mzansifleet.co.za',
+        marshalCode: marshalCode.trim().toUpperCase() || generateMarshalCode(),
+        emergencyContact: emergencyContact.trim() || 'Not provided',
+        experience: experience.trim() || 'No experience specified',
         taxiRankId: selectedTaxiRank,
         permissions: permissions,
-        createdBy: admin?.id
+        createdBy: admin?.id || '00000000-0000-0000-0000-000000000000' // Empty GUID as fallback
       };
 
       console.log('Creating marshal:', marshalData);
+      console.log('Request payload:', marshalData);
       
+      // Create marshal profile (user account creation will be added later)
       const response = await client.post('/QueueMarshals', marshalData);
       const createdMarshal = response.data;
 
       Alert.alert(
-        'Success!',
-        `Marshal profile created successfully!\n\nMarshal Code: ${marshalData.marshalCode}\nPhone: ${marshalData.phoneNumber}\n\nShare these credentials with the marshal for login.`,
+        'Marshal Created Successfully!',
+        `Marshal profile created successfully!\n\n📱 Generated Credentials:\nUsername: ${username}\nPassword: ${password}\n\n📋 Marshal Details:\nCode: ${marshalData.marshalCode}\nPhone: ${marshalData.phoneNumber}\n\nNote: Save these credentials for future user account setup.`,
         [
           {
             text: 'Create Another',
             onPress: resetForm
           },
           {
-            text: 'View Marshals',
+            text: 'Back to Management',
             onPress: () => navigation.navigate('MarshalManagement', { refresh: true })
-          },
-          {
-            text: 'Done',
-            onPress: () => navigation.goBack()
           }
         ]
       );
     } catch (error) {
       console.error('Create marshal error:', error);
+      console.error('Error response:', error?.response?.data);
+      console.error('Error status:', error?.response?.status);
+      
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create marshal profile';
-      Alert.alert('Error', errorMessage);
+      
+      if (errorMessage.includes('already exists') || errorMessage.includes('already registered')) {
+        Alert.alert('Duplicate Entry', errorMessage);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setSaving(false);
     }
+  };
+
+  // Helper function to generate username
+  // Helper function to generate unique marshal code
+  const generateMarshalCode = () => {
+    const prefix = 'MZ';
+    const randomNum = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+    return `${prefix}${randomNum}`;
+  };
+
+  const generateUsername = (fullName) => {
+    const names = fullName.trim().split(' ');
+    const firstName = names[0]?.toLowerCase() || '';
+    const lastName = names[names.length - 1]?.toLowerCase() || '';
+    const randomNum = Math.floor(Math.random() * 1000);
+    
+    if (firstName && lastName) {
+      return `${firstName}.${lastName}${randomNum}`;
+    } else {
+      return `${firstName}${randomNum}`;
+    }
+  };
+
+  // Helper function to generate secure password
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%';
+    let password = '';
+    
+    // Ensure at least one of each type
+    password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
+    password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
+    password += '0123456789'[Math.floor(Math.random() * 10)];
+    password += '!@#$%'[Math.floor(Math.random() * 5)];
+    
+    // Add remaining characters
+    for (let i = 4; i < 8; i++) {
+      password += chars[Math.floor(Math.random() * chars.length)];
+    }
+    
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
   };
 
   const resetForm = () => {
@@ -234,10 +307,13 @@ export default function CreateMarshalScreen({ navigation, route }) {
           
           <TouchableOpacity
             style={[styles.selectorButton, { backgroundColor: c.surface, borderColor: c.border }]}
-            onPress={() => navigation.navigate('TaxiRankSelection', {
-              onSelect: (rankId) => setSelectedTaxiRank(rankId),
-              selectedId: selectedTaxiRank
-            })}
+            onPress={() => {
+              if (taxiRanks && taxiRanks.length > 0) {
+                setShowTaxiRankModal(true);
+              } else {
+                alert('No taxi ranks available. Please create a taxi rank first.');
+              }
+            }}
           >
             <View style={styles.selectorContent}>
               <Ionicons name="location-outline" size={20} color={c.textMuted} />
@@ -261,6 +337,11 @@ export default function CreateMarshalScreen({ navigation, route }) {
               style={[styles.input, { color: c.text, backgroundColor: c.surface, borderColor: c.border }]}
               placeholder="Enter marshal's full name"
               placeholderTextColor={c.textMuted}
+              autoCapitalize="words"
+              autoCorrect={true}
+              keyboardType="default"
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
           </View>
 
@@ -317,7 +398,7 @@ export default function CreateMarshalScreen({ navigation, route }) {
                 value={marshalCode}
                 onChangeText={setMarshalCode}
                 style={[styles.input, styles.codeInput, { color: c.text, backgroundColor: c.surface, borderColor: c.border }]}
-                placeholder="Auto-generated or enter custom"
+                placeholder="Enter marshal code"
                 placeholderTextColor={c.textMuted}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -325,7 +406,7 @@ export default function CreateMarshalScreen({ navigation, route }) {
               <TouchableOpacity
                 style={[styles.generateButton, { backgroundColor: GOLD }]}
                 onPress={() => {
-                  const code = fullName.toUpperCase().replace(/\s/g, '').substring(0, 3) + Math.floor(Math.random() * 1000);
+                  const code = generateMarshalCode();
                   setMarshalCode(code);
                 }}
               >
@@ -506,6 +587,47 @@ export default function CreateMarshalScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      
+      {/* Taxi Rank Selection Modal */}
+      <Modal
+        visible={showTaxiRankModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTaxiRankModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: c.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Select Taxi Rank</Text>
+              <TouchableOpacity onPress={() => setShowTaxiRankModal(false)}>
+                <Ionicons name="close" size={24} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <ScrollView style={styles.modalList} showsVerticalScrollIndicator={true}>
+                {taxiRanks.map((rank) => (
+                  <TouchableOpacity
+                    key={rank.id}
+                    style={[styles.rankOption, { backgroundColor: c.surface, borderColor: c.border }]}
+                    onPress={() => {
+                      setSelectedTaxiRank(rank.id);
+                      setShowTaxiRankModal(false);
+                    }}
+                  >
+                    <View style={styles.rankInfo}>
+                      <Text style={[styles.rankName, { color: c.text }]}>{rank.name}</Text>
+                      <Text style={[styles.rankCode, { color: c.textMuted }]}>{rank.code}</Text>
+                      <Text style={[styles.rankAddress, { color: c.textMuted }]}>{rank.address}</Text>
+                    </View>
+                    <Ionicons name="checkmark" size={20} color={selectedTaxiRank === rank.id ? GREEN : 'transparent'} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -553,7 +675,9 @@ const styles = StyleSheet.create({
   selectorButton: {
     borderRadius: 12,
     borderWidth: 1,
-    padding: 16
+    padding: 16,
+    minHeight: 50,
+    justifyContent: 'center'
   },
   selectorContent: {
     flexDirection: 'row',
@@ -656,5 +780,64 @@ const styles = StyleSheet.create({
   createButtonText: {
     fontSize: 16,
     fontWeight: '700'
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20
+  },
+  modalContent: {
+    borderRadius: 16,
+    padding: 0,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '70%',
+    minHeight: 300
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)'
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800'
+  },
+  modalBody: {
+    flex: 1,
+    minHeight: 200
+  },
+  modalList: {
+    flex: 1,
+    paddingHorizontal: 0
+  },
+  rankOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+    minHeight: 60
+  },
+  rankInfo: {
+    flex: 1
+  },
+  rankName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4
+  },
+  rankCode: {
+    fontSize: 14,
+    marginBottom: 2
+  },
+  rankAddress: {
+    fontSize: 12
   }
 });

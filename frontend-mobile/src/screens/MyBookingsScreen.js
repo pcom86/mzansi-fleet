@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import { fetchUserBookings, cancelTripBooking, updateTripBooking } from '../api/taxiRanks';
+import { fetchUserQueueBookings, cancelQueueBooking } from '../api/queueBooking';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -53,6 +54,9 @@ export default function MyBookingsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [bookings, setBookings] = useState([]);
+  const [queueBookings, setQueueBookings] = useState([]);
+  // Only show queue bookings
+  const [bookingType] = useState('queue');
   const [filter, setFilter] = useState('all'); // all, upcoming, past, cancelled
 
   // Edit booking state
@@ -68,8 +72,12 @@ export default function MyBookingsScreen({ navigation }) {
     if (!userId) return;
     if (!silent) setLoading(true);
     try {
-      const resp = await fetchUserBookings(userId);
-      setBookings(resp.data || resp || []);
+      const [scheduledResp, queueResp] = await Promise.all([
+        fetchUserBookings(userId).catch(() => []),
+        fetchUserQueueBookings(userId).catch(() => []),
+      ]);
+      setBookings(scheduledResp.data || scheduledResp || []);
+      setQueueBookings(queueResp.data || queueResp || []);
     } catch (err) {
       console.warn('Load bookings error', err?.message);
     } finally {
@@ -166,9 +174,30 @@ export default function MyBookingsScreen({ navigation }) {
   }
 
   const now = new Date();
-  const filtered = bookings.filter(b => {
-    if (filter === 'upcoming') return new Date(b.travelDate) >= now && b.status !== 'Cancelled';
-    if (filter === 'past') return new Date(b.travelDate) < now && b.status !== 'Cancelled';
+
+  async function handleCancelQueueBooking(booking) {
+    Alert.alert('Cancel Booking', `Cancel your queue booking at ${booking.taxiRankName || 'rank'}?`, [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Cancel Booking', style: 'destructive', onPress: async () => {
+          try {
+            await cancelQueueBooking(booking.id, 'Cancelled by user');
+            loadData(true);
+          } catch (err) {
+            Alert.alert('Error', err?.response?.data?.message || err?.message || 'Cancel failed');
+          }
+        }
+      },
+    ]);
+  }
+
+  const activeList = queueBookings;
+  const totalCount = queueBookings.length;
+
+  const filtered = activeList.filter(b => {
+    const dateField = bookingType === 'queue' ? (b.queueDate || b.createdAt) : b.travelDate;
+    if (filter === 'upcoming') return new Date(dateField) >= now && b.status !== 'Cancelled';
+    if (filter === 'past') return new Date(dateField) < now && b.status !== 'Cancelled';
     if (filter === 'cancelled') return b.status === 'Cancelled';
     return true;
   });
@@ -181,8 +210,9 @@ export default function MyBookingsScreen({ navigation }) {
     );
   }
 
+
   return (
-    <View style={[styles.root, { backgroundColor: c.background }]}>
+    <View style={[styles.root, { backgroundColor: c.background }]}> 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -190,12 +220,14 @@ export default function MyBookingsScreen({ navigation }) {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>My Bookings</Text>
-          <Text style={styles.headerSub}>{bookings.length} total booking{bookings.length !== 1 ? 's' : ''}</Text>
+          <Text style={styles.headerSub}>{totalCount} total booking{totalCount !== 1 ? 's' : ''}</Text>
         </View>
         <TouchableOpacity onPress={() => navigation.navigate('BookTrip')} style={styles.addBtn}>
           <View><Ionicons name="add" size={22} color="#000" /></View>
         </TouchableOpacity>
       </View>
+
+      {/* Type Toggle Removed: Only queue bookings shown */}
 
       {/* Filters */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
@@ -222,11 +254,110 @@ export default function MyBookingsScreen({ navigation }) {
         {filtered.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Ionicons name="receipt-outline" size={48} color={c.textMuted} />
-            <Text style={[styles.emptyText, { color: c.textMuted }]}>No bookings found</Text>
-            <TouchableOpacity style={styles.browseBtn} onPress={() => navigation.navigate('BookTrip')}>
-              <Text style={styles.browseBtnText}>Browse Trips</Text>
-            </TouchableOpacity>
+            <Text style={[styles.emptyText, { color: c.textMuted }]}>
+              No {bookingType === 'queue' ? 'queue' : 'scheduled'} bookings found
+            </Text>
+            {bookingType === 'scheduled' ? (
+              <TouchableOpacity style={styles.browseBtn} onPress={() => navigation.navigate('BookTrip')}>
+                <Text style={styles.browseBtnText}>Browse Trips</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
+        ) : bookingType === 'queue' ? (
+          filtered.map((qb) => {
+            const sc = STATUS_COLORS[qb.status] || STATUS_COLORS.Pending;
+            const queueDate = qb.queueDate || qb.createdAt;
+            const isPast = new Date(queueDate) < now;
+            const canCancel = !isPast && qb.status !== 'Cancelled' && qb.status !== 'Completed' && qb.status !== 'Expired';
+            const bookingRef = qb.id ? qb.id.toString().substring(0, 8).toUpperCase() : '';
+
+            return (
+              <View key={qb.id} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]}>
+                <View style={styles.cardTop}>
+                  <View style={[styles.cardIcon, { backgroundColor: 'rgba(139,92,246,0.12)' }]}>
+                    <View><Ionicons name="people" size={20} color="#8b5cf6" /></View>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: c.text }]}>{qb.routeName || 'Queue Booking'}</Text>
+                    <Text style={[styles.cardRoute, { color: c.textMuted }]}>
+                      {qb.departureStation || '?'} → {qb.destinationStation || '?'}
+                    </Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
+                    <Text style={[styles.statusText, { color: sc.text }]}>{qb.status}</Text>
+                  </View>
+                </View>
+
+                {bookingRef ? (
+                  <View style={[styles.refBadge, { backgroundColor: 'rgba(139,92,246,0.08)' }]}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Booking Ref</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '900', color: '#8b5cf6', letterSpacing: 1 }}>{bookingRef}</Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.infoGrid}>
+                  <InfoItem icon="calendar-outline" label="Queue Date" value={fmtDate(queueDate)} c={c} />
+                  <InfoItem icon="location-outline" label="Rank" value={qb.taxiRankName || '--'} c={c} />
+                  <InfoItem icon="people-outline" label="Seats" value={String(qb.seatsBooked || 0)} c={c} />
+                  <InfoItem icon="cash-outline" label="Total Fare" value={`R${(qb.totalFare || 0).toFixed(2)}`} c={c} />
+                  <InfoItem icon="card-outline" label="Payment" value={qb.paymentMethod || '--'} c={c} />
+                  <InfoItem icon="receipt-outline" label="Pay Status" value={qb.paymentStatus || '--'} c={c} />
+                  {qb.vehicleRegistration ? <InfoItem icon="car-outline" label="Vehicle" value={`${qb.vehicleRegistration}${qb.vehicleMake ? ` (${qb.vehicleMake} ${qb.vehicleModel || ''})` : ''}`} c={c} /> : null}
+                  {qb.queueStatus ? <InfoItem icon="list-outline" label="Queue Status" value={qb.queueStatus} c={c} /> : null}
+                </View>
+
+                {qb.passengers && qb.passengers.length > 0 ? (
+                  <View style={[styles.passengersWrap, { borderColor: c.border }]}>
+                    <Text style={[styles.passengersTitle, { color: c.textMuted }]}>Passengers</Text>
+                    {qb.passengers.map((p, i) => (
+                      <View key={p.id || i} style={styles.passengerRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.passengerName, { color: c.text }]}>{p.name}</Text>
+                          <Text style={{ fontSize: 11, color: c.textMuted }}>
+                            {p.contactNumber}{p.destination ? ` → ${p.destination}` : ''}
+                            {p.fare ? ` · R${p.fare.toFixed(2)}` : ''}
+                          </Text>
+                        </View>
+                        {p.seatNumber ? (
+                          <View style={[styles.seatBadge, { backgroundColor: 'rgba(139,92,246,0.12)' }]}>
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#8b5cf6' }}>Seat {p.seatNumber}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                {qb.notes ? (
+                  <Text style={[styles.notesText, { color: c.textMuted }]}>{qb.notes}</Text>
+                ) : null}
+
+                {qb.confirmedAt ? (
+                  <Text style={[styles.confirmedAt, { color: c.textMuted }]}>
+                    Confirmed {fmtDate(qb.confirmedAt)} at {fmtTime(qb.confirmedAt)}
+                  </Text>
+                ) : null}
+
+                {qb.paymentReference ? (
+                  <View style={[styles.refBadge, { backgroundColor: GOLD_LIGHT, marginTop: 4 }]}>
+                    <Text style={{ fontSize: 10, fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Payment Ref</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: GOLD, letterSpacing: 1 }}>{qb.paymentReference}</Text>
+                  </View>
+                ) : null}
+
+                {canCancel ? (
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity style={styles.cancelBtn} onPress={() => handleCancelQueueBooking(qb)}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="close-circle-outline" size={14} color="#dc3545" />
+                        <Text style={styles.cancelBtnText}>Cancel</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })
         ) : (
           filtered.map((b) => {
             const sc = STATUS_COLORS[b.status] || STATUS_COLORS.Pending;
@@ -526,6 +657,12 @@ const styles = StyleSheet.create({
 
   cancelBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(220,53,69,0.3)' },
   cancelBtnText: { color: '#dc3545', fontSize: 12, fontWeight: '700' },
+
+  typeToggleRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 10, gap: 8 },
+  typeToggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'transparent' },
+  typeToggleBtnActive: { backgroundColor: GOLD_LIGHT, borderColor: GOLD },
+  typeToggleText: { fontSize: 13, fontWeight: '700', color: '#999' },
+  typeToggleTextActive: { color: '#000' },
 
   refBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginBottom: 4 },
   passengersWrap: { borderTopWidth: 1, paddingTop: 8, marginTop: 4 },

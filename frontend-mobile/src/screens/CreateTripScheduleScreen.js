@@ -118,6 +118,29 @@ export default function CreateTripScheduleScreen({ navigation }) {
   const [editTimePicker, setEditTimePicker] = useState(false);
   const [timePickerDate, setTimePickerDate] = useState(new Date());
   const [deleteModal, setDeleteModal] = useState(false);
+
+  const normalizeRouteDeparture = (route) => route?.departureStation ?? route?.DepartureStation ?? route?.origin ?? route?.Origin ?? route?.routeOrigin ?? route?.RouteOrigin ?? '';
+  const normalizeRouteDestination = (route) => route?.destinationStation ?? route?.DestinationStation ?? route?.destination ?? route?.Destination ?? route?.routeDestination ?? route?.RouteDestination ?? '';
+  const normalizeTripDeparture = (trip) => trip?.departureStation ?? trip?.DepartureStation ?? trip?.origin ?? trip?.Origin ?? '';
+  const normalizeTripDestination = (trip) => trip?.destinationStation ?? trip?.DestinationStation ?? trip?.destination ?? trip?.Destination ?? '';
+  const normalizeRouteStops = (route) => {
+    const rawStops = route?.stops ?? route?.Stops ?? route?.routeStops ?? route?.RouteStops;
+    if (!Array.isArray(rawStops)) return [];
+    return rawStops;
+  };
+
+  const getStopsFromRoute = (route) => {
+    const rawStops = normalizeRouteStops(route);
+    const mapped = (rawStops || []).map((stop, idx) => {
+      const name = stop?.stopName ?? stop?.StopName ?? stop?.name ?? stop?.Name ?? `${idx + 1}`;
+      const order = stop?.stopOrder ?? stop?.StopOrder ?? stop?.order ?? stop?.Order ?? (idx + 1);
+      const fare = stop?.fareFromOrigin ?? stop?.FareFromOrigin ?? stop?.fare ?? 0;
+      const mins = stop?.estimatedMinutesFromDeparture ?? stop?.EstimatedMinutesFromDeparture ?? 0;
+      return { id: name, name, fare, order, mins };
+    });
+    return mapped.sort((a, b) => (a.order || 0) - (b.order || 0));
+  };
+
   const [tripToDelete, setTripToDelete] = useState(null);
 
   // DATA LOADING
@@ -292,15 +315,49 @@ export default function CreateTripScheduleScreen({ navigation }) {
   async function openPaxForm() {
     if (!detailTrip) return;
     setPassengerName(''); setPassengerPhone(''); setPassengerAmount(''); setPassengerPayment('Cash'); setPassengerSeat('');
-    setPassengerFrom(detailTrip.departureStation||''); setPassengerTo(detailTrip.destinationStation||'');
+    setPassengerFrom(normalizeTripDeparture(detailTrip)); setPassengerTo(normalizeTripDestination(detailTrip));
     setCardStatus('idle'); setCardLastFour(''); setCardTxnRef(''); setSelectedStop(null);
-    let stops = [];
-    const mr = routes.find(r => r.departureStation===detailTrip.departureStation && r.destinationStation===detailTrip.destinationStation);
-    if (mr?.stops?.length) stops = mr.stops;
-    else if (detailTrip.taxiRankId) { try { const resp = await client.get(`/Routes?taxiRankId=${detailTrip.taxiRankId}`); const found = (resp.data||[]).find(r => r.departureStation===detailTrip.departureStation && r.destinationStation===detailTrip.destinationStation); if (found?.stops?.length) stops = found.stops; } catch (_) {} }
-    const all = [...stops].sort((a,b) => a.stopOrder-b.stopOrder).map(s => ({ id: s.stopName, name: s.stopName, fare: s.fareFromOrigin, order: s.stopOrder, mins: s.estimatedMinutesFromDeparture }));
-    if (mr) all.push({ id:'__dest__', name: detailTrip.destinationStation||mr.destinationStation, fare: mr.standardFare, order: 999, mins: mr.expectedDurationMinutes });
-    setTripStops(all); setPaxFormVisible(true);
+
+    let route = detailTrip.route ?? detailTrip.Route;
+    if (!route) {
+      route = routes.find(r => r.id === detailTrip.routeId || r.id === detailTrip.RouteId);
+    }
+    if (!route) {
+      route = routes.find(r =>
+        normalizeRouteDeparture(r) === normalizeTripDeparture(detailTrip) &&
+        normalizeRouteDestination(r) === normalizeTripDestination(detailTrip)
+      );
+    }
+
+    let allStops = getStopsFromRoute(route || {});
+
+    if (!allStops.length && detailTrip.taxiRankId) {
+      try {
+        const resp = await client.get(`/Routes?taxiRankId=${detailTrip.taxiRankId}`);
+        const fetchedRoutes = resp.data || [];
+        const matches = fetchedRoutes.filter(r =>
+          normalizeRouteDeparture(r) === normalizeTripDeparture(detailTrip) &&
+          normalizeRouteDestination(r) === normalizeTripDestination(detailTrip)
+        );
+        if (matches.length > 0) {
+          route = matches[0];
+          allStops = getStopsFromRoute(route);
+        }
+      } catch (_) {}
+    }
+
+    // Add final destination stop if present
+    const finalDestination = normalizeTripDestination(detailTrip) || normalizeRouteDestination(route || {});
+    const finalFare = route?.standardFare ?? route?.StandardFare ?? route?.fare ?? 0;
+    if (finalDestination) {
+      const hasFinal = allStops.some(s => s.name === finalDestination);
+      if (!hasFinal) {
+        allStops.push({ id: '__dest__', name: finalDestination, fare: finalFare, order: 999, mins: route?.expectedDurationMinutes ?? route?.ExpectedDurationMinutes ?? 0 });
+      }
+    }
+
+    setTripStops(allStops);
+    setPaxFormVisible(true);
   }
   function selectStopItem(stop) { setSelectedStop(stop); setPassengerTo(stop.name); setPassengerAmount(stop.fare!=null?String(stop.fare):''); setStopModalVisible(false); }
   async function submitPax() {

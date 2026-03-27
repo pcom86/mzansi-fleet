@@ -15,19 +15,49 @@ html, body {
   margin: 0;
   padding: 0;
   overflow-x: hidden; // Prevent horizontal scrolling
+  background: var(--bg-primary, #FFFFFF);
+  color: var(--text-primary, #2c3e50);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 body {
   font-family: Roboto, 'Helvetica Neue', sans-serif;
   line-height: 1.6;
-  color: #2c3e50;
-  background: #FFFFFF;
+  background: var(--bg-primary, #FFFFFF);
+  color: var(--text-primary, #2c3e50);
   margin: 0;
   padding: 0;
   // Prevent top clipping in mobile browsers
   padding-top: env(safe-area-inset-top, 0);
   padding-left: env(safe-area-inset-left, 0);
   padding-right: env(safe-area-inset-right, 0);
+}
+
+// CSS Variables for theming
+:root {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --text-primary: #2c3e50;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --border-color: #e2e8f0;
+  --card-bg: #FFFFFF;
+  --header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --shadow-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --border-color: #334155;
+  --card-bg: #1e293b;
+  --header-bg: linear-gradient(135deg, #1e3a8a 0%, #312e81 70%);
+  --shadow-color: rgba(0, 0, 0, 0.3);
 }
 
 // Fix for mobile viewport issues
@@ -87,6 +117,7 @@ app-root, app-root > * {
   word-wrap: normal;
   direction: ltr;
   -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
   vertical-align: middle;
 }
@@ -101,7 +132,7 @@ mat-icon {
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 500;
-  color: #000000;
+  color: var(--text-primary, #000000);
   margin: 0;
   padding: 0;
 }
@@ -123,12 +154,12 @@ h3 {
 
 p {
   line-height: 1.6;
-  color: #495057;
+  color: var(--text-secondary, #495057);
 }
 
 /* Links */
 a {
-  color: #000000;
+  color: var(--text-primary, #000000);
   text-decoration: none;
   transition: color 0.3s ease;
   font-weight: 500;
@@ -151,10 +182,10 @@ a:hover {
 
 /* Navigation */
 nav {
-  background-color: #FFFFFF;
-  color: #000000;
+  background-color: var(--card-bg, #FFFFFF);
+  color: var(--text-primary, #000000);
   padding: 1rem;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.2);
+  box-shadow: 0 2px 8px var(--shadow-color, rgba(212, 175, 55, 0.2));
   border-bottom: 3px solid #D4AF37;
 }
 
@@ -166,7 +197,7 @@ nav ul {
 }
 
 nav a {
-  color: #000000;
+  color: var(--text-primary, #000000);
   text-decoration: none;
   padding: 0.5rem 1rem;
   border-radius: 8px;
@@ -183,11 +214,11 @@ nav a.active {
 
 /* Cards */
 .card {
-  background: #FFFFFF;
+  background: var(--card-bg, #FFFFFF);
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px var(--shadow-color, rgba(0, 0, 0, 0.08));
   transition: all 0.3s ease;
   border: 2px solid rgba(212, 175, 55, 0.3);
 }
@@ -208,7 +239,7 @@ nav a.active {
 .card-title {
   font-size: 1.25rem;
   font-weight: 600;
-  color: #000000;
+  color: var(--text-primary, #000000);
   margin: 0;
 }
 
@@ -225,7 +256,7 @@ label, .form-label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
-  color: #000000;
+  color: var(--text-primary, #000000);
 }
 
 input,
@@ -234,10 +265,12 @@ textarea,
 .form-control {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color, #ddd);
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.3s ease;
+  background: var(--card-bg, #FFFFFF);
+  color: var(--text-primary, #000000);
 }
 
 input:focus,
@@ -247,6 +280,7 @@ textarea:focus,
   outline: none;
   border-color: #D4AF37;
   box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2);
+  background: var(--card-bg, #FFFFFF);
 }
 
 /* Buttons */
@@ -367,17 +401,18 @@ button,
 table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: var(--card-bg, white);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 20, 137, 0.08);
+  box-shadow: 0 2px 8px var(--shadow-color, rgba(0, 20, 137, 0.08));
 }
 
 th,
 td {
   padding: 12px 16px;
   text-align: left;
-  border-bottom: 1px solid rgba(0, 20, 137, 0.05);
+  border-bottom: 1px solid var(--border-color, rgba(0, 20, 137, 0.05));
+  color: var(--text-primary, #000000);
 }
 
 th {
@@ -516,20 +551,20 @@ tr:hover {
 
 /* Error */
 .error {
-  background-color: #FFFFFF;
-  color: #000000;
+  background-color: var(--card-bg, #FFFFFF);
+  color: var(--text-primary, #000000);
   padding: 1rem;
   border-radius: 8px;
   margin-bottom: 1rem;
-  border: 2px solid #000000;
+  border: 2px solid var(--text-primary, #000000);
   border-left: 4px solid #D4AF37;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px var(--shadow-color, rgba(0, 0, 0, 0.1));
 }
 
 /* Success */
 .success {
-  background-color: #fef9e7;
-  color: #000000;
+  background-color: var(--bg-secondary, #fef9e7);
+  color: var(--text-primary, #000000);
   padding: 1rem;
   border-radius: 8px;
   margin-bottom: 1rem;
@@ -558,23 +593,42 @@ tr:hover {
 @media (max-width: 768px) {
   .container {
     padding: 16px;
+    background: var(--bg-primary);
   }
 
   h1 {
     font-size: 2rem;
+    color: var(--text-primary);
   }
 
   h2 {
     font-size: 1.5rem;
+    color: var(--text-primary);
   }
 
   .card {
     padding: 16px;
+    background: var(--card-bg);
+    border-color: var(--border-color);
+  }
+
+  nav {
+    background-color: var(--card-bg);
+    border-bottom-color: var(--border-color);
   }
 
   nav ul {
     flex-direction: column;
     gap: 0.5rem;
+  }
+  
+  nav a {
+    color: var(--text-primary);
+  }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
   }
 }
 
@@ -584,6 +638,8 @@ tr:hover {
   body {
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    background: var(--bg-primary);
+    color: var(--text-primary);
   }
 
   /* Optimize touch targets for iOS */
@@ -601,6 +657,7 @@ tr:hover {
   body {
     font-size: 16px;
     line-height: 1.5;
+    color: var(--text-primary);
   }
 
   /* Optimize form inputs */
@@ -609,12 +666,16 @@ tr:hover {
   select,
   mat-form-field {
     font-size: 16px; /* Prevents zoom on iOS */
+    background: var(--card-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
   }
 
   /* Container adjustments */
   .container {
     padding: 12px;
     max-width: 100%;
+    background: var(--bg-primary);
   }
 
   /* Card optimizations */
@@ -622,18 +683,24 @@ tr:hover {
   mat-card {
     margin: 8px 0;
     border-radius: 8px;
+    background: var(--card-bg);
+    border-color: var(--border-color);
   }
 
   /* Table responsiveness */
   table,
   mat-table {
     font-size: 14px;
+    background: var(--card-bg);
+    color: var(--text-primary);
   }
 
   /* Dialog optimizations */
   mat-dialog-container {
     max-width: calc(100vw - 32px);
     margin: 16px;
+    background: var(--card-bg);
+    color: var(--text-primary);
   }
 }
 
@@ -650,6 +717,9 @@ tr:hover {
   .btn,
   mat-button {
     -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
     -webkit-touch-callout: none;
   }
 

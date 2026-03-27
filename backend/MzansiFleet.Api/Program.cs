@@ -117,6 +117,7 @@ builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IMechanic
 // Register services
 builder.Services.AddScoped<MzansiFleet.Application.Services.VehicleNotificationService>();
 builder.Services.AddScoped<MzansiFleet.Application.Services.IBookingIntegrationService, MzansiFleet.Application.Services.BookingIntegrationService>();
+builder.Services.AddSingleton<MzansiFleet.Api.Services.OzowService>();
 
 // Register Taxi Rank repositories
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITaxiRankRepository, MzansiFleet.Repository.Repositories.TaxiRankRepository>();
@@ -217,6 +218,41 @@ try
     await dbContext.Database.MigrateAsync();
     logger.LogInformation("Database migrations applied successfully");
 
+    // Add QueueMarshal Permissions columns if missing
+    await dbContext.Database.ExecuteSqlRawAsync(@"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanCaptureTrips') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanCaptureTrips"" boolean NOT NULL DEFAULT true;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanViewSchedules') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanViewSchedules"" boolean NOT NULL DEFAULT true;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanReceiveMessages') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanReceiveMessages"" boolean NOT NULL DEFAULT true;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanSendMessages') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanSendMessages"" boolean NOT NULL DEFAULT true;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanManageVehicles') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanManageVehicles"" boolean NOT NULL DEFAULT false;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanManageDrivers') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanManageDrivers"" boolean NOT NULL DEFAULT false;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanManageSchedules') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanManageSchedules"" boolean NOT NULL DEFAULT false;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanViewReports') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanViewReports"" boolean NOT NULL DEFAULT false;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'QueueMarshals' AND column_name = 'Permissions_CanDeleteData') THEN
+                ALTER TABLE ""QueueMarshals"" ADD COLUMN ""Permissions_CanDeleteData"" boolean NOT NULL DEFAULT false;
+            END IF;
+        END $$;
+    ");
+    logger.LogInformation("QueueMarshal Permissions columns ensured");
+
     // Add ScheduledTripId column if missing (safe idempotent alter)
     await dbContext.Database.ExecuteSqlRawAsync(@"
         DO $$
@@ -289,6 +325,63 @@ try
         END $$;
     ");
     logger.LogInformation("DailyTaxiQueues schema aligned successfully");
+
+    // Create QueueBooking and QueueBookingPassenger tables if they don't exist
+    await dbContext.Database.ExecuteSqlRawAsync(@"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'QueueBookings') THEN
+                CREATE TABLE ""QueueBookings"" (
+                    ""Id"" uuid NOT NULL PRIMARY KEY,
+                    ""UserId"" uuid NOT NULL,
+                    ""QueueEntryId"" uuid NOT NULL,
+                    ""TaxiRankId"" uuid NOT NULL,
+                    ""RouteId"" uuid,
+                    ""VehicleId"" uuid NOT NULL,
+                    ""SeatsBooked"" integer NOT NULL DEFAULT 1,
+                    ""TotalFare"" numeric NOT NULL DEFAULT 0,
+                    ""PaymentMethod"" text NOT NULL DEFAULT 'EFT',
+                    ""PaymentStatus"" text NOT NULL DEFAULT 'Pending',
+                    ""PaymentReference"" text,
+                    ""BankReference"" text,
+                    ""PaidAt"" timestamp with time zone,
+                    ""EftAccountName"" text,
+                    ""EftBank"" text,
+                    ""EftAccountNumber"" text,
+                    ""EftBranchCode"" text,
+                    ""Status"" text NOT NULL DEFAULT 'Pending',
+                    ""Notes"" text,
+                    ""CancellationReason"" text,
+                    ""CreatedAt"" timestamp with time zone NOT NULL DEFAULT now(),
+                    ""UpdatedAt"" timestamp with time zone,
+                    ""ConfirmedAt"" timestamp with time zone,
+                    ""CancelledAt"" timestamp with time zone
+                );
+                CREATE INDEX ""IX_QueueBookings_UserId"" ON ""QueueBookings""(""UserId"");
+                CREATE INDEX ""IX_QueueBookings_QueueEntryId"" ON ""QueueBookings""(""QueueEntryId"");
+                CREATE INDEX ""IX_QueueBookings_TaxiRankId"" ON ""QueueBookings""(""TaxiRankId"");
+                CREATE INDEX ""IX_QueueBookings_VehicleId"" ON ""QueueBookings""(""VehicleId"");
+            END IF;
+        END $$;
+    ");
+
+    await dbContext.Database.ExecuteSqlRawAsync(@"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'QueueBookingPassengers') THEN
+                CREATE TABLE ""QueueBookingPassengers"" (
+                    ""Id"" uuid NOT NULL PRIMARY KEY,
+                    ""QueueBookingId"" uuid NOT NULL,
+                    ""Name"" text NOT NULL,
+                    ""ContactNumber"" text NOT NULL,
+                    ""Email"" text,
+                    ""Destination"" text,
+                    ""CreatedAt"" timestamp with time zone NOT NULL DEFAULT now()
+                );
+                CREATE INDEX ""IX_QueueBookingPassengers_QueueBookingId"" ON ""QueueBookingPassengers""(""QueueBookingId"");
+            END IF;
+        END $$;
+    ");
 
     logger.LogInformation("Schema patches applied successfully");
 }
