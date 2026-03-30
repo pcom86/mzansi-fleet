@@ -447,7 +447,57 @@ namespace MzansiFleet.Api.Controllers
             });
         }
 
-        // GET: api/Passengers/recent?taxiRankId=xxx&limit=20
+        // GET: api/Passengers/my-trips
+        [HttpGet("my-trips")]
+        public async Task<ActionResult> GetMyTrips([FromQuery] int limit = 50)
+        {
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(userId) || !Guid.TryParse(userId, out var userGuid))
+                return Unauthorized(new { message = "User not authenticated" });
+
+            var trips = await _context.TripPassengers
+                .Include(tp => tp.TaxiRankTrip)
+                    .ThenInclude(t => t!.Vehicle)
+                .Include(tp => tp.TaxiRankTrip)
+                    .ThenInclude(t => t!.TaxiRank)
+                .Include(tp => tp.TaxiRankTrip)
+                    .ThenInclude(t => t!.Driver)
+                .Where(tp => tp.UserId == userGuid)
+                .OrderByDescending(tp => tp.BoardedAt)
+                .Take(limit)
+                .Select(tp => new
+                {
+                    tp.Id,
+                    tp.PassengerName,
+                    tp.PassengerPhone,
+                    tp.DepartureStation,
+                    tp.ArrivalStation,
+                    tp.Amount,
+                    tp.PaymentMethod,
+                    tp.SeatNumber,
+                    tp.BoardedAt,
+                    TripStatus = tp.TaxiRankTrip != null ? tp.TaxiRankTrip.Status : null,
+                    Vehicle = tp.TaxiRankTrip != null ? new
+                    {
+                        tp.TaxiRankTrip.Vehicle!.Make,
+                        tp.TaxiRankTrip.Vehicle.Model,
+                        tp.TaxiRankTrip.Vehicle.Registration,
+                        DriverName = tp.TaxiRankTrip.Driver != null ? tp.TaxiRankTrip.Driver.Name : null,
+                        DriverPhone = tp.TaxiRankTrip.Driver != null ? tp.TaxiRankTrip.Driver.Phone : null
+                    } : null,
+                    TaxiRank = tp.TaxiRankTrip != null ? new
+                    {
+                        tp.TaxiRankTrip.TaxiRank.Name,
+                        tp.TaxiRankTrip.TaxiRank.Address,
+                        tp.TaxiRankTrip.TaxiRank.City
+                    } : null
+                })
+                .ToListAsync();
+
+            return Ok(trips);
+        }
+
+        // GET: api/Passengers/recent?taxiRankId=xxx&limit=50
         [HttpGet("recent")]
         public async Task<ActionResult> GetRecentPassengers([FromQuery] Guid? taxiRankId = null, [FromQuery] int limit = 20)
         {

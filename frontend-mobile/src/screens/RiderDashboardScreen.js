@@ -160,6 +160,17 @@ export default function RiderDashboardScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
+        {/* ====== MY TRIPS ====== */}
+        <SectionHeader icon="car-outline" title="My Trips" color={c.text} />
+        <QuickAction
+          icon="list-outline"
+          label="View Trip History"
+          desc="Rate and review your completed trips"
+          color={GOLD}
+          bg={GOLD_LIGHT}
+          onPress={() => navigation.navigate('PassengerTrips')}
+        />
+
         {/* ====== TAXI RANKS ====== */}
         <SectionHeader icon="business-outline" title="Taxi Ranks" color={c.text} />
         {taxiRanks.length === 0 ? (
