@@ -481,11 +481,131 @@ namespace MzansiFleet.Api.Controllers
 
             return Ok(recentPassengers);
         }
+
+        // POST: api/Passengers/trip/{tripPassengerId}/incident
+        [HttpPost("trip/{tripPassengerId:guid}/incident")]
+        public async Task<ActionResult> ReportIncident(Guid tripPassengerId, [FromBody] CreateIncidentDto dto)
+        {
+            var tp = await _context.TripPassengers
+                .Include(x => x.TaxiRankTrip)
+                .FirstOrDefaultAsync(x => x.Id == tripPassengerId);
+            if (tp == null)
+                return NotFound(new { message = "Trip passenger record not found" });
+
+            var trip = tp.TaxiRankTrip;
+
+            var incident = new Incident
+            {
+                Id = Guid.NewGuid(),
+                TaxiRankId = trip?.TaxiRankId,
+                TaxiRankTripId = trip?.Id,
+                TripPassengerId = tripPassengerId,
+                ReportedByUserId = tp.UserId != Guid.Empty ? tp.UserId : (Guid?)null,
+                TenantId = trip?.TenantId,
+                ReporterName = tp.PassengerName ?? "Unknown",
+                ReporterPhone = tp.PassengerPhone,
+                Category = dto.Category ?? "Other",
+                Severity = dto.Severity ?? "Medium",
+                Description = dto.Description ?? "",
+                Location = dto.Location ?? (trip != null ? $"{trip.DepartureStation} → {trip.DestinationStation}" : null),
+                Status = "Open",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Incidents.Add(incident);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                incident.Id,
+                incident.Category,
+                incident.Severity,
+                incident.Description,
+                incident.Status,
+                incident.CreatedAt
+            });
+        }
+
+        // GET: api/Passengers/incidents?taxiRankId=xxx&status=Open&limit=50
+        [HttpGet("incidents")]
+        public async Task<ActionResult> GetIncidents([FromQuery] Guid? taxiRankId = null, [FromQuery] string? status = null, [FromQuery] int limit = 50)
+        {
+            var query = _context.Incidents.AsQueryable();
+
+            if (taxiRankId.HasValue)
+                query = query.Where(i => i.TaxiRankId == taxiRankId.Value);
+            if (!string.IsNullOrWhiteSpace(status))
+                query = query.Where(i => i.Status == status);
+
+            var incidents = await query
+                .OrderByDescending(i => i.CreatedAt)
+                .Take(limit)
+                .Select(i => new
+                {
+                    i.Id,
+                    i.TaxiRankId,
+                    i.TaxiRankTripId,
+                    i.TripPassengerId,
+                    i.ReporterName,
+                    i.ReporterPhone,
+                    i.Category,
+                    i.Severity,
+                    i.Description,
+                    i.Location,
+                    i.Status,
+                    i.Resolution,
+                    i.CreatedAt,
+                    i.ResolvedAt
+                })
+                .ToListAsync();
+
+            return Ok(incidents);
+        }
+
+        // PUT: api/Passengers/incidents/{id}/resolve
+        [HttpPut("incidents/{id:guid}/resolve")]
+        public async Task<ActionResult> ResolveIncident(Guid id, [FromBody] ResolveIncidentDto dto)
+        {
+            var incident = await _context.Incidents.FindAsync(id);
+            if (incident == null)
+                return NotFound(new { message = "Incident not found" });
+
+            incident.Status = dto.Status ?? "Resolved";
+            incident.Resolution = dto.Resolution;
+            incident.ResolvedByUserId = dto.ResolvedByUserId;
+            incident.ResolvedAt = DateTime.UtcNow;
+            incident.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                incident.Id,
+                incident.Status,
+                incident.Resolution,
+                incident.ResolvedAt
+            });
+        }
     }
 
     public class CreateReviewDto
     {
         public int Rating { get; set; }
         public string? Comments { get; set; }
+    }
+
+    public class CreateIncidentDto
+    {
+        public string? Category { get; set; }
+        public string? Severity { get; set; }
+        public string? Description { get; set; }
+        public string? Location { get; set; }
+    }
+
+    public class ResolveIncidentDto
+    {
+        public string? Status { get; set; }
+        public string? Resolution { get; set; }
+        public Guid? ResolvedByUserId { get; set; }
     }
 }

@@ -27,6 +27,10 @@ export default function PassengerSearchScreen({ navigation, route }) {
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [incidentCategory, setIncidentCategory] = useState('Other');
+  const [incidentSeverity, setIncidentSeverity] = useState('Medium');
+  const [incidentText, setIncidentText] = useState('');
+  const [submittingIncident, setSubmittingIncident] = useState(false);
 
   useEffect(() => { loadRecent(); }, []);
 
@@ -65,6 +69,9 @@ export default function PassengerSearchScreen({ navigation, route }) {
     setDetailData(null);
     setReviewRating(0);
     setReviewText('');
+    setIncidentCategory('Other');
+    setIncidentSeverity('Medium');
+    setIncidentText('');
     try {
       const tripPassengerId = p.id;
       const res = await client.get(`/Passengers/trip/${tripPassengerId}`);
@@ -88,6 +95,25 @@ export default function PassengerSearchScreen({ navigation, route }) {
       const msg = e?.response?.data?.message || 'Failed to submit review';
       Alert.alert('Error', msg);
     } finally { setSubmittingReview(false); }
+  };
+
+  const submitIncident = async () => {
+    if (!incidentText.trim()) { Alert.alert('Description Required', 'Please describe the incident.'); return; }
+    const tpId = detailData?.passenger?.id;
+    if (!tpId) return;
+    setSubmittingIncident(true);
+    try {
+      const res = await client.post(`/Passengers/trip/${tpId}/incident`, {
+        category: incidentCategory,
+        severity: incidentSeverity,
+        description: incidentText
+      });
+      setIncidentText('');
+      Alert.alert('Reported', 'Your incident has been reported to the taxi rank.');
+    } catch (e) {
+      const msg = e?.response?.data?.message || 'Failed to report incident';
+      Alert.alert('Error', msg);
+    } finally { setSubmittingIncident(false); }
   };
   const list = searchQuery.length >= 2 ? passengers : recentPassengers;
   const isSearch = searchQuery.length >= 2;
@@ -299,6 +325,64 @@ export default function PassengerSearchScreen({ navigation, route }) {
                         </View>
                       </View>
                     )}
+
+                    {/* Incident Reporting Section */}
+                    <Text style={[styles.tripsTitle, { color: c.text, marginTop: 16 }]}>Report an Incident</Text>
+                    <View style={[styles.infoCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      <Text style={{ fontSize: 13, color: c.textMuted, marginBottom: 10 }}>Report an issue for the taxi rank to attend to.</Text>
+                      
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: c.text, marginBottom: 6 }}>Category</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                        {['Safety', 'Vehicle', 'Driver', 'Overcharging', 'Harassment', 'Other'].map(cat => (
+                          <TouchableOpacity
+                            key={cat}
+                            style={{
+                              paddingVertical: 6, paddingHorizontal: 10, borderRadius: 16,
+                              backgroundColor: incidentCategory === cat ? GOLD + '20' : c.border + '40',
+                              borderWidth: 1, borderColor: incidentCategory === cat ? GOLD : c.border
+                            }}
+                            onPress={() => setIncidentCategory(cat)}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: incidentCategory === cat ? GOLD : c.text }}>{cat}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: c.text, marginBottom: 6 }}>Severity</Text>
+                      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+                        {['Low', 'Medium', 'High', 'Critical'].map(sev => (
+                          <TouchableOpacity
+                            key={sev}
+                            style={{
+                              paddingVertical: 6, paddingHorizontal: 10, borderRadius: 16,
+                              backgroundColor: incidentSeverity === sev ? (sev === 'Critical' ? '#dc262620' : sev === 'High' ? '#ef444420' : sev === 'Medium' ? '#f59e0b20' : '#3b82f620') : c.border + '40',
+                              borderWidth: 1, borderColor: incidentSeverity === sev ? (sev === 'Critical' ? '#dc2626' : sev === 'High' ? '#ef4444' : sev === 'Medium' ? '#f59e0b' : '#3b82f6') : c.border
+                            }}
+                            onPress={() => setIncidentSeverity(sev)}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: incidentSeverity === sev ? (sev === 'Critical' ? '#dc2626' : sev === 'High' ? '#ef4444' : sev === 'Medium' ? '#f59e0b' : '#3b82f6') : c.text }}>{sev}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <TextInput
+                        style={[styles.reviewInput, { color: c.text, borderColor: c.border, backgroundColor: c.background }]} 
+                        placeholder="Describe the incident..."
+                        placeholderTextColor={c.textMuted}
+                        value={incidentText}
+                        onChangeText={setIncidentText}
+                        multiline
+                        numberOfLines={3}
+                      />
+                      <TouchableOpacity
+                        style={[styles.reviewBtn, { opacity: submittingIncident ? 0.6 : 1, backgroundColor: '#dc2626' }]}
+                        onPress={submitIncident}
+                        disabled={submittingIncident}
+                        activeOpacity={0.7}
+                      >
+                        {submittingIncident ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.reviewBtnText}>Report Incident</Text>}
+                      </TouchableOpacity>
+                    </View>
                   </>
                 ) : <Text style={[styles.noTrips, { color: c.textMuted }]}>Could not load trip details</Text>}
                 <View style={{ height: 40 }} />

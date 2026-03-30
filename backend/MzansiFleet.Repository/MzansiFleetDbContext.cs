@@ -104,6 +104,9 @@ namespace MzansiFleet.Repository
         
         // Driver Behavior Module
         public DbSet<DriverBehaviorEvent> DriverBehaviorEvents { get; set; }
+        
+        // Incident Reporting Module
+        public DbSet<Incident> Incidents { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
