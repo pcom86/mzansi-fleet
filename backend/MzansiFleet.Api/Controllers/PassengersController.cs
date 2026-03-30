@@ -664,48 +664,92 @@ namespace MzansiFleet.Api.Controllers
             return Ok(recentPassengers);
         }
 
-        // POST: api/Passengers/trip/{tripPassengerId}/incident
-        [HttpPost("trip/{tripPassengerId:guid}/incident")]
-        public async Task<ActionResult> ReportIncident(Guid tripPassengerId, [FromBody] CreateIncidentDto dto)
+        // POST: api/Passengers/trip/{id}/incident - works for both Live Queue and Book Seat trips
+        [HttpPost("trip/{id:guid}/incident")]
+        public async Task<ActionResult> ReportIncident(Guid id, [FromBody] CreateIncidentDto dto)
         {
+            // First try to find as TripPassenger (Live Queue)
             var tp = await _context.TripPassengers
                 .Include(x => x.TaxiRankTrip)
-                .FirstOrDefaultAsync(x => x.Id == tripPassengerId);
-            if (tp == null)
-                return NotFound(new { message = "Trip passenger record not found" });
+                .FirstOrDefaultAsync(x => x.Id == id);
 
-            var trip = tp.TaxiRankTrip;
-
-            var incident = new Incident
+            if (tp != null)
             {
-                Id = Guid.NewGuid(),
-                TaxiRankId = trip?.TaxiRankId,
-                TaxiRankTripId = trip?.Id,
-                TripPassengerId = tripPassengerId,
-                ReportedByUserId = tp.UserId != Guid.Empty ? tp.UserId : (Guid?)null,
-                TenantId = trip?.TenantId,
-                ReporterName = tp.PassengerName ?? "Unknown",
-                ReporterPhone = tp.PassengerPhone,
-                Category = dto.Category ?? "Other",
-                Severity = dto.Severity ?? "Medium",
-                Description = dto.Description ?? "",
-                Location = dto.Location ?? (trip != null ? $"{trip.DepartureStation} → {trip.DestinationStation}" : null),
-                Status = "Open",
-                CreatedAt = DateTime.UtcNow
-            };
+                var trip = tp.TaxiRankTrip;
 
-            _context.Incidents.Add(incident);
-            await _context.SaveChangesAsync();
+                var incident = new Incident
+                {
+                    Id = Guid.NewGuid(),
+                    TaxiRankId = trip?.TaxiRankId,
+                    TaxiRankTripId = trip?.Id,
+                    TripPassengerId = id,
+                    ReportedByUserId = tp.UserId != Guid.Empty ? tp.UserId : (Guid?)null,
+                    TenantId = trip?.TenantId,
+                    ReporterName = tp.PassengerName ?? "Unknown",
+                    ReporterPhone = tp.PassengerPhone,
+                    Category = dto.Category ?? "Other",
+                    Severity = dto.Severity ?? "Medium",
+                    Description = dto.Description ?? "",
+                    Location = dto.Location ?? (trip != null ? $"{tp.DepartureStation} → {tp.ArrivalStation}" : null),
+                    Status = "Open",
+                    CreatedAt = DateTime.UtcNow
+                };
 
-            return Ok(new
+                _context.Incidents.Add(incident);
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    incident.Id,
+                    incident.Category,
+                    incident.Severity,
+                    incident.Description,
+                    incident.Status,
+                    incident.CreatedAt
+                });
+            }
+
+            // If not found as TripPassenger, try ScheduledTripBooking (Book Seat)
+            var stb = await _context.ScheduledTripBookings
+                .Include(x => x.TaxiRank)
+                .Include(x => x.Route)
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (stb != null)
             {
-                incident.Id,
-                incident.Category,
-                incident.Severity,
-                incident.Description,
-                incident.Status,
-                incident.CreatedAt
-            });
+                var incident = new Incident
+                {
+                    Id = Guid.NewGuid(),
+                    TaxiRankId = stb.TaxiRankId,
+                    TaxiRankTripId = null,
+                    TripPassengerId = id, // Use TripPassengerId to store the booking ID
+                    ReportedByUserId = stb.UserId,
+                    TenantId = null, // ScheduledTripBooking doesn't have TenantId
+                    ReporterName = stb.Passengers.FirstOrDefault()?.Name ?? "Unknown",
+                    ReporterPhone = stb.Passengers.FirstOrDefault()?.ContactNumber ?? "",
+                    Category = dto.Category ?? "Other",
+                    Severity = dto.Severity ?? "Medium",
+                    Description = dto.Description ?? "",
+                    Location = dto.Location ?? (stb.Route != null ? $"{stb.Route.DepartureStation} → {stb.Route.DestinationStation}" : null),
+                    Status = "Open",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Incidents.Add(incident);
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    incident.Id,
+                    incident.Category,
+                    incident.Severity,
+                    incident.Description,
+                    incident.Status,
+                    incident.CreatedAt
+                });
+            }
+
+            return NotFound(new { message = "Trip not found" });
         }
 
         // GET: api/Passengers/incidents?taxiRankId=xxx&status=Open&limit=50

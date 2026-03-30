@@ -77,7 +77,7 @@ export default function PassengerTripsScreen({ navigation }) {
 
   const submitReview = async () => {
     if (reviewRating < 1) { Alert.alert('Rating Required', 'Please select a star rating.'); return; }
-    const tpId = detailData?.passenger?.id;
+    const tpId = detailData?.passenger?.Id;
     if (!tpId) return;
     setSubmittingReview(true);
     try {
@@ -92,7 +92,7 @@ export default function PassengerTripsScreen({ navigation }) {
 
   const submitIncident = async () => {
     if (!incidentText.trim()) { Alert.alert('Description Required', 'Please describe the incident.'); return; }
-    const tpId = detailData?.passenger?.id;
+    const tpId = detailData?.passenger?.Id;
     if (!tpId) return;
     setSubmittingIncident(true);
     try {
