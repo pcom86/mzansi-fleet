@@ -30,6 +30,12 @@ export async function resolveBehaviorEvent(eventId, resolution) {
   return resp.data;
 }
 
+// Get passenger ratings for a specific driver
+export async function fetchDriverRatings(driverId, limit = 50) {
+  const resp = await client.get(`/DriverBehavior/driver/${driverId}/ratings?limit=${limit}`);
+  return resp.data;
+}
+
 // Delete a behavior event
 export async function deleteBehaviorEvent(eventId) {
   const resp = await client.delete(`/DriverBehavior/${eventId}`);

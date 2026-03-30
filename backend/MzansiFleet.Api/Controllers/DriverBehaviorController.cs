@@ -128,6 +128,17 @@ namespace MzansiFleet.Api.Controllers
                 .Where(e => driverIds.Contains(e.DriverId))
                 .ToListAsync();
 
+            // Get passenger ratings per driver: Reviews on TripPassengers whose trip has this driver
+            var driverRatings = await _context.TaxiRankTrips
+                .Where(t => t.DriverId.HasValue && driverIds.Contains(t.DriverId.Value))
+                .Join(_context.TripPassengers, t => t.Id, tp => tp.TaxiRankTripId, (t, tp) => new { t.DriverId, tp.Id })
+                .Join(_context.Reviews.Where(r => r.TargetType == "TripPassenger"), x => x.Id, r => r.TargetId, (x, r) => new { x.DriverId, r.Rating })
+                .ToListAsync();
+
+            var ratingsByDriver = driverRatings
+                .GroupBy(x => x.DriverId)
+                .ToDictionary(g => g.Key!.Value, g => new { Avg = g.Average(x => x.Rating), Count = g.Count() });
+
             var now = DateTime.UtcNow;
             var thirtyDaysAgo = now.AddDays(-30);
             var ninetyDaysAgo = now.AddDays(-90);
@@ -160,6 +171,8 @@ namespace MzansiFleet.Api.Controllers
                 var impact90minus30 = recent90.Where(e => e.EventDate < thirtyDaysAgo).Sum(e => e.PointsImpact);
                 string trend = impact30 > impact90minus30 ? "Improving" : impact30 < impact90minus30 ? "Declining" : "Stable";
 
+                ratingsByDriver.TryGetValue(driver.Id, out var ratings);
+
                 return new DriverScoreDto
                 {
                     DriverId = driver.Id,
@@ -181,13 +194,47 @@ namespace MzansiFleet.Api.Controllers
                         .Where(e => e.EventType == "Negative")
                         .GroupBy(e => e.Category)
                         .OrderByDescending(g => g.Count())
-                        .FirstOrDefault()?.Key
+                        .FirstOrDefault()?.Key,
+                    AveragePassengerRating = ratings != null ? Math.Round(ratings.Avg, 1) : 0,
+                    PassengerRatingCount = ratings?.Count ?? 0
                 };
             })
             .OrderByDescending(d => d.Score)
             .ToList();
 
             return Ok(scoreboard);
+        }
+
+        // GET: api/DriverBehavior/driver/{driverId}/ratings - passenger ratings for a driver
+        [HttpGet("driver/{driverId}/ratings")]
+        public async Task<ActionResult> GetDriverPassengerRatings(Guid driverId, [FromQuery] int limit = 50)
+        {
+            var ratings = await _context.TaxiRankTrips
+                .Where(t => t.DriverId == driverId)
+                .Join(_context.TripPassengers, t => t.Id, tp => tp.TaxiRankTripId, (t, tp) => new { Trip = t, Passenger = tp })
+                .Join(_context.Reviews.Where(r => r.TargetType == "TripPassenger"), x => x.Passenger.Id, r => r.TargetId, (x, r) => new
+                {
+                    r.Id,
+                    r.Rating,
+                    r.Comments,
+                    r.CreatedAt,
+                    PassengerName = x.Passenger.PassengerName ?? "Anonymous",
+                    Route = x.Passenger.DepartureStation + " → " + x.Passenger.ArrivalStation,
+                    TripDate = x.Trip.DepartureTime,
+                    TripId = x.Trip.Id
+                })
+                .OrderByDescending(r => r.CreatedAt)
+                .Take(limit)
+                .ToListAsync();
+
+            var avg = ratings.Count > 0 ? Math.Round(ratings.Average(r => r.Rating), 1) : 0;
+
+            return Ok(new
+            {
+                AverageRating = avg,
+                TotalRatings = ratings.Count,
+                Ratings = ratings
+            });
         }
 
         // PUT: api/DriverBehavior/{id}/resolve
@@ -337,5 +384,7 @@ namespace MzansiFleet.Api.Controllers
         public int Last30DaysEvents { get; set; }
         public DateTime? LastEventDate { get; set; }
         public string? TopCategory { get; set; }
+        public double AveragePassengerRating { get; set; }
+        public int PassengerRatingCount { get; set; }
     }
 }

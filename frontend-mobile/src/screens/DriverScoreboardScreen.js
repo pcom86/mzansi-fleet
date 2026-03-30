@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import {
   fetchDriverScoreboard, fetchDriverEvents, recordBehaviorEvent,
-  resolveBehaviorEvent, BEHAVIOR_CATEGORIES,
+  resolveBehaviorEvent, fetchDriverRatings, BEHAVIOR_CATEGORIES,
 } from '../api/driverBehavior';
 
 const GOLD = '#D4AF37';
@@ -68,6 +68,7 @@ export default function DriverScoreboardScreen({ navigation }) {
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [detailDriver, setDetailDriver] = useState(null);
   const [driverEvents, setDriverEvents] = useState([]);
+  const [driverRatingsData, setDriverRatingsData] = useState(null);
   const [loadingEvents, setLoadingEvents] = useState(false);
 
   const loadData = useCallback(async (silent = false) => {
@@ -100,11 +101,17 @@ export default function DriverScoreboardScreen({ navigation }) {
     setDetailDriver(driver);
     setDetailModalVisible(true);
     setLoadingEvents(true);
+    setDriverRatingsData(null);
     try {
-      const events = await fetchDriverEvents(driver.driverId);
+      const [events, ratingsResp] = await Promise.all([
+        fetchDriverEvents(driver.driverId).catch(() => []),
+        fetchDriverRatings(driver.driverId).catch(() => null),
+      ]);
       setDriverEvents(events || []);
+      setDriverRatingsData(ratingsResp);
     } catch {
       setDriverEvents([]);
+      setDriverRatingsData(null);
     } finally {
       setLoadingEvents(false);
     }
@@ -306,6 +313,19 @@ export default function DriverScoreboardScreen({ navigation }) {
                   ) : null}
                 </View>
 
+                {/* Passenger Rating Row */}
+                {driver.passengerRatingCount > 0 && (
+                  <View style={[styles.ratingRow, { borderColor: c.border }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                      {[1,2,3,4,5].map(s => (
+                        <Ionicons key={s} name={s <= Math.round(driver.averagePassengerRating) ? 'star' : 'star-outline'} size={14} color={GOLD} />
+                      ))}
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: GOLD, marginLeft: 6 }}>{driver.averagePassengerRating}</Text>
+                    <Text style={{ fontSize: 11, color: c.textMuted, marginLeft: 4 }}>({driver.passengerRatingCount} rider review{driver.passengerRatingCount !== 1 ? 's' : ''})</Text>
+                  </View>
+                )}
+
                 {/* Actions */}
                 <View style={styles.driverActions}>
                   <TouchableOpacity
@@ -461,14 +481,56 @@ export default function DriverScoreboardScreen({ navigation }) {
               <View style={{ padding: 32, alignItems: 'center' }}>
                 <ActivityIndicator size="large" color={GOLD} />
               </View>
-            ) : driverEvents.length === 0 ? (
-              <View style={{ padding: 32, alignItems: 'center' }}>
-                <Ionicons name="checkmark-done-circle-outline" size={48} color={c.textMuted} />
-                <Text style={[{ color: c.text, fontWeight: '700', marginTop: 8 }]}>Clean Record</Text>
-                <Text style={[{ color: c.textMuted, fontSize: 12 }]}>No behavior events recorded</Text>
-              </View>
             ) : (
               <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+                {/* Passenger Ratings Section */}
+                {driverRatingsData && driverRatingsData.totalRatings > 0 && (
+                  <>
+                    <View style={[styles.ratingsSummaryCard, { backgroundColor: c.surface, borderColor: c.border }]}>
+                      <View style={{ alignItems: 'center', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: c.text, marginBottom: 6 }}>Passenger Ratings</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          {[1,2,3,4,5].map(s => (
+                            <Ionicons key={s} name={s <= Math.round(driverRatingsData.averageRating) ? 'star' : 'star-outline'} size={22} color={GOLD} />
+                          ))}
+                        </View>
+                        <Text style={{ fontSize: 20, fontWeight: '900', color: GOLD, marginTop: 4 }}>{driverRatingsData.averageRating}/5</Text>
+                        <Text style={{ fontSize: 12, color: c.textMuted }}>{driverRatingsData.totalRatings} rider review{driverRatingsData.totalRatings !== 1 ? 's' : ''}</Text>
+                      </View>
+                    </View>
+                    {driverRatingsData.ratings?.map((rev) => (
+                      <View key={rev.id} style={[styles.eventCard, { backgroundColor: c.surface, borderColor: c.border, borderLeftColor: GOLD, borderLeftWidth: 3 }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="person-circle-outline" size={18} color={GOLD} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontWeight: '700', color: c.text }}>{rev.passengerName}</Text>
+                            <Text style={{ fontSize: 11, color: c.textMuted }}>{fmtDate(rev.createdAt)} · {rev.route}</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                            {[1,2,3,4,5].map(s => (
+                              <Ionicons key={s} name={s <= rev.rating ? 'star' : 'star-outline'} size={12} color={GOLD} />
+                            ))}
+                          </View>
+                        </View>
+                        {rev.comments ? <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4, fontStyle: 'italic' }}>"{rev.comments}"</Text> : null}
+                      </View>
+                    ))}
+                  </>
+                )}
+
+                {/* Behavior Events Section */}
+                {driverEvents.length === 0 && (!driverRatingsData || driverRatingsData.totalRatings === 0) ? (
+                  <View style={{ padding: 32, alignItems: 'center' }}>
+                    <Ionicons name="checkmark-done-circle-outline" size={48} color={c.textMuted} />
+                    <Text style={{ color: c.text, fontWeight: '700', marginTop: 8 }}>Clean Record</Text>
+                    <Text style={{ color: c.textMuted, fontSize: 12 }}>No behavior events recorded</Text>
+                  </View>
+                ) : driverEvents.length > 0 ? (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 16, marginTop: 12, marginBottom: 6 }}>
+                      <Ionicons name="list-outline" size={16} color={c.textMuted} />
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>Behavior Events ({driverEvents.length})</Text>
+                    </View>
                 {driverEvents.map((item) => {
                   const isPositive = item.eventType === 'Positive';
                   const evColor = isPositive ? GREEN : RED;
@@ -513,6 +575,8 @@ export default function DriverScoreboardScreen({ navigation }) {
                     </View>
                   );
                 })}
+                  </>
+                ) : null}
               </ScrollView>
             )}
           </View>
@@ -601,4 +665,7 @@ const styles = StyleSheet.create({
   pointsBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   resolvedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   resolveBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+
+  ratingRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, paddingTop: 8, marginTop: 8, paddingHorizontal: 4 },
+  ratingsSummaryCard: { borderWidth: 1, borderRadius: 14, padding: 16, marginBottom: 10 },
 });

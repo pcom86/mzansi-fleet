@@ -382,6 +382,60 @@ namespace MzansiFleet.Api.Controllers
             };
 
             _context.Reviews.Add(review);
+
+            // Also create a DriverBehaviorEvent to affect the driver's performance score
+            var trip = await _context.TaxiRankTrips.FirstOrDefaultAsync(t => t.Id == tp.TaxiRankTripId);
+            if (trip?.DriverId != null && trip.DriverId != Guid.Empty)
+            {
+                var clampedRating = Math.Clamp(dto.Rating, 1, 5);
+                string category, eventType, severity;
+                int points;
+
+                if (clampedRating >= 4)
+                {
+                    category = "Compliment";
+                    eventType = "Positive";
+                    severity = "Low";
+                    points = clampedRating == 5 ? 5 : 3;
+                }
+                else if (clampedRating <= 2)
+                {
+                    category = "PassengerComplaint";
+                    eventType = "Negative";
+                    severity = clampedRating == 1 ? "High" : "Medium";
+                    points = clampedRating == 1 ? -8 : -5;
+                }
+                else
+                {
+                    category = "PassengerRating";
+                    eventType = "Neutral";
+                    severity = "Low";
+                    points = 0;
+                }
+
+                var behaviorEvent = new DriverBehaviorEvent
+                {
+                    Id = Guid.NewGuid(),
+                    DriverId = trip.DriverId.Value,
+                    VehicleId = trip.VehicleId,
+                    ReportedById = tp.UserId != Guid.Empty ? tp.UserId : (Guid?)null,
+                    TenantId = trip.TenantId,
+                    Category = category,
+                    Severity = severity,
+                    Description = $"Passenger rating: {clampedRating}/5" + (string.IsNullOrWhiteSpace(dto.Comments) ? "" : $" - {dto.Comments}"),
+                    Location = $"{tp.DepartureStation} → {tp.ArrivalStation}",
+                    PointsImpact = points,
+                    EventType = eventType,
+                    EventDate = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    Notes = $"TripPassengerId: {tripPassengerId}, ReviewId: {review.Id}",
+                    IsResolved = true,
+                    ResolvedAt = DateTime.UtcNow,
+                    Resolution = "Auto-resolved: Passenger review"
+                };
+                _context.DriverBehaviorEvents.Add(behaviorEvent);
+            }
+
             await _context.SaveChangesAsync();
 
             return Ok(new
