@@ -238,10 +238,11 @@ namespace MzansiFleet.Api.Controllers
             });
         }
 
-        // GET: api/Passengers/trip/{tripPassengerId} - full details of a specific trip record
-        [HttpGet("trip/{tripPassengerId:guid}")]
-        public async Task<ActionResult> GetTripDetail(Guid tripPassengerId)
+        // GET: api/Passengers/trip/{id} - full details of a specific trip record (Live Queue or Book Seat)
+        [HttpGet("trip/{id:guid}")]
+        public async Task<ActionResult> GetTripDetail(Guid id)
         {
+            // First try to find as TripPassenger (Live Queue)
             var tp = await _context.TripPassengers
                 .Include(x => x.TaxiRankTrip)
                     .ThenInclude(t => t.Vehicle)
@@ -251,109 +252,175 @@ namespace MzansiFleet.Api.Controllers
                     .ThenInclude(t => t.Marshal)
                 .Include(x => x.TaxiRankTrip)
                     .ThenInclude(t => t.TaxiRank)
-                .FirstOrDefaultAsync(x => x.Id == tripPassengerId);
+                .FirstOrDefaultAsync(x => x.Id == id);
 
-            if (tp == null)
-                return NotFound(new { message = "Trip passenger record not found" });
+            if (tp != null)
+            {
+                // Return Live Queue trip details
+                var trip = tp.TaxiRankTrip;
 
-            var trip = tp.TaxiRankTrip;
+                // Get other passengers on the same trip
+                var otherPassengers = trip != null
+                    ? await _context.TripPassengers
+                        .Where(p => p.TaxiRankTripId == trip.Id && p.Id != id)
+                        .Select(p => new
+                        {
+                            p.Id,
+                            Name = p.PassengerName ?? "Unknown",
+                            Phone = p.PassengerPhone ?? "",
+                            p.SeatNumber,
+                            p.Amount,
+                            p.PaymentMethod,
+                            p.BoardedAt
+                        })
+                        .ToListAsync()
+                    : null;
 
-            // Get other passengers on the same trip
-            var otherPassengers = trip != null
-                ? await _context.TripPassengers
-                    .Where(p => p.TaxiRankTripId == trip.Id && p.Id != tripPassengerId)
+                var totalPassengers = (otherPassengers?.Count ?? 0) + 1;
+
+                // Check if this passenger is a registered user
+                PassengerProfile passengerProfile = null;
+                if (tp.UserId != Guid.Empty)
+                {
+                    passengerProfile = await _context.PassengerProfiles
+                        .FirstOrDefaultAsync(p => p.UserId == tp.UserId);
+                }
+                if (passengerProfile == null && !string.IsNullOrWhiteSpace(tp.PassengerPhone))
+                {
+                    passengerProfile = await _context.PassengerProfiles
+                        .FirstOrDefaultAsync(p => p.Phone == tp.PassengerPhone);
+                }
+
+                var result = new
+                {
+                    Type = "LiveQueue",
+                    Passenger = new
+                    {
+                        tp.Id,
+                        tp.PassengerName,
+                        tp.PassengerPhone,
+                        tp.DepartureStation,
+                        tp.ArrivalStation,
+                        tp.Amount,
+                        tp.PaymentMethod,
+                        tp.SeatNumber,
+                        tp.BoardedAt,
+                        CreatedAt = tp.BoardedAt,
+                        UserId = tp.UserId,
+                        IsRegisteredUser = passengerProfile != null
+                    },
+                    Trip = trip != null ? new
+                    {
+                        trip.Id,
+                        trip.DepartureTime,
+                        trip.ArrivalTime,
+                        trip.Status,
+                        trip.PassengerCount,
+                        trip.TotalAmount,
+                        trip.Notes,
+                        Vehicle = trip.Vehicle != null ? new
+                        {
+                            trip.Vehicle.Make,
+                            trip.Vehicle.Model,
+                            trip.Vehicle.Registration,
+                            Driver = trip.Driver != null ? new
+                            {
+                                trip.Driver.Name,
+                                trip.Driver.Phone
+                            } : null
+                        } : null,
+                        TaxiRank = trip.TaxiRank != null ? new
+                        {
+                            trip.TaxiRank.Name,
+                            trip.TaxiRank.Address,
+                            trip.TaxiRank.City
+                        } : null
+                    } : null,
+                    OtherPassengers = otherPassengers,
+                    TotalPassengers = totalPassengers
+                };
+
+                return Ok(result);
+            }
+
+            // If not found as TripPassenger, try ScheduledTripBooking (Book Seat)
+            var stb = await _context.ScheduledTripBookings
+                .Include(x => x.TaxiRank)
+                .Include(x => x.Route)
+                .Include(x => x.Passengers)
+                .Include(x => x.ScheduledTrip)
+                .FirstOrDefaultAsync(x => x.Id == id);
+
+            if (stb != null)
+            {
+                // Return Book Seat trip details
+                var otherPassengers = stb.Passengers
+                    .Where(p => p.Id != stb.Passengers.FirstOrDefault()?.Id)
                     .Select(p => new
                     {
                         p.Id,
-                        Name = p.PassengerName ?? "Unknown",
-                        Phone = p.PassengerPhone ?? "",
-                        p.SeatNumber,
-                        p.Amount,
-                        p.PaymentMethod,
-                        p.BoardedAt
+                        Name = p.Name,
+                        Phone = p.ContactNumber,
+                        SeatNumber = (int?)null,
+                        Amount = (decimal?)null,
+                        PaymentMethod = (string?)null,
+                        BoardedAt = (DateTime?)null
                     })
-                    .ToListAsync()
-                : null;
+                    .ToList();
 
-            var totalPassengers = (otherPassengers?.Count ?? 0) + 1;
+                var totalPassengers = stb.Passengers.Count;
 
-            // Check if this passenger is a registered user
-            PassengerProfile passengerProfile = null;
-            if (tp.UserId != Guid.Empty)
-            {
-                passengerProfile = await _context.PassengerProfiles
-                    .FirstOrDefaultAsync(p => p.UserId == tp.UserId);
+                var result = new
+                {
+                    Type = "BookSeat",
+                    Passenger = new
+                    {
+                        stb.Id,
+                        PassengerName = stb.Passengers.FirstOrDefault()?.Name ?? "Unknown",
+                        PassengerPhone = stb.Passengers.FirstOrDefault()?.ContactNumber ?? "",
+                        DepartureStation = stb.Route?.DepartureStation ?? "",
+                        ArrivalStation = stb.Route?.DestinationStation ?? "",
+                        Amount = stb.TotalFare,
+                        PaymentMethod = "Pending",
+                        SeatNumber = stb.SeatNumbers.Any() ? string.Join(", ", stb.SeatNumbers) : "",
+                        BoardedAt = (DateTime?)null,
+                        CreatedAt = stb.CreatedAt,
+                        UserId = stb.UserId,
+                        IsRegisteredUser = true // Book Seat trips always have a user
+                    },
+                    Trip = new
+                    {
+                        stb.Id,
+                        DepartureTime = stb.TravelDate,
+                        ArrivalTime = (DateTime?)null,
+                        Status = "Booked",
+                        PassengerCount = stb.SeatsBooked,
+                        TotalAmount = stb.TotalFare,
+                        Notes = (string?)null,
+                        Vehicle = (object)null,
+                        TaxiRank = stb.TaxiRank != null ? new
+                        {
+                            stb.TaxiRank.Name,
+                            stb.TaxiRank.Address,
+                            stb.TaxiRank.City
+                        } : null,
+                        Route = stb.Route != null ? new
+                        {
+                            stb.Route.RouteName,
+                            stb.Route.DepartureStation,
+                            stb.Route.DestinationStation,
+                            stb.Route.DepartureTime,
+                            stb.Route.StandardFare
+                        } : null
+                    },
+                    OtherPassengers = otherPassengers,
+                    TotalPassengers = totalPassengers
+                };
+
+                return Ok(result);
             }
-            if (passengerProfile == null && !string.IsNullOrWhiteSpace(tp.PassengerPhone))
-            {
-                passengerProfile = await _context.PassengerProfiles
-                    .FirstOrDefaultAsync(p => p.Phone == tp.PassengerPhone);
-            }
 
-            // Fetch review for this trip passenger record
-            var review = await _context.Reviews
-                .Where(r => r.TargetId == tripPassengerId && r.TargetType == "TripPassenger")
-                .OrderByDescending(r => r.CreatedAt)
-                .FirstOrDefaultAsync();
-
-            return Ok(new
-            {
-                // This passenger's booking details
-                Passenger = new
-                {
-                    tp.Id,
-                    tp.PassengerName,
-                    tp.PassengerPhone,
-                    tp.NextOfKinName,
-                    tp.NextOfKinContact,
-                    tp.DepartureStation,
-                    tp.ArrivalStation,
-                    tp.Amount,
-                    tp.PaymentMethod,
-                    tp.PaymentReference,
-                    tp.SeatNumber,
-                    tp.BoardedAt,
-                    tp.Notes,
-                    tp.UserId,
-                    IsRegistered = passengerProfile != null
-                },
-                // The trip details
-                Trip = trip != null ? new
-                {
-                    trip.Id,
-                    trip.DepartureStation,
-                    trip.DestinationStation,
-                    trip.DepartureTime,
-                    trip.ArrivalTime,
-                    trip.Status,
-                    trip.TotalAmount,
-                    trip.Notes,
-                    trip.CreatedAt,
-                    trip.Latitude,
-                    trip.Longitude,
-                    TotalPassengers = totalPassengers,
-                    VehicleRegistration = trip.Vehicle?.Registration,
-                    VehicleMake = trip.Vehicle != null ? $"{trip.Vehicle.Make} {trip.Vehicle.Model}" : null,
-                    DriverName = trip.Driver?.Name,
-                    DriverPhone = trip.Driver?.Phone,
-                    MarshalName = trip.Marshal?.FullName,
-                    TaxiRankName = trip.TaxiRank?.Name,
-                    TaxiRankAddress = trip.TaxiRank?.Address,
-                    TaxiRankCity = trip.TaxiRank?.City,
-                    TaxiRankLatitude = trip.TaxiRank?.Latitude,
-                    TaxiRankLongitude = trip.TaxiRank?.Longitude
-                } : null,
-                // Other passengers on the same trip
-                OtherPassengers = otherPassengers,
-                // Review if exists
-                Review = review != null ? new
-                {
-                    review.Id,
-                    review.Rating,
-                    review.Comments,
-                    review.CreatedAt
-                } : null
-            });
+            return NotFound(new { message = "Trip not found" });
         }
 
         // POST: api/Passengers/trip/{tripPassengerId}/review
