@@ -132,8 +132,8 @@ export default function PassengerTripsScreen({ navigation }) {
         ) : trips.length === 0 ? (
           <View style={{ padding: 32, alignItems: 'center' }}>
             <Ionicons name="car-outline" size={48} color={c.textMuted} />
-            <Text style={[styles.emptyTitle, { color: c.text, marginTop: 8 }]}>No Live Queue trips found</Text>
-            <Text style={[styles.emptySub, { color: c.textMuted }]}>Trips booked through the Live Queue will appear here</Text>
+            <Text style={[styles.emptyTitle, { color: c.text, marginTop: 8 }]}>No trips found</Text>
+            <Text style={[styles.emptySub, { color: c.textMuted }]}>Your Live Queue and Book Seat trips will appear here</Text>
           </View>
         ) : (
           trips.map((trip, idx) => (

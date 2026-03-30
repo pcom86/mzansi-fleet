@@ -455,7 +455,8 @@ namespace MzansiFleet.Api.Controllers
             if (string.IsNullOrWhiteSpace(userId) || !Guid.TryParse(userId, out var userGuid))
                 return Unauthorized(new { message = "User not authenticated" });
 
-            var trips = await _context.TripPassengers
+            // Get Live Queue trips
+            var liveQueueTrips = await _context.TripPassengers
                 .Include(tp => tp.TaxiRankTrip)
                     .ThenInclude(t => t!.Vehicle)
                 .Include(tp => tp.TaxiRankTrip)
@@ -464,26 +465,27 @@ namespace MzansiFleet.Api.Controllers
                     .ThenInclude(t => t!.Driver)
                 .Where(tp => tp.UserId == userGuid)
                 .OrderByDescending(tp => tp.BoardedAt)
-                .Take(limit)
                 .Select(tp => new
                 {
-                    tp.Id,
+                    Id = tp.Id,
+                    Type = "LiveQueue",
                     tp.PassengerName,
                     tp.PassengerPhone,
-                    tp.DepartureStation,
-                    tp.ArrivalStation,
-                    tp.Amount,
-                    tp.PaymentMethod,
-                    tp.SeatNumber,
-                    tp.BoardedAt,
+                    DepartureStation = tp.DepartureStation,
+                    ArrivalStation = tp.ArrivalStation,
+                    Amount = tp.Amount,
+                    PaymentMethod = tp.PaymentMethod,
+                    SeatNumber = tp.SeatNumber.HasValue ? tp.SeatNumber.Value.ToString() : "",
+                    BoardedAt = (DateTime?)tp.BoardedAt,
+                    CreatedAt = tp.BoardedAt,
                     TripStatus = tp.TaxiRankTrip != null ? tp.TaxiRankTrip.Status : null,
-                    Vehicle = tp.TaxiRankTrip != null ? new
+                    Vehicle = tp.TaxiRankTrip != null ? (object)new
                     {
                         tp.TaxiRankTrip.Vehicle!.Make,
                         tp.TaxiRankTrip.Vehicle.Model,
                         tp.TaxiRankTrip.Vehicle.Registration,
-                        DriverName = tp.TaxiRankTrip.Driver != null ? tp.TaxiRankTrip.Driver.Name : null,
-                        DriverPhone = tp.TaxiRankTrip.Driver != null ? tp.TaxiRankTrip.Driver.Phone : null
+                        DriverName = tp.TaxiRankTrip.Driver != null ? tp.TaxiRankTrip.Driver.Name : "",
+                        DriverPhone = tp.TaxiRankTrip.Driver != null ? tp.TaxiRankTrip.Driver.Phone : ""
                     } : null,
                     TaxiRank = tp.TaxiRankTrip != null ? new
                     {
@@ -494,7 +496,44 @@ namespace MzansiFleet.Api.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(trips);
+            // Get Book Seat trips (ScheduledTripBookings)
+            var bookedTrips = await _context.ScheduledTripBookings
+                .Include(stb => stb.TaxiRank)
+                .Include(stb => stb.Route)
+                .Include(stb => stb.Passengers)
+                .Where(stb => stb.UserId == userGuid)
+                .OrderByDescending(stb => stb.CreatedAt)
+                .Select(stb => new
+                {
+                    Id = stb.Id,
+                    Type = "BookSeat",
+                    PassengerName = stb.Passengers.FirstOrDefault() != null ? stb.Passengers.FirstOrDefault().Name : "Unknown",
+                    PassengerPhone = stb.Passengers.FirstOrDefault() != null ? stb.Passengers.FirstOrDefault().ContactNumber : "",
+                    DepartureStation = stb.Route != null ? stb.Route.DepartureStation : "",
+                    ArrivalStation = stb.Route != null ? stb.Route.DestinationStation : "",
+                    Amount = stb.TotalFare,
+                    PaymentMethod = "Pending",
+                    SeatNumber = stb.SeatNumbers.Any() ? string.Join(", ", stb.SeatNumbers) : "",
+                    BoardedAt = (DateTime?)null,
+                    CreatedAt = stb.CreatedAt,
+                    TripStatus = "Booked",
+                    Vehicle = (object)null,
+                    TaxiRank = stb.TaxiRank != null ? new
+                    {
+                        stb.TaxiRank.Name,
+                        stb.TaxiRank.Address,
+                        stb.TaxiRank.City
+                    } : null
+                })
+                .ToListAsync();
+
+            // Combine and order by creation date
+            var allTrips = liveQueueTrips.Concat(bookedTrips)
+                .OrderByDescending(t => t.CreatedAt)
+                .Take(limit)
+                .ToList();
+
+            return Ok(allTrips);
         }
 
         // GET: api/Passengers/recent?taxiRankId=xxx&limit=50
