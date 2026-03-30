@@ -44,7 +44,7 @@ export default function BookTripScreen({ navigation }) {
 
   // Voice command state
   const [voiceProcessing, setVoiceProcessing] = useState(false);
-  const aiService = new AIService();
+  const aiService = AIService;
 
   // Handle voice command result
   async function handleVoiceCommand(audioBlob) {

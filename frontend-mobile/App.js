@@ -53,6 +53,7 @@ import MarshalDashboardScreen from './src/screens/MarshalDashboardScreen';
 import MarshalManagementScreen from './src/screens/MarshalManagementScreen';
 import CreateMarshalScreen from './src/screens/CreateMarshalScreen';
 import ViewEditMarshalScreen from './src/screens/ViewEditMarshalScreen';
+import PassengerSearchScreen from './src/screens/PassengerSearchScreen';
 import CompleteTripScreen from './src/screens/CompleteTripScreen';
 import RiderDashboardScreen from './src/screens/RiderDashboardScreen';
 import RiderTripBrowserScreen from './src/screens/RiderTripBrowserScreen';
@@ -168,6 +169,7 @@ function AppNavigator() {
           <Stack.Screen name="MarshalManagement" component={MarshalManagementScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CreateMarshal" component={CreateMarshalScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ViewEditMarshal" component={ViewEditMarshalScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="PassengerSearch" component={PassengerSearchScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CompleteTrip" component={CompleteTripScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RiderDashboard" component={RiderDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RiderTripBrowser" component={RiderTripBrowserScreen} options={{ headerShown: false }} />

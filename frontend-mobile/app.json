@@ -10,7 +10,7 @@
       "web"
     ],
     "extra": {
-      "apiUrl": "http://192.168.1.84:5000/api",
+      "apiUrl": "http://10.12.26.164:5000/api",
       "eas": {
         "projectId": "2bcdc50c-c61e-4d29-b4c0-00643c195802"
       }

@@ -377,9 +377,9 @@ export default function TaxiRankDashboardScreen({ navigation }) {
           />
           <ActionCard
             icon="people-circle-outline" title="Passengers"
-            desc="View passenger queues and boarding"
+            desc="Search and view passenger records"
             bg={c.surface} border={c.border} text={c.text} muted={c.textMuted}
-            onPress={() => navigation.navigate('BookTrip')}
+            onPress={() => navigation.navigate('PassengerSearch', { taxiRankId: activeRank?.id })}
           />
         </View>
 
