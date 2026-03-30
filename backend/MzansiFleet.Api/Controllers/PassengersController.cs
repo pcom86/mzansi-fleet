@@ -423,25 +423,28 @@ namespace MzansiFleet.Api.Controllers
             return NotFound(new { message = "Trip not found" });
         }
 
-        // POST: api/Passengers/trip/{tripPassengerId}/review
-        [HttpPost("trip/{tripPassengerId:guid}/review")]
-        public async Task<ActionResult> SubmitReview(Guid tripPassengerId, [FromBody] CreateReviewDto dto)
+        // POST: api/Passengers/trip/{id}/review - works for both Live Queue and Book Seat trips
+        [HttpPost("trip/{id:guid}/review")]
+        public async Task<ActionResult> SubmitReview(Guid id, [FromBody] CreateReviewDto dto)
         {
-            var tp = await _context.TripPassengers.FindAsync(tripPassengerId);
-            if (tp == null)
-                return NotFound(new { message = "Trip passenger record not found" });
+            // First try to find as TripPassenger (Live Queue)
+            var tp = await _context.TripPassengers
+                .Include(x => x.TaxiRankTrip)
+                .FirstOrDefaultAsync(x => x.Id == id);
 
-            // Check if a review already exists
-            var existing = await _context.Reviews
-                .FirstOrDefaultAsync(r => r.TargetId == tripPassengerId && r.TargetType == "TripPassenger");
-            if (existing != null)
-                return BadRequest(new { message = "A review has already been submitted for this trip" });
+            if (tp != null)
+            {
+                // Check if a review already exists
+                var existing = await _context.Reviews
+                    .FirstOrDefaultAsync(r => r.TargetId == id && r.TargetType == "TripPassenger");
+                if (existing != null)
+                    return BadRequest(new { message = "A review has already been submitted for this trip" });
 
             var review = new Review
             {
                 Id = Guid.NewGuid(),
                 ReviewerId = tp.UserId,
-                TargetId = tripPassengerId,
+                TargetId = id,
                 TargetType = "TripPassenger",
                 Rating = Math.Clamp(dto.Rating, 1, 5),
                 Comments = dto.Comments ?? "",
@@ -495,7 +498,7 @@ namespace MzansiFleet.Api.Controllers
                     EventType = eventType,
                     EventDate = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow,
-                    Notes = $"TripPassengerId: {tripPassengerId}, ReviewId: {review.Id}",
+                    Notes = $"TripPassengerId: {id}, ReviewId: {review.Id}",
                     IsResolved = true,
                     ResolvedAt = DateTime.UtcNow,
                     Resolution = "Auto-resolved: Passenger review"
@@ -504,14 +507,37 @@ namespace MzansiFleet.Api.Controllers
             }
 
             await _context.SaveChangesAsync();
+                return Ok(new { message = "Review submitted successfully", reviewId = review.Id });
+            }
 
-            return Ok(new
+            // If not found as TripPassenger, try ScheduledTripBooking (Book Seat)
+            var stb = await _context.ScheduledTripBookings.FindAsync(id);
+            if (stb != null)
             {
-                review.Id,
-                review.Rating,
-                review.Comments,
-                review.CreatedAt
-            });
+                // Check if a review already exists
+                var existing = await _context.Reviews
+                    .FirstOrDefaultAsync(r => r.TargetId == id && r.TargetType == "ScheduledTripBooking");
+                if (existing != null)
+                    return BadRequest(new { message = "A review has already been submitted for this trip" });
+
+                var review = new Review
+                {
+                    Id = Guid.NewGuid(),
+                    ReviewerId = stb.UserId,
+                    TargetId = id,
+                    TargetType = "ScheduledTripBooking",
+                    Rating = Math.Clamp(dto.Rating, 1, 5),
+                    Comments = dto.Comments ?? "",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Reviews.Add(review);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Review submitted successfully", reviewId = review.Id });
+            }
+
+            return NotFound(new { message = "Trip not found" });
         }
 
         // GET: api/Passengers/my-trips
