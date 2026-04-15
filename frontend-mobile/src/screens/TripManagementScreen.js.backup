@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import client from '../api/client';
 import { getQueueByRank, getQueueStats, addToQueue, dispatchVehicle, removeFromQueue, updateQueueEntry } from '../api/queueManagement';
-import { fetchTrips, fetchTripsByRank, fetchVehiclesByRankId, fetchTaxiRanks, completeTrip } from '../api/taxiRanks';
+import { fetchTrips, fetchTripsByRank, fetchVehiclesByRankId, fetchTaxiRanks } from '../api/taxiRanks';
 import { fetchQueueEntryBookings, fetchRankBookings, allocateSeats } from '../api/queueBooking';
 import VoiceRecorderButton from '../components/VoiceRecorderButton';
 import AIService from '../services/AIService';
@@ -42,6 +42,11 @@ export default function TripManagementScreen({ navigation, route }) {
   const [trips, setTrips] = useState([]);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [tripModalVisible, setTripModalVisible] = useState(false);
+  const [tripStatusFilter, setTripStatusFilter] = useState('all');
+  const [tripDriverFilter, setTripDriverFilter] = useState('all');
+  const [tripStopFilter, setTripStopFilter] = useState('all');
+  const [tripPassengerFilter, setTripPassengerFilter] = useState('all');
+  const [showTripFilters, setShowTripFilters] = useState(false);
   
   // Modal states for queue management
   const [addVehicleModalVisible, setAddVehicleModalVisible] = useState(false);
@@ -77,11 +82,46 @@ export default function TripManagementScreen({ navigation, route }) {
   const [queueEntryTotalBooked, setQueueEntryTotalBooked] = useState(0);
   const [seatAllocations, setSeatAllocations] = useState({});
   const [allocatingSeats, setAllocatingSeats] = useState(false);
-  const [confirmVisible, setConfirmVisible] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState('Confirm Action');
-  const [confirmMessage, setConfirmMessage] = useState('Are you sure?');
-  const [confirmBusy, setConfirmBusy] = useState(false);
-  const [confirmAction, setConfirmAction] = useState(null);
+
+  // Reviews & Incidents state
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [incidents, setIncidents] = useState([]);
+  const [incidentsLoading, setIncidentsLoading] = useState(false);
+
+  const loadReviews = useCallback(async () => {
+    if (!rank?.id) return;
+    setReviewsLoading(true);
+    try {
+      const res = await client.get(`/Passengers/reviews?taxiRankId=${rank.id}&limit=100`);
+      setReviews(res.data || []);
+    } catch (e) { console.warn('Failed to load reviews', e); }
+    finally { setReviewsLoading(false); }
+  }, [rank?.id]);
+
+  const loadIncidents = useCallback(async () => {
+    if (!rank?.id) return;
+    setIncidentsLoading(true);
+    try {
+      const res = await client.get(`/Passengers/incidents?taxiRankId=${rank.id}&limit=100`);
+      setIncidents(res.data || []);
+    } catch (e) { console.warn('Failed to load incidents', e); }
+    finally { setIncidentsLoading(false); }
+  }, [rank?.id]);
+
+  const resolveIncident = async (incidentId, resolution) => {
+    try {
+      await client.put(`/Passengers/incidents/${incidentId}/resolve`, {
+        status: 'Resolved',
+        resolution: resolution || 'Resolved by rank manager',
+        resolvedByUserId: user?.id || user?.userId
+      });
+      setIncidents(prev => prev.map(i => i.id === incidentId ? { ...i, status: 'Resolved', resolvedAt: new Date().toISOString() } : i));
+      Alert.alert('Success', 'Incident resolved');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to resolve incident');
+    }
+  };
 
   const formatDateLabel = (dateStr) => {
     const d = new Date(`${dateStr}T00:00:00`);
@@ -102,13 +142,6 @@ export default function TripManagementScreen({ navigation, route }) {
     setSelectedDate(d.toISOString().split('T')[0]);
   };
 
-  const openConfirmDialog = ({ title, message, onConfirm }) => {
-    setConfirmTitle(title || 'Confirm Action');
-    setConfirmMessage(message || 'Are you sure?');
-    setConfirmAction(() => onConfirm);
-    setConfirmVisible(true);
-  };
-
   // Filter queue data by status
   const getFilteredQueueData = () => {
     if (selectedStatusFilter === 'all') {
@@ -121,6 +154,20 @@ export default function TripManagementScreen({ navigation, route }) {
   };
 
   const filteredQueueData = getFilteredQueueData();
+
+  // Filter trips data by status, driver, stop, passenger
+  const tripStatuses = ['all', ...new Set(trips.map(t => t.status).filter(Boolean))];
+  const tripDrivers = ['all', ...new Set(trips.map(t => t.driver?.name || t.driver?.Name).filter(Boolean))];
+  const tripStops = ['all', ...new Set(trips.flatMap(t => [t.departureStation, t.destinationStation]).filter(Boolean))];
+  const tripPassengers = ['all', ...new Set(trips.flatMap(t => (t.passengers || []).map(p => p.passengerName)).filter(Boolean))];
+
+  const filteredTrips = trips.filter(t => {
+    if (tripStatusFilter !== 'all' && t.status !== tripStatusFilter) return false;
+    if (tripDriverFilter !== 'all' && (t.driver?.name || t.driver?.Name) !== tripDriverFilter) return false;
+    if (tripStopFilter !== 'all' && t.departureStation !== tripStopFilter && t.destinationStation !== tripStopFilter) return false;
+    if (tripPassengerFilter !== 'all' && !(t.passengers || []).some(p => p.passengerName === tripPassengerFilter)) return false;
+    return true;
+  });
 
   // Handle voice command result
   async function handleVoiceCommand(audioBlob) {
@@ -220,7 +267,26 @@ export default function TripManagementScreen({ navigation, route }) {
             );
             
             if (entry) {
-              handleRemoveVehicle(entry);
+              Alert.alert(
+                'Confirm Removal',
+                `Remove ${entry.vehicleRegistration} from the queue?`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Remove', 
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await removeFromQueue(entry.id);
+                        Alert.alert('Success', 'Vehicle removed from queue');
+                        loadQueueData();
+                      } catch (err) {
+                        Alert.alert('Error', 'Failed to remove vehicle from queue');
+                      }
+                    }
+                  }
+                ]
+              );
             } else {
               Alert.alert('Vehicle Not Found', `Could not find vehicle "${result.parameters.vehicle}" in queue.`);
             }
@@ -236,7 +302,26 @@ export default function TripManagementScreen({ navigation, route }) {
             );
             
             if (trip) {
-              handleCompleteTrip(trip);
+              Alert.alert(
+                'Complete Trip',
+                `Mark trip for ${trip.vehicleRegistration} as complete?`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Complete', 
+                    style: 'default',
+                    onPress: async () => {
+                      try {
+                        await client.put(`/Trips/${trip.id}/complete`);
+                        Alert.alert('Success', 'Trip marked as complete');
+                        loadTripsData();
+                      } catch (err) {
+                        Alert.alert('Error', 'Failed to complete trip');
+                      }
+                    }
+                  }
+                ]
+              );
             } else {
               Alert.alert('Trip Not Found', `Could not find active trip for vehicle "${result.parameters.vehicle}"`);
             }
@@ -482,63 +567,26 @@ export default function TripManagementScreen({ navigation, route }) {
   };
 
   const handleRemoveVehicle = async (queueEntry) => {
-    const queueEntryId = queueEntry?.id || queueEntry?.Id;
-    const vehicleReg = queueEntry?.vehicleRegistration || queueEntry?.vehicle?.registration || 'vehicle';
-
-    if (!queueEntryId) {
-      Alert.alert('Error', 'Invalid queue entry ID');
-      return;
-    }
-
-    const doRemove = async () => {
-      setConfirmBusy(true);
-      try {
-        await removeFromQueue(queueEntryId);
-        setConfirmVisible(false);
-        Alert.alert('Success', 'Vehicle removed from queue');
-        await loadQueueData();
-      } catch (error) {
-        Alert.alert('Error', error?.response?.data?.message || error?.message || 'Failed to remove vehicle');
-      } finally {
-        setConfirmBusy(false);
-      }
-    };
-
-    openConfirmDialog({
-      title: 'Remove Vehicle',
-      message: `Remove ${vehicleReg} from the queue?`,
-      onConfirm: doRemove,
-    });
-  };
-
-  const handleCompleteTrip = async (trip) => {
-    const tripId = trip?.id || trip?.Id;
-    const vehicleReg = trip?.vehicleRegistration || trip?.vehicle?.registration || 'vehicle';
-
-    if (!tripId) {
-      Alert.alert('Error', 'Invalid trip ID');
-      return;
-    }
-
-    const doComplete = async () => {
-      setConfirmBusy(true);
-      try {
-        await completeTrip(tripId, 'Completed from trip management');
-        setConfirmVisible(false);
-        Alert.alert('Success', 'Trip marked as complete');
-        await loadTripsData();
-      } catch (err) {
-        Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to complete trip');
-      } finally {
-        setConfirmBusy(false);
-      }
-    };
-
-    openConfirmDialog({
-      title: 'Complete Trip',
-      message: `Mark trip for ${vehicleReg} as complete?`,
-      onConfirm: doComplete,
-    });
+    Alert.alert(
+      'Remove Vehicle',
+      `Remove ${queueEntry.vehicle?.registration || 'vehicle'} from the queue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeFromQueue(queueEntry.id);
+              Alert.alert('Success', 'Vehicle removed from queue');
+              await loadQueueData();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to remove vehicle');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const getDriverName = (item) => {
@@ -593,11 +641,22 @@ export default function TripManagementScreen({ navigation, route }) {
 
       {/* ── Tabs ── */}
       <View style={s.tabs}>
-        {[{ key: 'queues', label: `Queues (${queueData.length})` }, { key: 'bookings', label: `Bookings (${rankBookings.length})` }, { key: 'trips', label: `Trips (${trips.length})` }].map(t => (
+        {[
+          { key: 'queues', label: `Queues (${queueData.length})` },
+          { key: 'bookings', label: `Bookings (${rankBookings.length})` },
+          { key: 'trips', label: `Trips (${trips.length})` },
+          { key: 'reviews', label: `Reviews (${reviews.length})` },
+          { key: 'incidents', label: `Incidents (${incidents.length})` },
+        ].map(t => (
           <TouchableOpacity
             key={t.key}
             style={[s.tab, activeTab === t.key && s.tabActive]}
-            onPress={() => { setActiveTab(t.key); if (t.key === 'bookings') loadRankBookings(); }}
+            onPress={() => {
+              setActiveTab(t.key);
+              if (t.key === 'bookings') loadRankBookings();
+              if (t.key === 'reviews') loadReviews();
+              if (t.key === 'incidents') loadIncidents();
+            }}
           >
             <Text style={[s.tabTxt, activeTab === t.key && s.tabTxtActive]}>{t.label}</Text>
           </TouchableOpacity>
@@ -734,95 +793,34 @@ export default function TripManagementScreen({ navigation, route }) {
           /* ══════ BOOKINGS TAB ══════ */
           bookingsLoading ? (
             <View style={s.empty}>
-              <ActivityIndicator size="large" color={GOLD} />
-              <Text style={{ marginTop: 10, color: '#94a3b8' }}>Loading bookings…</Text>
+              <ActivityIndicator size="large" color="#3b82f6" />
+              <Text style={s.emptyTitle}>Loading bookings...</Text>
             </View>
           ) : rankBookings.length === 0 ? (
             <View style={s.empty}>
-              <View style={s.emptyCircle}><Ionicons name="receipt-outline" size={32} color="#cbd5e1" /></View>
+              <View style={s.emptyCircle}><Ionicons name="calendar-outline" size={32} color="#cbd5e1" /></View>
               <Text style={s.emptyTitle}>No bookings yet</Text>
-              <Text style={s.emptySub}>Rider bookings for vehicles in the queue will appear here</Text>
+              <Text style={s.emptySub}>Booked seats will appear here</Text>
             </View>
           ) : (
-            Object.values(
-              rankBookings.reduce((groups, bk) => {
-                const key = bk.vehicleRegistration || 'Unknown';
-                if (!groups[key]) groups[key] = { reg: key, bookings: [], totalSeats: 0, totalFare: 0 };
-                groups[key].bookings.push(bk);
-                groups[key].totalSeats += bk.seatsBooked || 0;
-                groups[key].totalFare += bk.totalFare || 0;
-                return groups;
-              }, {})
-            ).map(group => (
-              <View key={group.reg} style={{ marginBottom: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-                  <Ionicons name="car" size={16} color={GOLD} />
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: '#1e293b' }}>{group.reg}</Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b' }}>{group.totalSeats} seats</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#198754' }}>R{group.totalFare.toFixed(2)}</Text>
+            rankBookings.map((booking, idx) => (
+              <View key={booking.id || idx} style={s.card}>
+                <View style={[s.cardAccent, { backgroundColor: '#8b5cf6' }]} />
+                <View style={s.cardBody}>
+                  <View style={s.cardRow}>
+                    <Text style={s.regText} numberOfLines={1}>{booking.passengerName || 'Unknown'}</Text>
+                    <View style={[s.statusBadge, { backgroundColor: '#8b5cf615' }]}>
+                      <Text style={[s.statusText, { color: '#8b5cf6' }]}>{booking.paymentMethod || 'Pending'}</Text>
+                    </View>
+                  </View>
+                  <View style={s.cardRow}>
+                    <Text style={s.driverName} numberOfLines={1}>{booking.seatsBooked} seat(s) • R{booking.totalFare?.toFixed(2) || '0.00'}</Text>
                   </View>
                 </View>
-                {group.bookings.map((bk, bkIdx) => {
-                  const allAllocated = (bk.passengers || []).every(p => p.seatNumber);
-                  return (
-                    <View key={bk.id || bkIdx} style={[s.card, { marginBottom: 8 }]}>
-                      <View style={[s.cardAccent, { backgroundColor: allAllocated ? '#22c55e' : GOLD }]} />
-                      <View style={s.cardBody}>
-                        <View style={s.cardRow}>
-                          <Text style={[s.regText, { flex: 1 }]}>{bk.riderName || 'Unknown Rider'}</Text>
-                          <View style={{ flexDirection: 'row', gap: 4 }}>
-                            <View style={[s.badge, { backgroundColor: bk.status === 'Confirmed' ? '#22c55e' : '#f59e0b' }]}>
-                              <Text style={s.badgeText}>{bk.status}</Text>
-                            </View>
-                            <View style={[s.badge, { backgroundColor: bk.paymentStatus === 'Paid' ? '#22c55e' : '#f59e0b' }]}>
-                              <Text style={s.badgeText}>{bk.paymentStatus || 'Unpaid'}</Text>
-                            </View>
-                          </View>
-                        </View>
-                        <View style={s.cardMeta}>
-                          {bk.riderPhone ? (
-                            <View style={s.metaItem}>
-                              <Ionicons name="call-outline" size={13} color="#64748b" />
-                              <Text style={s.metaText}>{bk.riderPhone}</Text>
-                            </View>
-                          ) : null}
-                          <View style={s.metaItem}>
-                            <Ionicons name="people-outline" size={13} color="#64748b" />
-                            <Text style={s.metaText}>{bk.seatsBooked || 0} seats</Text>
-                          </View>
-                          <View style={s.metaItem}>
-                            <Ionicons name="cash-outline" size={13} color="#198754" />
-                            <Text style={[s.metaText, { color: '#198754', fontWeight: '700' }]}>R{(bk.totalFare || 0).toFixed(2)}</Text>
-                          </View>
-                        </View>
-                        {(bk.passengers || []).length > 0 && (
-                          <View style={{ marginTop: 8 }}>
-                            {bk.passengers.map((p, pi) => (
-                              <View key={p.id || pi} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                                <Text style={{ fontSize: 12, color: '#334155' }}>{pi + 1}. {p.name}</Text>
-                                {p.destination ? <Text style={{ fontSize: 11, color: '#64748b' }}>→ {p.destination}</Text> : null}
-                                {p.seatNumber ? (
-                                  <View style={{ backgroundColor: '#dcfce7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
-                                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#198754' }}>Seat {p.seatNumber}</Text>
-                                  </View>
-                                ) : (
-                                  <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
-                                    <Text style={{ fontSize: 10, fontWeight: '600', color: '#b45309' }}>No seat</Text>
-                                  </View>
-                                )}
-                              </View>
-                            ))}
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })}
               </View>
             ))
           )
-        ) : (
+        ) : activeTab === 'trips' ? (
           /* ══════ TRIPS TAB ══════ */
           trips.length === 0 ? (
             <View style={s.empty}>
@@ -831,89 +829,9 @@ export default function TripManagementScreen({ navigation, route }) {
               <Text style={s.emptySub}>Completed trips will appear here</Text>
             </View>
           ) : (
-            trips.map((trip, idx) => {
+            filteredTrips.map((trip, idx) => {
               const sc = statusColors[trip.status] || '#94a3b8';
               return (
-                <TouchableOpacity
-                  key={trip.id || idx}
-                  style={s.card}
-                  activeOpacity={0.7}
-                  onPress={() => { setSelectedTrip(trip); setTripModalVisible(true); }}
-                >
-                  <View style={[s.cardAccent, { backgroundColor: sc }]} />
-                  <View style={s.cardBody}>
-                    {/* Row 1: route + status */}
-                    <View style={s.cardRow}>
-                      <Text style={s.regText} numberOfLines={1}>
-                        {trip.departureStation || '—'} → {trip.destinationStation || '—'}
-                      </Text>
-                      <View style={[s.badge, { backgroundColor: sc }]}>
-                        <Text style={s.badgeText}>{trip.status}</Text>
-                      </View>
-                    </View>
-
-                    {/* Row 2: meta */}
-                    <View style={s.cardMeta}>
-                      <View style={s.metaItem}>
-                        <Ionicons name="car-outline" size={13} color="#64748b" />
-                        <Text style={s.metaText}>{trip.vehicle?.registration || '—'}</Text>
-                      </View>
-                      <View style={s.metaItem}>
-                        <Ionicons name="person-outline" size={13} color="#64748b" />
-                        <Text style={s.metaText}>{trip.driver?.name || '—'}</Text>
-                      </View>
-                    </View>
-
-                    {/* Row 3: stats */}
-                    <View style={s.tripStats}>
-                      <View style={s.tripStat}>
-                        <Ionicons name="people-outline" size={13} color="#64748b" />
-                        <Text style={s.tripStatTxt}>{trip.passengerCount ?? 0} pax</Text>
-                      </View>
-                      <View style={s.tripStat}>
-                        <Ionicons name="cash-outline" size={13} color="#64748b" />
-                        <Text style={s.tripStatTxt}>R{(trip.totalAmount ?? 0).toFixed(2)}</Text>
-                      </View>
-                      <View style={s.tripStat}>
-                        <Ionicons name="time-outline" size={13} color="#64748b" />
-                        <Text style={s.tripStatTxt}>
-                          {trip.departureTime
-                            ? new Date(trip.departureTime).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
-                            : '—'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
-          )
-        )}
-      </ScrollView>
-
-      {/* ── FAB: Add Vehicle (queue tab only) ── */}
-      {activeTab === 'queues' && (
-        <TouchableOpacity
-          style={s.fab}
-          activeOpacity={0.85}
-          onPress={() => { setSelectedVehicle(null); setSelectedRoute(null); setEstimatedDeparture(''); setShowETDPicker(false); setAddVehicleModalVisible(true); }}
-        >
-          <Ionicons name="add" size={28} color="#000" />
-        </TouchableOpacity>
-      )}
-
-      {/* ── Add Vehicle Modal ── */}
-      <Modal visible={addVehicleModalVisible} transparent animationType="slide" onRequestClose={() => setAddVehicleModalVisible(false)}>
-        <View style={s.modalBg}>
-          <View style={[s.modalCard, { maxHeight: '85%' }]}>
-            <View style={s.modalHdr}>
-              <Text style={s.modalTitle}>Add Vehicle to Queue</Text>
-              <TouchableOpacity onPress={() => setAddVehicleModalVisible(false)} hitSlop={12}>
-                <Ionicons name="close" size={22} color="#64748b" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={s.modalBody} showsVerticalScrollIndicator={false}>
               {/* Route Selection */}
               <Text style={s.fieldLabel}>Route (optional)</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pickerRow}>
@@ -1382,38 +1300,6 @@ export default function TripManagementScreen({ navigation, route }) {
         </View>
       </Modal>
 
-      <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => !confirmBusy && setConfirmVisible(false)}>
-        <View style={s.modalBgCenter}>
-          <View style={s.confirmCard}>
-            <View style={s.confirmIconWrap}>
-              <Ionicons name="help-circle-outline" size={28} color={GOLD} />
-            </View>
-            <Text style={s.confirmTitle}>{confirmTitle}</Text>
-            <Text style={s.confirmMessage}>{confirmMessage}</Text>
-            <View style={s.confirmActions}>
-              <TouchableOpacity
-                style={[s.addBtn, s.confirmCancelBtn]}
-                onPress={() => setConfirmVisible(false)}
-                disabled={confirmBusy}
-              >
-                <Text style={[s.addBtnTxt, s.confirmCancelTxt]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.addBtn, s.confirmDangerBtn]}
-                onPress={() => confirmAction && confirmAction()}
-                disabled={confirmBusy}
-              >
-                {confirmBusy ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={[s.addBtnTxt, s.confirmDangerTxt]}>Remove</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       {/* ── Trip Detail Modal ── */}
       <Modal visible={tripModalVisible} transparent animationType="slide" onRequestClose={() => setTripModalVisible(false)}>
         <View style={s.modalBg}>
@@ -1524,13 +1410,31 @@ const s = StyleSheet.create({
     flexDirection: 'row', backgroundColor: '#fff', paddingHorizontal: 12,
     paddingVertical: 6, gap: 6, borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
   },
+  filterLabel: { fontSize: 11, fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', marginRight: 4, alignSelf: 'center' },
   chip: {
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: 'transparent',
   },
   chipOn: { backgroundColor: GOLD },
   chipTxt: { fontSize: 11, fontWeight: '500', color: '#64748b' },
   chipTxtOn: { color: '#000', fontWeight: '600' },
+
+  // ── Trip Filter Panel ──
+  tripFilterPanel: { backgroundColor: '#fff', borderRadius: 14, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
+  tripFilterToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
+  tripFilterToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tripFilterIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: GOLD_LIGHT, alignItems: 'center', justifyContent: 'center' },
+  tripFilterToggleText: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
+  tripFilterBadge: { backgroundColor: GOLD, minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  tripFilterBadgeText: { fontSize: 10, fontWeight: '800', color: '#000' },
+  tripFilterResults: { fontSize: 12, color: '#94a3b8', paddingHorizontal: 14, paddingBottom: 8, marginTop: -4 },
+  tripFilterSection: { marginBottom: 6 },
+  tripFilterSectionHdr: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, marginBottom: 6 },
+  tripFilterSectionLabel: { fontSize: 11, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
+  tripFilterChipRow: { paddingHorizontal: 14, gap: 6 },
+  tfChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1.5, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' },
+  tfChipTxt: { fontSize: 12, fontWeight: '600', color: '#94a3b8' },
+  tfDot: { width: 6, height: 6, borderRadius: 3 },
 
   // ── Scroll ──
   scroll: { flex: 1 },
@@ -1606,7 +1510,6 @@ const s = StyleSheet.create({
 
   // ── Modal ──
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalBgCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalCard: {
     backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20,
     maxHeight: '80%', paddingBottom: 24,
@@ -1682,56 +1585,6 @@ const s = StyleSheet.create({
     backgroundColor: GOLD, paddingVertical: 14, borderRadius: 12,
   },
   addBtnTxt: { fontSize: 15, fontWeight: '700', color: '#000' },
-  confirmCard: {
-    width: '100%',
-    maxWidth: 380,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-  },
-  confirmIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(212,175,55,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  confirmTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  confirmMessage: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 18,
-  },
-  confirmActions: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-  },
-  confirmCancelBtn: {
-    flex: 1,
-    backgroundColor: '#f1f5f9',
-  },
-  confirmDangerBtn: {
-    flex: 1,
-    backgroundColor: '#ef4444',
-  },
-  confirmCancelTxt: {
-    color: '#475569',
-  },
-  confirmDangerTxt: {
-    color: '#fff',
-  },
 
   // Voice command tip
   voiceTip: {

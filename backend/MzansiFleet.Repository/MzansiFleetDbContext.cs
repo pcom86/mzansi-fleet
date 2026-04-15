@@ -182,6 +182,18 @@ namespace MzansiFleet.Repository
 
             // Configure TaxiRankTrip foreign keys
             modelBuilder.Entity<TaxiRankTrip>()
+                .HasOne(t => t.Vehicle)
+                .WithMany()
+                .HasForeignKey(t => t.VehicleId)
+                .OnDelete(DeleteBehavior.Restrict);
+                
+            modelBuilder.Entity<TaxiRankTrip>()
+                .HasOne(t => t.Driver)
+                .WithMany()
+                .HasForeignKey(t => t.DriverId)
+                .OnDelete(DeleteBehavior.SetNull);
+                
+            modelBuilder.Entity<TaxiRankTrip>()
                 .HasOne(t => t.Marshal)
                 .WithMany()
                 .HasForeignKey(t => t.MarshalId)

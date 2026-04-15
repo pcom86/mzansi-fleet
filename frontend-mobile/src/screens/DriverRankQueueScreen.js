@@ -64,9 +64,9 @@ export default function DriverRankQueueScreen({ navigation, route }) {
     () => queue.find(i => i.isMine && norm(i.status) === 'dispatched' && i.tripId),
     [queue]
   );
-  const myDispatchedTripId = myDispatchedTrip?.tripId
-    || (((data?.myStatus || '').toLowerCase() === 'dispatched') ? data?.myTripId : null);
-  const canCompleteTrip = Boolean(myDispatchedTripId);
+  const myDispatchedQueueEntryId = myDispatchedTrip?.id
+    || (((data?.myStatus || '').toLowerCase() === 'dispatched') ? data?.myQueueEntryId : null);
+  const canCompleteTrip = Boolean(myDispatchedQueueEntryId);
 
   const fmtTime = (v) => {
     if (!v) return '—';
@@ -133,7 +133,7 @@ export default function DriverRankQueueScreen({ navigation, route }) {
   }
 
   async function handleCompleteTrip() {
-    if (!myDispatchedTripId) return;
+    if (!myDispatchedQueueEntryId) return;
     Alert.alert(
       'Complete Trip?',
       `Mark ${myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration || 'vehicle'} as completed.`,
@@ -144,7 +144,7 @@ export default function DriverRankQueueScreen({ navigation, route }) {
           onPress: async () => {
             try {
               const ctx = await captureCompletionContext();
-              await completeQueueTrip(myDispatchedTripId, {
+              await completeQueueTrip(myDispatchedQueueEntryId, {
                 notes: 'Completed by driver',
                 completedByDriverId: driverId, ...ctx,
               });

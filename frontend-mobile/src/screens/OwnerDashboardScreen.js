@@ -84,6 +84,10 @@ export default function OwnerDashboardScreen({ navigation }) {
   const [driverScores, setDriverScores] = useState([]);
   const [fleetDrivers, setFleetDrivers] = useState([]);
   const [driverRevenueMap, setDriverRevenueMap] = useState({});
+  
+  // Reviews state
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   const monthRange = useMemo(() => getCurrentMonthRange(), []);
 
@@ -177,7 +181,7 @@ export default function OwnerDashboardScreen({ navigation }) {
 
           const [driversResp, scores] = await Promise.all([
             client.get(tenantId ? `/Drivers?tenantId=${tenantId}` : '/Drivers').catch(() => ({ data: [] })),
-            fetchDriverScoreboard(tenantId).catch(() => []),
+            tenantId ? fetchDriverScoreboard(tenantId).catch(() => []) : Promise.resolve([]),
           ]);
 
           let drivers = Array.isArray(driversResp.data) ? driversResp.data : [];
@@ -237,6 +241,20 @@ export default function OwnerDashboardScreen({ navigation }) {
         if (mounted) setLoading(false);
       }
   }, [user]);
+
+  const loadReviews = useCallback(async () => {
+    if (!user?.tenantId) return;
+    setReviewsLoading(true);
+    try {
+      const res = await client.get(`/Passengers/reviews?tenantId=${user.tenantId}&limit=100`);
+      setReviews(res.data || []);
+    } catch (e) { 
+      console.warn('Failed to load reviews', e); 
+    }
+    finally { 
+      setReviewsLoading(false); 
+    }
+  }, [user?.tenantId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -394,7 +412,6 @@ export default function OwnerDashboardScreen({ navigation }) {
     { key: 'overview',     label: 'Overview',     icon: 'grid-outline',        activeIcon: 'grid' },
     { key: 'drivers',      label: 'Drivers',      icon: 'people-outline',      activeIcon: 'people', badge: fleetDrivers.length || lowScoreDrivers },
     { key: 'vehicles',     label: 'Vehicles',     icon: 'car-outline',         activeIcon: 'car' },
-    { key: 'maintenance',  label: 'Maint.',        icon: 'construct-outline',   activeIcon: 'construct', badge: pendingMaint },
     { key: 'messages',     label: 'Messages',     icon: 'chatbubble-outline',  activeIcon: 'chatbubble', badge: unreadMessages },
     { key: 'profile',      label: 'Profile',      icon: 'person-outline',      activeIcon: 'person' },
   ];
@@ -489,7 +506,7 @@ export default function OwnerDashboardScreen({ navigation }) {
           <Text style={styles.headerAvatarTxt}>{initials}</Text>
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.greeting}>Hello, {user?.fullName?.split(' ')[0] || 'Owner'} 👋</Text>
+          <Text style={styles.greeting}> {user?.fullName?.split(' ')[0] || 'Owner'} 👋</Text>
           <Text style={styles.subhead}>Owner Portal · This Month</Text>
         </View>
         <ThemeToggle style={{ marginRight: 8 }} size={20} />
@@ -839,12 +856,6 @@ export default function OwnerDashboardScreen({ navigation }) {
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
             {/* Quick action buttons */}
             <View style={styles.quickActions}>
-              <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerVehicles')}>
-                <View style={[styles.quickActionIcon, { backgroundColor: c.primary + '20' }]}>
-                  <Ionicons name="speedometer-outline" size={22} color={c.primary} />
-                </View>
-                <Text style={styles.quickActionTxt}>Fleet Performance</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('OwnerBookService')}>
                 <View style={[styles.quickActionIcon, { backgroundColor: '#22c55e20' }]}>
                   <Ionicons name="construct-outline" size={22} color="#22c55e" />
@@ -956,6 +967,114 @@ export default function OwnerDashboardScreen({ navigation }) {
           </ScrollView>
         )}
 
+        {/* ── REVIEWS ── */}
+        {tab === 'reviews' && (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Customer Reviews</Text>
+              <Text style={styles.sectionSub}>Feedback from passengers about your fleet</Text>
+            </View>
+
+            {reviewsLoading ? (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 }}>
+                <ActivityIndicator size="large" color={c.primary} />
+                <Text style={{ marginTop: 12, fontSize: 14, color: c.textMuted }}>Loading reviews...</Text>
+              </View>
+            ) : reviews.length === 0 ? (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                  <Ionicons name="star-outline" size={32} color={c.textMuted} />
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: c.textMuted, marginBottom: 4 }}>No reviews yet</Text>
+                <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', paddingHorizontal: 32 }}>Customer reviews will appear here once passengers start rating your service</Text>
+              </View>
+            ) : (
+              <>
+                {/* Summary stats */}
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                  <View style={[styles.statCard, { flex: 1, backgroundColor: c.surface }]}>
+                    <Text style={{ fontSize: 24, fontWeight: '800', color: c.primary }}>
+                      {(reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>Average Rating</Text>
+                  </View>
+                  <View style={[styles.statCard, { flex: 1, backgroundColor: c.surface }]}>
+                    <Text style={{ fontSize: 24, fontWeight: '800', color: '#22c55e' }}>
+                      {reviews.filter(r => r.rating >= 4).length}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>Positive</Text>
+                  </View>
+                  <View style={[styles.statCard, { flex: 1, backgroundColor: c.surface }]}>
+                    <Text style={{ fontSize: 24, fontWeight: '800', color: '#ef4444' }}>
+                      {reviews.filter(r => r.rating <= 2).length}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>Critical</Text>
+                  </View>
+                </View>
+
+                {/* Reviews list */}
+                {reviews.map((review, idx) => (
+                  <View key={review.id || idx} style={[styles.requestCard, { 
+                    borderLeftColor: review.rating >= 4 ? '#22c55e' : review.rating <= 2 ? '#ef4444' : '#f59e0b', 
+                    borderLeftWidth: 4,
+                    backgroundColor: c.surface
+                  }]}>
+                    {/* Header: passenger + rating */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '600', color: c.text, flex: 1 }}>
+                        {review.passengerName || 'Anonymous'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: '#f59e0b', marginRight: 4 }}>
+                          {'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Route */}
+                    <View style={{ marginBottom: 4 }}>
+                      <Text style={{ fontSize: 13, color: c.textMuted }}>
+                        {review.route || 'Unknown route'}
+                      </Text>
+                    </View>
+
+                    {/* Vehicle & driver */}
+                    {(review.vehicleRegistration || review.driverName) && (
+                      <View style={{ marginBottom: 4 }}>
+                        <Text style={{ fontSize: 13, color: c.textMuted }}>
+                          {review.vehicleRegistration && `${review.vehicleRegistration} • `}{review.driverName || 'No Driver'}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Comments */}
+                    {review.comments && (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={{ fontSize: 13, color: c.textMuted, lineHeight: 18 }}>
+                          {review.comments}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Date */}
+                    <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.border }}>
+                      <Text style={{ fontSize: 11, color: c.textMuted }}>
+                        {new Date(review.createdAt).toLocaleDateString('en-ZA', { 
+                          day: 'numeric', 
+                          month: 'short', 
+                          year: 'numeric', 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+          </ScrollView>
+        )}
+
         {/* ── PROFILE ── */}
         {tab === 'profile' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
@@ -1019,7 +1138,10 @@ export default function OwnerDashboardScreen({ navigation }) {
       {/* ── Bottom tab bar ── */}
       <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         {TABS.map(t => (
-          <TouchableOpacity key={t.key} style={styles.tabItem} onPress={() => setTab(t.key)}>
+          <TouchableOpacity key={t.key} style={styles.tabItem} onPress={() => {
+              setTab(t.key);
+              if (t.key === 'reviews') loadReviews();
+            }}>
             <View>
               <Ionicons name={tab === t.key ? t.activeIcon : t.icon} size={22} color={tab === t.key ? c.primary : c.textMuted} />
               {t.badge > 0 && (
@@ -1069,8 +1191,10 @@ function createStyles(c) {
 
     sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, marginTop: 4 },
     sectionTitle: { fontSize: 16, fontWeight: '800', color: c.text },
+    sectionSub: { fontSize: 12, color: c.textMuted },
     sectionSubTitle: { fontSize: 11, color: c.textMuted },
     sectionLink: { fontSize: 13, color: c.primary, fontWeight: '700' },
+    statCard: { padding: 16, borderRadius: 12, alignItems: 'center' },
     newRequestBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
     newRequestBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '700' },
 

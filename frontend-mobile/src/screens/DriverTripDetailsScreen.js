@@ -192,7 +192,7 @@ export default function DriverTripDetailsScreen({ navigation, route }) {
             <Ionicons 
               name={passenger.paymentMethod === 'Card' ? 'card' : 'cash'} 
               size={14} 
-              color={c.textSecondary} 
+              color={c.textMuted} 
             />
             <Text style={s.paymentText}>{passenger.paymentMethod || 'Cash'}</Text>
           </View>
@@ -231,7 +231,7 @@ export default function DriverTripDetailsScreen({ navigation, route }) {
   if (!tripData) {
     return (
       <View style={[s.container, s.centered]}>
-        <Ionicons name="document-text" size={48} color={c.textSecondary} />
+        <Ionicons name="document-text" size={48} color={c.textMuted} />
         <Text style={s.errorText}>Trip details not available</Text>
       </View>
     );
@@ -432,7 +432,7 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -454,11 +454,11 @@ const createStyles = (colors) => StyleSheet.create({
     padding: 16,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
-    border: 1,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   sectionTitle: {
@@ -491,7 +491,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   timeInfo: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginBottom: 2,
   },
   vehicleInfo: {
@@ -502,16 +502,16 @@ const createStyles = (colors) => StyleSheet.create({
   },
   vehicleReg: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginBottom: 2,
   },
   vehicleType: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   queueInfo: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginBottom: 2,
   },
   passengerCard: {
@@ -519,7 +519,7 @@ const createStyles = (colors) => StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
-    border: 1,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   passengerHeader: {
@@ -543,12 +543,12 @@ const createStyles = (colors) => StyleSheet.create({
   },
   passengerPhone: {
     fontSize: 13,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginBottom: 2,
   },
   passengerRoute: {
     fontSize: 13,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   passengerFooter: {
     flexDirection: 'row',
@@ -561,19 +561,19 @@ const createStyles = (colors) => StyleSheet.create({
   },
   paymentText: {
     fontSize: 12,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginLeft: 4,
   },
   seatNumber: {
     fontSize: 12,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   costCard: {
     backgroundColor: colors.background,
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
-    border: 1,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   costHeader: {
@@ -590,16 +590,16 @@ const createStyles = (colors) => StyleSheet.create({
   costAmount: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.error,
+    color: colors.danger,
   },
   costDescription: {
     fontSize: 13,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginBottom: 2,
   },
   receiptNumber: {
     fontSize: 12,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -615,7 +615,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   summaryValue: {
     fontSize: 14,
@@ -640,31 +640,36 @@ const createStyles = (colors) => StyleSheet.create({
   },
   emptyText: {
     textAlign: 'center',
-    color: colors.textSecondary,
+    color: colors.textMuted,
     fontStyle: 'italic',
   },
   loadingText: {
     marginTop: 16,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   errorText: {
     marginTop: 16,
-    color: colors.error,
+    color: colors.danger,
     textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
   },
   modalContent: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 24,
     width: '100%',
     maxWidth: 400,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
   },
   modalTitle: {
     fontSize: 20,
@@ -675,7 +680,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
   modalSubtitle: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginBottom: 20,
     textAlign: 'center',
     lineHeight: 20,

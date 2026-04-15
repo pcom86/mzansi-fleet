@@ -14,6 +14,7 @@ import { submitMechanicalRequestReview } from '../api/reviews';
 import { fetchDriverEvents } from '../api/driverBehavior';
 import RatingReviewModal from './RatingReviewModal';
 import ThemeToggle from '../components/ThemeToggle';
+import { completeTrip } from '../api/taxiRanks';
 import { startMonitoring, stopMonitoring, isMonitoring, getCurrentSpeed } from '../services/DrivingMonitorService';
 import * as Location from 'expo-location';
 
@@ -55,6 +56,10 @@ function statusColor(state) {
     case 'rejected': case 'cancelled': return '#ef4444';
     default: return '#9ca3af';
   }
+}
+
+function getTripId(trip) {
+  return trip?.id || trip?.Id || null;
 }
 
 // ── Modals ───────────────────────────────────────────────────────────────────
@@ -1199,6 +1204,39 @@ export default function DriverDashboardScreen({ navigation }) {
   const [monitorSpeed, setMonitorSpeed] = useState(0);
   const [recentBehaviorEvents, setRecentBehaviorEvents] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
+  const [completeModalVisible, setCompleteModalVisible] = useState(false);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [completing, setCompleting] = useState(false);
+
+  async function handleDashboardCompleteTrip() {
+    const tripId = getTripId(activeTrip);
+    if (!tripId) { Alert.alert('Error', 'Invalid trip ID'); return; }
+    try {
+      setCompleting(true);
+      let lat, lng;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          lat = loc.coords.latitude;
+          lng = loc.coords.longitude;
+        }
+      } catch {}
+      await completeTrip(tripId, completionNotes || 'Completed from driver dashboard', profile?.id, {
+        completedAt: new Date().toISOString(),
+        latitude: lat,
+        longitude: lng,
+      });
+      setCompleteModalVisible(false);
+      setCompletionNotes('');
+      Alert.alert('Success', 'Trip completed successfully');
+      await load();
+    } catch (e) {
+      Alert.alert('Error', e?.response?.data?.message || e?.message || 'Failed to complete trip');
+    } finally {
+      setCompleting(false);
+    }
+  }
 
   async function submitReview({ rating, review }) {
     await submitMechanicalRequestReview({
@@ -1426,33 +1464,14 @@ export default function DriverDashboardScreen({ navigation }) {
             refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
             monitorActive={monitorActive} monitorSpeed={monitorSpeed} recentBehaviorEvents={recentBehaviorEvents}
             activeTrip={activeTrip}
-            onViewTripDetails={(trip) => navigation.navigate('DriverTripDetails', { tripId: trip.id, driverProfileId: profile?.id })}
-            onCompleteTrip={async (trip) => {
-              Alert.alert('Complete Trip', 'Are you sure you want to complete this trip?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Complete', onPress: async () => {
-                  try {
-                    let lat, lng;
-                    try {
-                      const { status } = await Location.requestForegroundPermissionsAsync();
-                      if (status === 'granted') {
-                        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-                        lat = loc.coords.latitude; lng = loc.coords.longitude;
-                      }
-                    } catch {}
-                    await client.put(`/TaxiRankTrips/${trip.id}/complete`, {
-                      notes: 'Completed from driver dashboard',
-                      completedByDriverId: profile?.id,
-                      completedAt: new Date().toISOString(),
-                      latitude: lat, longitude: lng,
-                    });
-                    Alert.alert('Success', 'Trip completed successfully');
-                    load();
-                  } catch (e) {
-                    Alert.alert('Error', e?.response?.data?.message || e?.message || 'Failed to complete trip');
-                  }
-                }},
-              ]);
+            onViewTripDetails={(trip) => {
+              const tripId = getTripId(trip);
+              if (!tripId) { Alert.alert('Error', 'Invalid trip ID'); return; }
+              navigation.navigate('DriverTripDetails', { tripId, driverProfileId: profile?.id });
+            }}
+            onCompleteTrip={() => {
+              setCompletionNotes('');
+              setCompleteModalVisible(true);
             }}
             c={c} s={s} />
         )}
@@ -1522,6 +1541,35 @@ export default function DriverDashboardScreen({ navigation }) {
         request={ratingRequest}
         role="driver"
       />
+
+      {/* Complete Trip Modal */}
+      <Modal visible={completeModalVisible} transparent animationType="fade" onRequestClose={() => setCompleteModalVisible(false)}>
+        <View style={s.ctOverlay}>
+          <View style={s.ctContent}>
+            <Text style={s.ctTitle}>Complete Trip</Text>
+            <Text style={s.ctSubtitle}>Are you sure you want to complete this trip? This action cannot be undone.</Text>
+            <TextInput
+              style={s.ctNotesInput}
+              placeholder="Add completion notes (optional)"
+              placeholderTextColor={c.textMuted}
+              value={completionNotes}
+              onChangeText={setCompletionNotes}
+              multiline
+              numberOfLines={3}
+            />
+            <View style={s.ctButtons}>
+              <TouchableOpacity style={s.ctCancelBtn} onPress={() => setCompleteModalVisible(false)} disabled={completing}>
+                <Text style={s.ctCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.ctConfirmBtn} onPress={handleDashboardCompleteTrip} disabled={completing}>
+                {completing
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={s.ctConfirmTxt}>Complete</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1755,5 +1803,17 @@ function createStyles(c) {
     behaviorTitle: { fontSize: 13, fontWeight: '700', color: c.text },
     behaviorDesc: { fontSize: 11, color: c.textMuted, marginTop: 1 },
     behaviorPoints: { fontSize: 14, fontWeight: '900', color: '#ef4444' },
+
+    // ── Complete Trip Modal ──
+    ctOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 32 },
+    ctContent: { backgroundColor: c.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12 },
+    ctTitle: { fontSize: 20, fontWeight: '800', color: c.text, marginBottom: 8, textAlign: 'center' },
+    ctSubtitle: { fontSize: 14, color: c.textMuted, marginBottom: 20, textAlign: 'center', lineHeight: 20 },
+    ctNotesInput: { backgroundColor: c.background, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, borderWidth: 1, borderColor: c.border, marginBottom: 20, minHeight: 80, textAlignVertical: 'top' },
+    ctButtons: { flexDirection: 'row', gap: 12 },
+    ctCancelBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', backgroundColor: c.background, borderWidth: 1, borderColor: c.border },
+    ctCancelTxt: { color: c.text, fontWeight: '700', fontSize: 15 },
+    ctConfirmBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', backgroundColor: '#16a34a' },
+    ctConfirmTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
   });
 }
