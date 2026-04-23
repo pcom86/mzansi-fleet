@@ -522,13 +522,14 @@ namespace MzansiFleet.Api.Controllers
                         _totalFare = passengerList.Sum(p => p.Amount);
                         if (_totalFare > 0)
                         {
+                            var routeName = $"{taxiRank?.Name} → {route?.DestinationStation}";
                             var earnings = new VehicleEarnings
                             {
                                 Id = Guid.NewGuid(),
                                 VehicleId = entry.VehicleId,
                                 Date = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
                                 Amount = _totalFare,
-                                Source = "Trip",
+                                Source = routeName,
                                 Description = $"Taxi rank trip from {taxiRank?.Name} to {route?.DestinationStation} - {passengerList.Count} passengers",
                                 Period = "Daily",
                                 CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
@@ -584,13 +585,14 @@ namespace MzansiFleet.Api.Controllers
                         if (quickFare > 0)
                         {
                             _totalFare = quickFare;
+                            var routeName = $"{taxiRank?.Name} → {route?.DestinationStation}";
                             var earnings = new VehicleEarnings
                             {
                                 Id = Guid.NewGuid(),
                                 VehicleId = entry.VehicleId,
                                 Date = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
                                 Amount = quickFare,
-                                Source = "Trip",
+                                Source = routeName,
                                 Description = $"Quick dispatch from {taxiRank?.Name} to {route?.DestinationStation} - {entry.PassengerCount} passengers",
                                 Period = "Daily",
                                 CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
@@ -940,6 +942,12 @@ namespace MzansiFleet.Api.Controllers
                 var cashTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Cash").Sum(p => p.Amount);
                 var cardTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Card").Sum(p => p.Amount);
                 var totalEarnings = passengers.Sum(p => p.Amount);
+
+                // Use TotalAmount from DTO as fallback if provided and no passengers exist
+                if (totalEarnings == 0 && dto.TotalAmount.HasValue && dto.TotalAmount.Value > 0)
+                {
+                    totalEarnings = dto.TotalAmount.Value;
+                }
 
                 // Update vehicle earnings record
                 var routeName = $"{trip.DepartureStation} → {trip.DestinationStation}";
@@ -1610,6 +1618,7 @@ namespace MzansiFleet.Api.Controllers
         public DateTime? CompletedAt { get; set; }
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }
+        public decimal? TotalAmount { get; set; }
     }
 
     }

@@ -387,8 +387,8 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
             prePopulated.push({
               name: p.name || bk.riderName || '',
               contact: p.contactNumber || bk.riderPhone || '',
-              nextOfKinName: '',
-              nextOfKinContact: '',
+              nextOfKinName: p.nextOfKinName || '',
+              nextOfKinContact: p.nextOfKinContact || '',
               destination: p.destination || defaultDestination,
               amount: p.fare ? String(p.fare) : (defaultFare ? String(defaultFare) : ''),
               paymentMethod: bk.paymentMethod || 'Ozow',
@@ -687,6 +687,11 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       setDispatchFare('');
       setIncludePassengerList(false);
       setPassengerList([{ name: '', contact: '', nextOfKinName: '', nextOfKinContact: '', destination: '', amount: '', paymentMethod: 'Cash' }]);
+      
+      // Navigate back to Trip Management after dispatch
+      setTimeout(() => {
+        navigation.navigate('TripManagement', { rank });
+      }, 500);
       
       // Force refresh the data
       console.log('[Dispatch] Refreshing data after dispatch');

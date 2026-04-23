@@ -30,7 +30,7 @@ const hostUriCandidates = [
   Constants.manifest?.debuggerHost,
 ];
 const expoHost = hostUriCandidates.map(extractHost).find(Boolean) || null;
-const defaultHost = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+const defaultHost = Platform.OS === 'android' ? '192.168.68.110' : 'localhost';
 const host = Platform.OS === 'web' ? 'localhost' : (expoHost || defaultHost);
 const computedApiUrl = `http://${host}:5000/api`;
 

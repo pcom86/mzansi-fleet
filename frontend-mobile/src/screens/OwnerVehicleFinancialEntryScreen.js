@@ -1094,6 +1094,42 @@ function createStyles(c) {
       marginLeft: 12,
     },
     
+    // Receipt styles
+    receiptOptions: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    receiptButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    receiptButtonText: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    receiptPreview: {
+      position: 'relative',
+      borderRadius: 12,
+      overflow: 'hidden',
+      marginBottom: 8,
+    },
+    receiptImage: {
+      width: '100%',
+      height: 180,
+      borderRadius: 12,
+    },
+    removeReceipt: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+    },
+
     // Part chip styles
     partChip: {
       flexDirection: 'row',

@@ -242,7 +242,13 @@ export function stopMonitoring() {
     _accelSubscription = null;
   }
   if (_locationSubscription) {
-    _locationSubscription.remove();
+    if (typeof _locationSubscription.remove === 'function') {
+      try {
+        _locationSubscription.remove();
+      } catch (err) {
+        console.warn('[DrivingMonitor] Error removing location subscription:', err.message);
+      }
+    }
     _locationSubscription = null;
   }
   _isMonitoring = false;

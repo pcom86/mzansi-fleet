@@ -595,8 +595,6 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      {activeTab === 'details' && (
-      <>
       <View style={styles.actionsRow}>
         <TouchableOpacity style={styles.btnPrimary} onPress={() => navigation.navigate('OwnerVehicleForm', { vehicle: v })}>
           <Text style={styles.btnPrimaryText}>Edit</Text>
@@ -627,6 +625,8 @@ export default function OwnerVehicleDetailsScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
+      {activeTab === 'details' && (
+      <>
       <View style={styles.finRow}>
         <TouchableOpacity
           style={styles.btn}

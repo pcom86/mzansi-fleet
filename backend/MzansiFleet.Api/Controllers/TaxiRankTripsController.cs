@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using MzansiFleet.Domain.Entities;
 using MzansiFleet.Domain.Interfaces.IRepositories;
 using MzansiFleet.Repository;
@@ -22,19 +23,22 @@ namespace MzansiFleet.Api.Controllers
         private readonly ITripCostRepository _costRepository;
         private readonly IVehicleRepository _vehicleRepository;
         private readonly MzansiFleetDbContext _context;
+        private readonly ILogger<TaxiRankTripsController> _logger;
 
         public TaxiRankTripsController(
             ITaxiRankTripRepository tripRepository,
             ITripPassengerRepository passengerRepository,
             ITripCostRepository costRepository,
             IVehicleRepository vehicleRepository,
-            MzansiFleetDbContext context)
+            MzansiFleetDbContext context,
+            ILogger<TaxiRankTripsController> logger)
         {
             _tripRepository = tripRepository;
             _passengerRepository = passengerRepository;
             _costRepository = costRepository;
             _vehicleRepository = vehicleRepository;
             _context = context;
+            _logger = logger;
         }
 
         // GET: api/TaxiRankTrips
@@ -1058,6 +1062,12 @@ namespace MzansiFleet.Api.Controllers
                 var cardTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Card").Sum(p => p.Amount);
                 var totalEarnings = passengers.Sum(p => p.Amount);
 
+                // Use TotalAmount from DTO as fallback if provided and no passengers exist
+                if (totalEarnings == 0 && dto.TotalAmount.HasValue && dto.TotalAmount.Value > 0)
+                {
+                    totalEarnings = dto.TotalAmount.Value;
+                }
+
                 // Ensure the vehicle earnings record is finalized
                 var routeName = $"{trip.DepartureStation} → {trip.DestinationStation}";
                 var earnings = await _context.VehicleEarnings
@@ -1091,6 +1101,29 @@ namespace MzansiFleet.Api.Controllers
                 }
 
                 await _context.SaveChangesAsync();
+
+                // Update the associated queue entry status to Completed
+                try
+                {
+                    var queueEntry = await _context.DailyTaxiQueues
+                        .Where(q => q.VehicleId == trip.VehicleId
+                            && q.TaxiRankId == trip.TaxiRankId
+                            && q.Status == "Dispatched")
+                        .OrderByDescending(q => q.DepartedAt)
+                        .FirstOrDefaultAsync();
+
+                    if (queueEntry != null)
+                    {
+                        queueEntry.Status = "Completed";
+                        queueEntry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                        _logger.LogInformation($"[TripCompletion] Updated queue entry {queueEntry.Id} status to Completed for trip {trip.Id}");
+                        await _context.SaveChangesAsync();
+                    }
+                }
+                catch (Exception queueEx)
+                {
+                    _logger.LogError(queueEx, $"[TripCompletion] Failed to update queue entry status for trip {trip.Id}");
+                }
 
                 // Find and notify the vehicle owner
                 string ownerNotified = "none";
@@ -1310,6 +1343,7 @@ namespace MzansiFleet.Api.Controllers
         public DateTime? CompletedAt { get; set; }
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }
+        public decimal? TotalAmount { get; set; }
     }
 
     public class UpdateTripDto

@@ -55,3 +55,9 @@ export async function unassignVehicleFromTaxiRank(vehicleId) {
   const resp = await client.post(`/Vehicles/${vehicleId}/unassign-taxirank`);
   return resp.data;
 }
+
+export async function getVehiclesByRouteId(routeId) {
+  if (!routeId) return [];
+  const resp = await client.get(`/RouteVehicle/route/${routeId}/vehicles`);
+  return resp.data || [];
+}

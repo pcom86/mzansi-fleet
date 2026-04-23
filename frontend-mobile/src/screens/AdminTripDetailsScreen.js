@@ -391,21 +391,7 @@ export default function AdminTripDetailsScreen({ navigation }) {
       const resp = await client.post('/TripDetails', tripData);
       const tripId = resp.data?.id;
 
-      // Record vehicle earnings
-      try {
-        await client.post('/VehicleEarnings', {
-          vehicleId: selectedVehicleId,
-          amount: totalFare,
-          date: tripData.tripDate,
-          source: 'Trip',
-          description: `Trip earnings - ${passengerCount} passengers (Trip ID: ${tripId})`,
-          period: 'Daily',
-        });
-      } catch (e) {
-        console.warn('Earnings recording failed:', e?.message);
-      }
-
-      Alert.alert('Success', 'Trip details saved and earnings recorded!');
+      Alert.alert('Success', 'Trip details saved!');
       resetCaptureForm();
       loadHistoricalTrips();
     } catch (err) {

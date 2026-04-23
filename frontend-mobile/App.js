@@ -13,6 +13,7 @@ import DriverRegistrationScreen from './src/screens/DriverRegistrationScreen';
 import DriverDashboardScreen from './src/screens/DriverDashboardScreen';
 import DriverRankQueueScreen from './src/screens/DriverRankQueueScreen';
 import DriverTripDetailsScreen from './src/screens/DriverTripDetailsScreen';
+import AdminTripDetailsScreen from './src/screens/AdminTripDetailsScreen';
 import DriverBehaviorScreen from './src/screens/DriverBehaviorScreen';
 import DriverOnboardingStep2Screen from './src/screens/DriverOnboardingStep2Screen';
 import ServiceProviderRegistrationScreen from './src/screens/ServiceProviderRegistrationScreen';
@@ -131,6 +132,7 @@ function AppNavigator() {
           <Stack.Screen name="DriverDashboard" component={DriverDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverRankQueue" component={DriverRankQueueScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverTripDetails" component={DriverTripDetailsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TripDetails" component={AdminTripDetailsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverBehavior" component={DriverBehaviorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverOnboardingStep2" component={DriverOnboardingStep2Screen} options={{ title: 'Driver Details' }} />
           <Stack.Screen name="ServiceProviderRegistration" component={ServiceProviderRegistrationScreen} />

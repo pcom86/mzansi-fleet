@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { createVehicle, updateVehicle } from '../api/vehicles';
@@ -216,7 +217,22 @@ export default function OwnerVehicleFormScreen({ route, navigation }) {
       <TextInput value={capacity} onChangeText={setCapacity} style={styles.input} placeholder="Capacity" placeholderTextColor={c.textMuted} keyboardType="numeric" />
       <TextInput value={type} onChangeText={setType} style={styles.input} placeholder="Type (optional)" placeholderTextColor={c.textMuted} />
       <TextInput value={baseLocation} onChangeText={setBaseLocation} style={styles.input} placeholder="Base Location (optional)" placeholderTextColor={c.textMuted} />
-      <TextInput value={status} onChangeText={setStatus} style={styles.input} placeholder="Status (Available/In Use/Maintenance)" placeholderTextColor={c.textMuted} />
+      <View style={styles.pickerContainer}>
+        <Text style={styles.pickerLabel}>Status</Text>
+        <View style={styles.pickerWrapper}>
+          <Picker
+            selectedValue={status}
+            onValueChange={setStatus}
+            style={styles.picker}
+            itemStyle={styles.pickerItem}
+          >
+            <Picker.Item label="Available" value="Available" />
+            <Picker.Item label="In Use" value="In Use" />
+            <Picker.Item label="Maintenance" value="Maintenance" />
+            <Picker.Item label="Out of Service" value="Out of Service" />
+          </Picker>
+        </View>
+      </View>
 
       <TouchableOpacity style={[styles.btnPrimary, saving && { opacity: 0.6 }]} onPress={onSave} disabled={saving}>
         {saving ? <ActivityIndicator color={c.primaryText} /> : <Text style={styles.btnPrimaryText}>{editingVehicle ? 'Update Vehicle' : 'Add Vehicle'}</Text>}
@@ -244,5 +260,10 @@ function createStyles(c) {
     thumb: { width: '100%', height: '100%' },
     removeBadge: { position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
     removeBadgeText: { color: '#fff', fontSize: 18, lineHeight: 20 },
+    pickerContainer: { marginBottom: 10 },
+    pickerLabel: { fontSize: 14, fontWeight: '900', marginBottom: 6, color: c.text },
+    pickerWrapper: { borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.surface, overflow: 'hidden' },
+    picker: { height: 50, color: c.text },
+    pickerItem: { color: c.text },
   });
 }

@@ -76,7 +76,7 @@ export default function RiderDashboardScreen({ navigation }) {
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
         <View style={styles.headerTop}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerGreeting}>Hello, {user?.fullName || user?.email || 'Rider'} 👋</Text>
+            <Text style={styles.headerGreeting}>{user?.fullName || user?.email || 'Rider'}</Text>
             <Text style={styles.headerSub}>Where are you heading today?</Text>
           </View>
           <ThemeToggle showBackground={false} size={22} />

@@ -153,7 +153,7 @@ export default function MarshalDashboardScreen({ navigation }) {
         <TouchableOpacity
           style={styles.captureCta}
           activeOpacity={0.85}
-          onPress={() => navigation.navigate('TripDetails', { rank: activeRank })}
+          onPress={() => navigation.navigate('TripManagement', { rank: activeRank })}
         >
           <View style={styles.captureCtaIcon}>
             <Ionicons name="scan-outline" size={28} color="#000" />
@@ -241,7 +241,7 @@ export default function MarshalDashboardScreen({ navigation }) {
               </View>
               <TouchableOpacity
                 style={styles.scheduleCapBtn}
-                onPress={() => navigation.navigate('TripDetails', { rank: activeRank, preSelectedSchedule: s })}
+                onPress={() => navigation.navigate('TripManagement', { rank: activeRank, preSelectedSchedule: s })}
               >
                 <Ionicons name="add-circle" size={28} color={GOLD} />
               </TouchableOpacity>
@@ -286,7 +286,7 @@ export default function MarshalDashboardScreen({ navigation }) {
         <BottomTab icon="grid-outline" label="Dashboard" active onPress={() => {}} textColor={c.text} muted={c.textMuted} />
         <BottomTab
           icon="scan-outline" label="Capture" highlight
-          onPress={() => navigation.navigate('TripDetails', { rank: activeRank })}
+          onPress={() => navigation.navigate('TripManagement', { rank: activeRank })}
           textColor={c.text} muted={c.textMuted}
         />
         <BottomTab icon="ticket-outline" label="Bookings" onPress={() => navigation.navigate('BookTrip')} textColor={c.text} muted={c.textMuted} />

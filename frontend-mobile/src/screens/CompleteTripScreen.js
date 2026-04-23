@@ -9,8 +9,9 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import {
   fetchTaxiRanks, fetchTripsByRank, fetchTripPassengers,
-  completeTrip, fetchAdminByUserId,
+  completeTrip, fetchAdminByUserId, updateTripStatus,
 } from '../api/taxiRanks';
+import { getQueueByRank } from '../api/queueManagement';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -126,7 +127,10 @@ export default function CompleteTripScreen({ route: navRoute, navigation }) {
           onPress: async () => {
             setCompleting(true);
             try {
-              const result = await completeTrip(selectedTrip.id, completionNotes);
+              console.log('Completing trip:', selectedTrip.id, 'with total fare:', totalFare);
+              const result = await completeTrip(selectedTrip.id, completionNotes, user?.id, null, totalFare);
+              console.log('Trip completion result:', result);
+
               Alert.alert(
                 '✅ Trip Completed!',
                 `Earnings of R${(result.totalEarnings || totalFare).toFixed(2)} recorded against ${result.vehicleRegistration || 'vehicle'}.\n\n` +

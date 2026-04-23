@@ -135,8 +135,8 @@ export default function TaxiRankDetailsScreen({ route, navigation }) {
 
         {/* Quick actions */}
         <View style={styles.actionsRow}>
-          <ActionBtn icon="add-circle-outline" label="Capture Trip"
-            onPress={() => navigation.navigate('TripDetails', { rank })} c={c} />
+          <ActionBtn icon="add-circle-outline" label="Trip Management"
+            onPress={() => navigation.navigate('TripManagement', { rank })} c={c} />
           <ActionBtn icon="git-branch-outline" label="Routes"
             onPress={() => navigation.navigate('TaxiRankRoutes', { rank })} c={c} />
           <ActionBtn icon="create-outline" label="Edit Rank"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl,
   ActivityIndicator, Alert, Modal, TextInput, Platform
@@ -12,6 +12,7 @@ import client from '../api/client';
 import { getQueueByRank, getQueueStats, addToQueue, dispatchVehicle, removeFromQueue, updateQueueEntry } from '../api/queueManagement';
 import { fetchTrips, fetchTripsByRank, fetchVehiclesByRankId, fetchTaxiRanks, completeTrip } from '../api/taxiRanks';
 import { fetchQueueEntryBookings, fetchRankBookings, allocateSeats } from '../api/queueBooking';
+import { getVehiclesByTenantId, getVehiclesByRouteId } from '../api/vehicles';
 import VoiceRecorderButton from '../components/VoiceRecorderButton';
 import AIService from '../services/AIService';
 
@@ -20,9 +21,10 @@ const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
 
 export default function TripManagementScreen({ navigation, route }) {
   const { user } = useAuth();
-  const { theme } = useAppTheme();
+  const { theme, mode } = useAppTheme();
   const c = theme.colors;
   const insets = useSafeAreaInsets();
+  const s = useMemo(() => createStyles(c, mode), [c, mode]);
   
   const { rank } = route.params || {};
   const [activeTab, setActiveTab] = useState('queues'); // 'queues' or 'trips'
@@ -37,6 +39,7 @@ export default function TripManagementScreen({ navigation, route }) {
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all'); // 'all', 'waiting', 'loading', 'dispatched', 'removed'
+  const [selectedRouteFilter, setSelectedRouteFilter] = useState('all'); // 'all' or routeId
   
   // Trips states
   const [trips, setTrips] = useState([]);
@@ -50,6 +53,8 @@ export default function TripManagementScreen({ navigation, route }) {
   const [addingVehicle, setAddingVehicle] = useState(false);
   const [estimatedDeparture, setEstimatedDeparture] = useState('');
   const [showETDPicker, setShowETDPicker] = useState(false);
+  const [modalVehicles, setModalVehicles] = useState([]);
+  const [loadingModalVehicles, setLoadingModalVehicles] = useState(false);
   
   // Voice command state
   const [voiceProcessing, setVoiceProcessing] = useState(false);
@@ -109,18 +114,54 @@ export default function TripManagementScreen({ navigation, route }) {
     setConfirmVisible(true);
   };
 
-  // Filter queue data by status
-  const getFilteredQueueData = () => {
-    if (selectedStatusFilter === 'all') {
-      return queueData;
-    }
-    return queueData.filter(item => {
-      const normalizedStatus = String(item.status || '').toLowerCase();
-      return normalizedStatus === selectedStatusFilter.toLowerCase();
+  // Derive unique routes from the queue
+  const queueRoutes = useMemo(() => {
+    const seen = new Map();
+    queueData.forEach(i => {
+      const key = i.routeId || i.routeName || 'unassigned';
+      if (!seen.has(key)) seen.set(key, { id: key, name: i.routeName || 'Unassigned' });
     });
+    return [{ id: 'all', name: 'All Routes' }, ...Array.from(seen.values())];
+  }, [queueData]);
+
+  // Filter queue data by status and route
+  const getFilteredQueueData = () => {
+    let filtered = queueData;
+
+    // Filter by status
+    if (selectedStatusFilter !== 'all') {
+      filtered = filtered.filter(item => {
+        const normalizedStatus = String(item.status || '').toLowerCase();
+        return normalizedStatus === selectedStatusFilter.toLowerCase();
+      });
+    }
+
+    // Filter by route
+    if (selectedRouteFilter !== 'all') {
+      filtered = filtered.filter(item => {
+        const itemRouteKey = item.routeId || item.routeName || 'unassigned';
+        return itemRouteKey === selectedRouteFilter;
+      });
+    }
+
+    return filtered;
   };
 
   const filteredQueueData = getFilteredQueueData();
+
+  // Group filtered queue by route for display
+  const queueByRoute = useMemo(() => {
+    const grouped = {};
+    filteredQueueData.forEach(item => {
+      const routeKey = item.routeId || item.routeName || 'unassigned';
+      const routeName = item.routeName || 'Unassigned';
+      if (!grouped[routeKey]) {
+        grouped[routeKey] = { name: routeName, items: [] };
+      }
+      grouped[routeKey].items.push(item);
+    });
+    return Object.entries(grouped);
+  }, [filteredQueueData]);
 
   // Handle voice command result
   async function handleVoiceCommand(audioBlob) {
@@ -272,17 +313,26 @@ export default function TripManagementScreen({ navigation, route }) {
       const isToday = selectedDate === new Date().toISOString().split('T')[0];
       const dateParam = isToday ? undefined : selectedDate;
       
-      const [queueResp, statsResp, routesResp, vehiclesResp, driversResp] = await Promise.all([
+      // Sequential vehicle loading with fallback
+      const loadVehiclesWithFallback = async () => {
+        if (user?.tenantId) {
+          const v = await getVehiclesByTenantId(user.tenantId).catch(() => []);
+          const arr = Array.isArray(v) ? v : (v?.data || []);
+          if (arr.length > 0) return arr;
+        }
+        const rankV = await fetchVehiclesByRankId(rank.id).catch(() => ({ data: [] }));
+        const rankArr = Array.isArray(rankV) ? rankV : (rankV?.data || []);
+        if (rankArr.length > 0) return rankArr;
+        const allV = await client.get('/Vehicles').catch(() => ({ data: [] }));
+        return Array.isArray(allV) ? allV : (allV?.data || []);
+      };
+
+      const [queueResp, statsResp, routesResp, vehiclesData, driversResp] = await Promise.all([
         getQueueByRank(rank.id, dateParam).catch(() => []),
         getQueueStats(rank.id, dateParam).catch(() => null),
         client.get(`/Routes?taxiRankId=${rank.id}`).catch(() => ({ data: [] })),
-        fetchVehiclesByRankId(rank.id).catch(() => ({ data: [] })),
-        // Try multiple driver endpoints
-        Promise.any([
-          client.get(`/Drivers?taxiRankId=${rank.id}`).catch(() => ({ data: [] })),
-          client.get(`/Drivers?tenantId=${user?.tenantId}`).catch(() => ({ data: [] })),
-          client.get('/Drivers').catch(() => ({ data: [] }))
-        ]).catch(() => ({ data: [] }))
+        loadVehiclesWithFallback(),
+        client.get(`/Drivers?tenantId=${user?.tenantId}`).catch(() => ({ data: [] }))
       ]);
       
       setQueueData(Array.isArray(queueResp) ? queueResp : []);
@@ -311,7 +361,7 @@ export default function TripManagementScreen({ navigation, route }) {
         : allRoutes;
 
       setRoutes(filteredRoutes);
-      setVehicles(vehiclesResp.data || vehiclesResp || []);
+      setVehicles(vehiclesData);
       setDrivers(driversResp?.data || driversResp || []);
     } catch (error) {
       setQueueData([]);
@@ -320,7 +370,7 @@ export default function TripManagementScreen({ navigation, route }) {
       setVehicles([]);
       setDrivers([]);
     }
-  }, [rank?.id, selectedDate]);
+  }, [rank?.id, selectedDate, user?.tenantId]);
 
   const loadTripsData = useCallback(async () => {
     if (!rank?.id) return;
@@ -414,8 +464,35 @@ export default function TripManagementScreen({ navigation, route }) {
     }
   };
 
+  const getAvailableRankVehicles = () => {
+    return vehicles.filter(v => (v.status || '').toLowerCase() === 'available');
+  };
+
+  const handleRouteSelected = async (route) => {
+    setSelectedRoute(route);
+    setSelectedVehicle(null);
+    if (!route) {
+      setModalVehicles(getAvailableRankVehicles());
+      return;
+    }
+    setLoadingModalVehicles(true);
+    try {
+      const routeVehicles = await getVehiclesByRouteId(route.id);
+      if (Array.isArray(routeVehicles) && routeVehicles.length > 0) {
+        setModalVehicles(routeVehicles.filter(v => (v.status || '').toLowerCase() === 'available'));
+      } else {
+        setModalVehicles(getAvailableRankVehicles());
+      }
+    } catch {
+      setModalVehicles(getAvailableRankVehicles());
+    } finally {
+      setLoadingModalVehicles(false);
+    }
+  };
+
   const handleAddVehicle = async () => {
     if (!selectedVehicle) { Alert.alert('Select Vehicle', 'Please select a vehicle to add.'); return; }
+    if (!selectedRoute) { Alert.alert('Select Route', 'Please select a route to add the vehicle to.'); return; }
     try {
       setAddingVehicle(true);
       await addToQueue({
@@ -565,7 +642,7 @@ export default function TripManagementScreen({ navigation, route }) {
   if (loading) {
     return (
       <View style={[s.root, s.center]}>
-        <ActivityIndicator size="large" color={GOLD} />
+        <ActivityIndicator size="large" color={c.primary} />
         <Text style={s.loadingTxt}>Loading…</Text>
       </View>
     );
@@ -585,8 +662,8 @@ export default function TripManagementScreen({ navigation, route }) {
         <VoiceRecorderButton
           onRecordingComplete={handleVoiceCommand}
           processing={voiceProcessing}
-          buttonStyle={{ backgroundColor: 'rgba(34,197,94,0.15)', padding: 8, borderRadius: 20 }}
-          iconColor="#22c55e"
+          buttonStyle={{ backgroundColor: mode === 'dark' ? 'rgba(34,197,94,0.2)' : 'rgba(34,197,94,0.15)', padding: 8, borderRadius: 20 }}
+          iconColor={c.success}
           size={18}
         />
       </View>
@@ -607,17 +684,17 @@ export default function TripManagementScreen({ navigation, route }) {
       {/* ── Date Selector ── */}
       <View style={s.dateRow}>
         <TouchableOpacity onPress={() => changeDate(-1)} style={s.dateArrow}>
-          <Ionicons name="chevron-back" size={18} color="#64748b" />
+          <Ionicons name="chevron-back" size={18} color={c.textMuted} />
         </TouchableOpacity>
         <Text style={s.dateTxt}>{formatDateLabel(selectedDate)}</Text>
         <TouchableOpacity onPress={() => changeDate(1)} style={s.dateArrow}>
-          <Ionicons name="chevron-forward" size={18} color="#64748b" />
+          <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
         </TouchableOpacity>
       </View>
 
       {/* ── Voice Command Tip ── */}
       <View style={s.voiceTip}>
-        <Ionicons name="mic-outline" size={16} color="#22c55e" />
+        <Ionicons name="mic-outline" size={16} color={c.success} />
         <Text style={s.voiceTipText}>
           Try: "Add vehicle ABC 123 to queue" · "Dispatch first vehicle" · "Complete trip XYZ 789"
         </Text>
@@ -638,6 +715,23 @@ export default function TripManagementScreen({ navigation, route }) {
         </View>
       )}
 
+      {/* ── Route Filter (queues only) ── */}
+      {activeTab === 'queues' && queueRoutes.length > 1 && (
+        <View style={s.routeFilterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.routeFilterScroll}>
+            {queueRoutes.map(r => {
+              const cnt = r.id === 'all' ? queueData.length : queueData.filter(i => (i.routeId || i.routeName || 'unassigned') === r.id).length;
+              const on = selectedRouteFilter === r.id;
+              return (
+                <TouchableOpacity key={r.id} style={[s.routeChip, on && s.routeChipOn]} onPress={() => setSelectedRouteFilter(r.id)}>
+                  <Text style={[s.routeChipTxt, on && s.routeChipTxtOn]}>{r.name} ({cnt})</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* ── Content ── */}
       <ScrollView
         style={s.scroll}
@@ -648,23 +742,30 @@ export default function TripManagementScreen({ navigation, route }) {
           /* ══════ QUEUES TAB ══════ */
           filteredQueueData.length === 0 ? (
             <View style={s.empty}>
-              <View style={s.emptyCircle}><Ionicons name="car-outline" size={32} color="#cbd5e1" /></View>
+              <View style={s.emptyCircle}><Ionicons name="car-outline" size={32} color={c.textMuted} /></View>
               <Text style={s.emptyTitle}>No vehicles in queue</Text>
               <Text style={s.emptySub}>
-                {selectedStatusFilter === 'all' ? 'Tap + to add a vehicle' : `No ${selectedStatusFilter} vehicles`}
+                {selectedStatusFilter === 'all' && selectedRouteFilter === 'all' ? 'Tap + to add a vehicle' : 'No vehicles match the selected filters'}
               </Text>
             </View>
           ) : (
-            filteredQueueData.map((item, idx) => {
-              const sc = statusColors[item.status] || '#94a3b8';
-              const reg = getVehicleReg(item);
-              const drvName = getDriverName(item) || 'No Driver';
-              const rtName = getRouteName(item);
-
-              return (
-                <View key={item.id || idx} style={s.card}>
-                  {/* Left accent */}
-                  <View style={[s.cardAccent, { backgroundColor: sc }]} />
+            queueByRoute.map(([routeKey, routeGroup]) => (
+              <View key={routeKey} style={{ marginBottom: 16 }}>
+                {/* Route header */}
+                <View style={s.routeHeader}>
+                  <Text style={s.routeHeaderText}>{routeGroup.name}</Text>
+                  <Text style={s.routeHeaderCount}>{routeGroup.items.length} vehicles</Text>
+                </View>
+                {/* Queue items for this route */}
+                {routeGroup.items.map((item, idx) => {
+                  const sc = statusColors[item.status] || c.textMuted;
+                  const reg = getVehicleReg(item);
+                  const drvName = getDriverName(item) || 'No Driver';
+                  const rtName = getRouteName(item);
+                  return (
+                    <View key={item.id || idx} style={s.card}>
+                      {/* Left accent */}
+                      <View style={[s.cardAccent, { backgroundColor: sc }]} />
 
                   <View style={s.cardBody}>
                     {/* Row 1: reg + status */}
@@ -683,17 +784,17 @@ export default function TripManagementScreen({ navigation, route }) {
                     {/* Row 2: driver + route */}
                     <View style={s.cardMeta}>
                       <View style={s.metaItem}>
-                        <Ionicons name="person-outline" size={13} color="#64748b" />
+                        <Ionicons name="person-outline" size={13} color={c.textMuted} />
                         <Text style={s.metaText}>{drvName}</Text>
                       </View>
                       {rtName ? (
                         <View style={s.metaItem}>
-                          <Ionicons name="navigate-outline" size={13} color="#64748b" />
+                          <Ionicons name="navigate-outline" size={13} color={c.textMuted} />
                           <Text style={s.metaText}>{rtName}</Text>
                         </View>
                       ) : null}
                       <View style={s.metaItem}>
-                        <Ionicons name="time-outline" size={13} color="#64748b" />
+                        <Ionicons name="time-outline" size={13} color={c.textMuted} />
                         <Text style={s.metaText}>{item.joinedAt || '—'}</Text>
                       </View>
                       {item.estimatedDepartureTime ? (
@@ -705,41 +806,44 @@ export default function TripManagementScreen({ navigation, route }) {
                     </View>
 
                     {/* Row 3: actions */}
-                    {(item.status === 'Waiting' || item.status === 'Loading') && (
-                      <View style={s.cardActions}>
-                        <TouchableOpacity style={s.btnEdit} onPress={() => openEditModal(item)}>
-                          <Ionicons name="create-outline" size={14} color="#8b5cf6" />
-                          <Text style={s.btnEditTxt}>Edit</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={s.btnBk} onPress={() => handleViewQueueEntryBookings(item)}>
-                          <Ionicons name="receipt-outline" size={14} color={GOLD} />
-                          <Text style={s.btnBkTxt}>Bookings</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={s.btnGo} onPress={() => handleDispatchVehicle(item)}>
-                          <Ionicons name="send" size={14} color="#fff" />
-                          <Text style={s.btnGoTxt}>Dispatch</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={s.btnRm} onPress={() => handleRemoveVehicle(item)}>
-                          <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                          <Text style={s.btnRmTxt}>Remove</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
+                    <View style={s.cardActions}>
+                      {(item.status === 'Waiting' || item.status === 'Loading') && (
+                        <>
+                          <TouchableOpacity style={s.btnEdit} onPress={() => openEditModal(item)}>
+                            <Ionicons name="create-outline" size={14} color="#8b5cf6" />
+                            <Text style={s.btnEditTxt}>Edit</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={s.btnBk} onPress={() => handleViewQueueEntryBookings(item)}>
+                            <Ionicons name="receipt-outline" size={14} color={c.primary} />
+                            <Text style={s.btnBkTxt}>Bookings</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={s.btnGo} onPress={() => handleDispatchVehicle(item)}>
+                            <Ionicons name="send" size={14} color="#fff" />
+                            <Text style={s.btnGoTxt}>Dispatch</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                      <TouchableOpacity style={s.btnRm} onPress={() => handleRemoveVehicle(item)}>
+                        <Ionicons name="trash-outline" size={14} color={c.danger} />
+                        <Text style={s.btnRmTxt}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               );
-            })
-          )
-        ) : activeTab === 'bookings' ? (
+                })}
+              </View>
+            ))
+          )) : activeTab === 'bookings' ? (
           /* ══════ BOOKINGS TAB ══════ */
           bookingsLoading ? (
             <View style={s.empty}>
-              <ActivityIndicator size="large" color={GOLD} />
-              <Text style={{ marginTop: 10, color: '#94a3b8' }}>Loading bookings…</Text>
+              <ActivityIndicator size="large" color={c.primary} />
+              <Text style={{ marginTop: 10, color: c.textMuted }}>Loading bookings…</Text>
             </View>
           ) : rankBookings.length === 0 ? (
             <View style={s.empty}>
-              <View style={s.emptyCircle}><Ionicons name="receipt-outline" size={32} color="#cbd5e1" /></View>
+              <View style={s.emptyCircle}><Ionicons name="receipt-outline" size={32} color={c.textMuted} /></View>
               <Text style={s.emptyTitle}>No bookings yet</Text>
               <Text style={s.emptySub}>Rider bookings for vehicles in the queue will appear here</Text>
             </View>
@@ -756,18 +860,18 @@ export default function TripManagementScreen({ navigation, route }) {
             ).map(group => (
               <View key={group.reg} style={{ marginBottom: 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-                  <Ionicons name="car" size={16} color={GOLD} />
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: '#1e293b' }}>{group.reg}</Text>
+                  <Ionicons name="car" size={16} color={c.primary} />
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: c.text }}>{group.reg}</Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b' }}>{group.totalSeats} seats</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#198754' }}>R{group.totalFare.toFixed(2)}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted }}>{group.totalSeats} seats</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: c.success }}>R{group.totalFare.toFixed(2)}</Text>
                   </View>
                 </View>
                 {group.bookings.map((bk, bkIdx) => {
                   const allAllocated = (bk.passengers || []).every(p => p.seatNumber);
                   return (
                     <View key={bk.id || bkIdx} style={[s.card, { marginBottom: 8 }]}>
-                      <View style={[s.cardAccent, { backgroundColor: allAllocated ? '#22c55e' : GOLD }]} />
+                      <View style={[s.cardAccent, { backgroundColor: allAllocated ? c.success : c.primary }]} />
                       <View style={s.cardBody}>
                         <View style={s.cardRow}>
                           <Text style={[s.regText, { flex: 1 }]}>{bk.riderName || 'Unknown Rider'}</Text>
@@ -896,7 +1000,7 @@ export default function TripManagementScreen({ navigation, route }) {
         <TouchableOpacity
           style={s.fab}
           activeOpacity={0.85}
-          onPress={() => { setSelectedVehicle(null); setSelectedRoute(null); setEstimatedDeparture(''); setShowETDPicker(false); setAddVehicleModalVisible(true); }}
+          onPress={() => { setSelectedVehicle(null); setSelectedRoute(null); setEstimatedDeparture(''); setShowETDPicker(false); setModalVehicles(getAvailableRankVehicles()); setAddVehicleModalVisible(true); }}
         >
           <Ionicons name="add" size={28} color="#000" />
         </TouchableOpacity>
@@ -919,7 +1023,7 @@ export default function TripManagementScreen({ navigation, route }) {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pickerRow}>
                 <TouchableOpacity
                   style={[s.pickerChip, !selectedRoute && s.pickerChipOn]}
-                  onPress={() => setSelectedRoute(null)}
+                  onPress={() => handleRouteSelected(null)}
                 >
                   <Text style={[s.pickerChipTxt, !selectedRoute && s.pickerChipTxtOn]}>Any Route</Text>
                 </TouchableOpacity>
@@ -927,7 +1031,7 @@ export default function TripManagementScreen({ navigation, route }) {
                   <TouchableOpacity
                     key={r.id}
                     style={[s.pickerChip, selectedRoute?.id === r.id && s.pickerChipOn]}
-                    onPress={() => setSelectedRoute(r)}
+                    onPress={() => handleRouteSelected(r)}
                   >
                     <Text style={[s.pickerChipTxt, selectedRoute?.id === r.id && s.pickerChipTxtOn]} numberOfLines={1}>
                       {r.name || r.routeName || `${r.departureStation} → ${r.destinationStation}`}
@@ -937,11 +1041,16 @@ export default function TripManagementScreen({ navigation, route }) {
               </ScrollView>
 
               {/* Vehicle Selection */}
-              <Text style={s.fieldLabel}>Select Vehicle</Text>
-              {vehicles.length === 0 ? (
-                <Text style={s.noItems}>No vehicles available for this rank</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                <Text style={s.fieldLabel}>
+                  {selectedRoute ? `Vehicles for ${selectedRoute.name || selectedRoute.routeName || 'selected route'}` : 'Select Vehicle'}
+                </Text>
+                {loadingModalVehicles && <ActivityIndicator size="small" color={GOLD} style={{ marginLeft: 8 }} />}
+              </View>
+              {loadingModalVehicles ? null : modalVehicles.length === 0 ? (
+                <Text style={s.noItems}>No vehicles available{selectedRoute ? ' for this route' : ''}</Text>
               ) : (
-                vehicles.map(v => {
+                modalVehicles.map(v => {
                   const alreadyQueued = queueData.some(
                     q => q.vehicleId === v.id && (q.status === 'Waiting' || q.status === 'Loading')
                   );
@@ -956,7 +1065,7 @@ export default function TripManagementScreen({ navigation, route }) {
                       <Ionicons
                         name={selected ? 'radio-button-on' : 'radio-button-off'}
                         size={20}
-                        color={alreadyQueued ? '#cbd5e1' : selected ? GOLD : '#94a3b8'}
+                        color={alreadyQueued ? c.textMuted : selected ? c.primary : c.textMuted}
                       />
                       <View style={{ flex: 1, marginLeft: 10 }}>
                         <Text style={[s.vehicleReg, alreadyQueued && { color: '#94a3b8' }]}>
@@ -1049,40 +1158,40 @@ export default function TripManagementScreen({ navigation, route }) {
                 <Text style={s.modalTitle}>{queueEntryForBookings?.vehicleRegistration || queueEntryForBookings?.vehicle?.registration || 'Vehicle'} — Bookings</Text>
               </View>
               <TouchableOpacity onPress={() => { setQueueEntryBookingsVisible(false); setQueueEntryForBookings(null); setQueueEntryBookings([]); setSeatAllocations({}); }} hitSlop={12}>
-                <Ionicons name="close" size={22} color="#64748b" />
+                <Ionicons name="close" size={22} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
             {/* Summary */}
             {queueEntryForBookings && (
-              <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border }}>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ fontSize: 18, fontWeight: '900', color: GOLD }}>{queueEntryTotalBooked}</Text>
-                  <Text style={{ fontSize: 10, color: '#94a3b8' }}>Seats Booked</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: c.primary }}>{queueEntryTotalBooked}</Text>
+                  <Text style={{ fontSize: 10, color: c.textMuted }}>Seats Booked</Text>
                 </View>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#1e293b' }}>{queueEntryBookings.length}</Text>
-                  <Text style={{ fontSize: 10, color: '#94a3b8' }}>Bookings</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: c.text }}>{queueEntryBookings.length}</Text>
+                  <Text style={{ fontSize: 10, color: c.textMuted }}>Bookings</Text>
                 </View>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#22c55e' }}>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: c.success }}>
                     {(queueEntryForBookings.vehicleCapacity || queueEntryForBookings.vehicle?.capacity) ? ((queueEntryForBookings.vehicleCapacity || queueEntryForBookings.vehicle?.capacity) - queueEntryTotalBooked) : '—'}
                   </Text>
-                  <Text style={{ fontSize: 10, color: '#94a3b8' }}>Available</Text>
+                  <Text style={{ fontSize: 10, color: c.textMuted }}>Available</Text>
                 </View>
               </View>
             )}
 
             {queueEntryBookingsLoading ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color={GOLD} />
-                <Text style={{ marginTop: 10, color: '#94a3b8' }}>Loading bookings…</Text>
+                <ActivityIndicator size="large" color={c.primary} />
+                <Text style={{ marginTop: 10, color: c.textMuted }}>Loading bookings…</Text>
               </View>
             ) : queueEntryBookings.length === 0 ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
-                <Ionicons name="receipt-outline" size={48} color="#e2e8f0" />
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#94a3b8', marginTop: 10 }}>No bookings yet</Text>
-                <Text style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginTop: 4 }}>Riders haven't booked seats on this vehicle yet.</Text>
+                <Ionicons name="receipt-outline" size={48} color={c.textMuted} />
+                <Text style={{ fontSize: 15, fontWeight: '700', color: c.textMuted, marginTop: 10 }}>No bookings yet</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted, textAlign: 'center', marginTop: 4 }}>Riders haven't booked seats on this vehicle yet.</Text>
               </View>
             ) : (
               <ScrollView contentContainerStyle={{ padding: 12 }}>
@@ -1090,80 +1199,80 @@ export default function TripManagementScreen({ navigation, route }) {
                   const allAllocated = (bk.passengers || []).every(p => p.seatNumber);
                   return (
                     <View key={bk.id || bkIdx} style={{
-                      backgroundColor: '#fff', borderRadius: 12, marginBottom: 12,
-                      borderWidth: 1, borderColor: allAllocated ? '#bbf7d0' : '#fde68a', overflow: 'hidden',
+                      backgroundColor: c.surface, borderRadius: 12, marginBottom: 12,
+                      borderWidth: 1, borderColor: allAllocated ? c.success : '#f59e0b', overflow: 'hidden',
                     }}>
                       {/* Booking header row */}
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: allAllocated ? '#f0fdf4' : '#fffbeb' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: allAllocated ? (mode === 'dark' ? 'rgba(34,197,94,0.15)' : '#f0fdf4') : (mode === 'dark' ? 'rgba(245,158,11,0.15)' : '#fffbeb') }}>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '800', color: '#1e293b' }}>{bk.riderName || 'Unknown Rider'}</Text>
-                          {bk.riderPhone ? <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{bk.riderPhone}</Text> : null}
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: c.text }}>{bk.riderName || 'Unknown Rider'}</Text>
+                          {bk.riderPhone ? <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 2 }}>{bk.riderPhone}</Text> : null}
                         </View>
                         <View style={{ flexDirection: 'row', gap: 4 }}>
-                          <View style={[s.badge, { backgroundColor: bk.status === 'Confirmed' ? '#22c55e' : '#f59e0b' }]}>
+                          <View style={[s.badge, { backgroundColor: bk.status === 'Confirmed' ? c.success : '#f59e0b' }]}>
                             <Text style={s.badgeText}>{bk.status}</Text>
                           </View>
-                          <View style={[s.badge, { backgroundColor: bk.paymentStatus === 'Paid' ? '#22c55e' : '#f59e0b' }]}>
+                          <View style={[s.badge, { backgroundColor: bk.paymentStatus === 'Paid' ? c.success : '#f59e0b' }]}>
                             <Text style={s.badgeText}>{bk.paymentStatus || 'Unpaid'}</Text>
                           </View>
                         </View>
                       </View>
 
                       {/* Route & fare */}
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#f1f5f9' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                          <Ionicons name="navigate" size={12} color="#64748b" style={{ marginRight: 4 }} />
-                          <Text style={{ fontSize: 11, color: '#64748b' }} numberOfLines={1}>
+                          <Ionicons name="navigate" size={12} color={c.textMuted} style={{ marginRight: 4 }} />
+                          <Text style={{ fontSize: 11, color: c.textMuted }} numberOfLines={1}>
                             {bk.departureStation && bk.destinationStation
                               ? `${bk.departureStation} → ${bk.destinationStation}`
                               : bk.routeName || '—'}
                           </Text>
                         </View>
-                        <Text style={{ fontSize: 13, fontWeight: '900', color: '#198754' }}>R{(bk.totalFare || 0).toFixed(2)}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '900', color: c.success }}>R{(bk.totalFare || 0).toFixed(2)}</Text>
                       </View>
 
                       {/* Passengers with seat allocation */}
                       <View style={{ padding: 12, paddingTop: 6 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#94a3b8', marginBottom: 6 }}>PASSENGERS ({(bk.passengers || []).length})</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: c.textMuted, marginBottom: 6 }}>PASSENGERS ({(bk.passengers || []).length})</Text>
                         {(bk.passengers || []).map((p, pi) => (
                           <View key={p.id || pi} style={{
                             flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                            backgroundColor: '#f8fafc', borderRadius: 8, padding: 10, marginBottom: 6,
-                            borderWidth: 1, borderColor: p.seatNumber ? '#bbf7d0' : '#fde68a',
+                            backgroundColor: c.surface2, borderRadius: 8, padding: 10, marginBottom: 6,
+                            borderWidth: 1, borderColor: p.seatNumber ? c.success : '#f59e0b',
                           }}>
                             <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#1e293b' }}>{pi + 1}. {p.name}</Text>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: c.text }}>{pi + 1}. {p.name}</Text>
                               <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
-                                {p.contactNumber ? <Text style={{ fontSize: 10, color: '#64748b' }}>{p.contactNumber}</Text> : null}
+                                {p.contactNumber ? <Text style={{ fontSize: 10, color: c.textMuted }}>{p.contactNumber}</Text> : null}
                                 {p.destination ? (
                                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <Ionicons name="location" size={10} color="#3b82f6" style={{ marginRight: 2 }} />
                                     <Text style={{ fontSize: 10, color: '#3b82f6' }}>{p.destination}</Text>
                                   </View>
                                 ) : null}
-                                {p.fare ? <Text style={{ fontSize: 10, fontWeight: '700', color: '#198754' }}>R{p.fare.toFixed(2)}</Text> : null}
+                                {p.fare ? <Text style={{ fontSize: 10, fontWeight: '700', color: c.success }}>R{p.fare.toFixed(2)}</Text> : null}
                               </View>
                             </View>
                             <View style={{ alignItems: 'center', minWidth: 70 }}>
                               {p.seatNumber ? (
-                                <View style={{ backgroundColor: '#dcfce7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
-                                  <Text style={{ fontSize: 14, fontWeight: '900', color: '#198754' }}>Seat {p.seatNumber}</Text>
+                                <View style={{ backgroundColor: mode === 'dark' ? 'rgba(34,197,94,0.2)' : '#dcfce7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+                                  <Text style={{ fontSize: 14, fontWeight: '900', color: c.success }}>Seat {p.seatNumber}</Text>
                                 </View>
                               ) : (
                                 <View style={{ alignItems: 'center' }}>
-                                  <Text style={{ fontSize: 9, color: '#94a3b8', marginBottom: 2 }}>Seat #</Text>
+                                  <Text style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>Seat #</Text>
                                   <TextInput
                                     style={{
                                       width: 56, height: 34, borderRadius: 8, borderWidth: 1.5,
-                                      borderColor: seatAllocations[p.id] ? GOLD : '#e2e8f0',
-                                      backgroundColor: '#fff', textAlign: 'center',
-                                      fontSize: 15, fontWeight: '800', color: '#1e293b',
+                                      borderColor: seatAllocations[p.id] ? c.primary : c.border,
+                                      backgroundColor: c.surface, textAlign: 'center',
+                                      fontSize: 15, fontWeight: '800', color: c.text,
                                     }}
                                     keyboardType="number-pad"
                                     value={seatAllocations[p.id] || ''}
                                     onChangeText={val => setSeatAllocations(prev => ({ ...prev, [p.id]: val }))}
                                     placeholder="—"
-                                    placeholderTextColor="#cbd5e1"
+                                    placeholderTextColor={c.textMuted}
                                   />
                                 </View>
                               )}
@@ -1174,7 +1283,7 @@ export default function TripManagementScreen({ navigation, route }) {
                         {(bk.passengers || []).some(p => !p.seatNumber) && (
                           <TouchableOpacity
                             style={{
-                              backgroundColor: GOLD, borderRadius: 10, paddingVertical: 10,
+                              backgroundColor: c.primary, borderRadius: 10, paddingVertical: 10,
                               alignItems: 'center', marginTop: 4, opacity: allocatingSeats ? 0.6 : 1,
                             }}
                             onPress={() => handleAllocateSeatsForEntry(bk)}
@@ -1206,20 +1315,20 @@ export default function TripManagementScreen({ navigation, route }) {
           <View style={[s.modalCard, { maxHeight: '85%' }]}>
             <View style={s.modalHdr}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#8b5cf615', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: mode === 'dark' ? 'rgba(139,92,246,0.2)' : 'rgba(139,92,246,0.15)', alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="create" size={16} color="#8b5cf6" />
                 </View>
                 <Text style={s.modalTitle}>Edit Queue Entry</Text>
               </View>
               <TouchableOpacity onPress={() => { setEditModalVisible(false); setEditEntry(null); }} hitSlop={12}>
-                <Ionicons name="close" size={22} color="#64748b" />
+                <Ionicons name="close" size={22} color={c.textMuted} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={s.modalBody} showsVerticalScrollIndicator={false}>
               {/* Current entry info */}
               {editEntry && (
-                <View style={[s.vehicleOption, { borderColor: '#8b5cf630', backgroundColor: '#8b5cf608', marginTop: 12 }]}>
+                <View style={[s.vehicleOption, { borderColor: mode === 'dark' ? 'rgba(139,92,246,0.4)' : 'rgba(139,92,246,0.3)', backgroundColor: mode === 'dark' ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.08)', marginTop: 12 }]}>
                   <Ionicons name="car-sport" size={20} color="#8b5cf6" />
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={s.vehicleReg}>{editEntry.vehicleRegistration || getVehicleReg(editEntry)}</Text>
@@ -1313,8 +1422,8 @@ export default function TripManagementScreen({ navigation, route }) {
                 activeOpacity={0.7}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="time-outline" size={16} color={GOLD} />
-                  <Text style={{ color: editEstimatedDeparture ? '#1e293b' : '#94a3b8', fontSize: 14 }}>
+                  <Ionicons name="time-outline" size={16} color={c.primary} />
+                  <Text style={{ color: editEstimatedDeparture ? c.text : c.textMuted, fontSize: 14 }}>
                     {editEstimatedDeparture || 'Tap to set time'}
                   </Text>
                 </View>
@@ -1344,9 +1453,9 @@ export default function TripManagementScreen({ navigation, route }) {
               {/* Notes */}
               <Text style={s.fieldLabel}>Notes</Text>
               <TextInput
-                style={[s.vehicleOption, { height: 80, textAlignVertical: 'top', color: '#1e293b', fontSize: 14 }]}
+                style={[s.vehicleOption, { height: 80, textAlignVertical: 'top', color: c.text, fontSize: 14 }]}
                 placeholder="Optional notes..."
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={c.textMuted}
                 value={editNotes}
                 onChangeText={setEditNotes}
                 multiline
@@ -1357,10 +1466,10 @@ export default function TripManagementScreen({ navigation, route }) {
             <View style={s.modalFooter}>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TouchableOpacity
-                  style={[s.addBtn, { flex: 1, backgroundColor: '#f1f5f9' }]}
+                  style={[s.addBtn, { flex: 1, backgroundColor: c.surface2 }]}
                   onPress={() => { setEditModalVisible(false); setEditEntry(null); }}
                 >
-                  <Text style={[s.addBtnTxt, { color: '#64748b' }]}>Cancel</Text>
+                  <Text style={[s.addBtnTxt, { color: c.textMuted }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.addBtn, { flex: 2, backgroundColor: '#8b5cf6' }]}
@@ -1386,7 +1495,7 @@ export default function TripManagementScreen({ navigation, route }) {
         <View style={s.modalBgCenter}>
           <View style={s.confirmCard}>
             <View style={s.confirmIconWrap}>
-              <Ionicons name="help-circle-outline" size={28} color={GOLD} />
+              <Ionicons name="help-circle-outline" size={28} color={c.primary} />
             </View>
             <Text style={s.confirmTitle}>{confirmTitle}</Text>
             <Text style={s.confirmMessage}>{confirmMessage}</Text>
@@ -1421,7 +1530,7 @@ export default function TripManagementScreen({ navigation, route }) {
             <View style={s.modalHdr}>
               <Text style={s.modalTitle}>Trip Details</Text>
               <TouchableOpacity onPress={() => setTripModalVisible(false)} hitSlop={12}>
-                <Ionicons name="close" size={22} color="#64748b" />
+                <Ionicons name="close" size={22} color={c.textMuted} />
               </TouchableOpacity>
             </View>
             {selectedTrip && (() => {
@@ -1442,7 +1551,7 @@ export default function TripManagementScreen({ navigation, route }) {
                   ].map((row, i) => (
                     <View key={i} style={s.modalRow}>
                       <View style={s.modalRowIcon}>
-                        <Ionicons name={row.icon} size={16} color={GOLD} />
+                        <Ionicons name={row.icon} size={16} color={c.primary} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={s.modalLabel}>{row.label}</Text>
@@ -1459,7 +1568,7 @@ export default function TripManagementScreen({ navigation, route }) {
                     pax.map((p, i) => (
                       <View key={p.id || i} style={s.paxCard}>
                         <View style={s.paxCardRow}>
-                          <Ionicons name="person" size={14} color={GOLD} />
+                          <Ionicons name="person" size={14} color={c.primary} />
                           <Text style={s.paxName}>{p.passengerName || 'Passenger'}</Text>
                           <Text style={s.paxAmt}>R{(p.amount ?? 0).toFixed(2)}</Text>
                         </View>
@@ -1483,54 +1592,85 @@ export default function TripManagementScreen({ navigation, route }) {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(c, mode) {
+  return StyleSheet.create({
   // ── Layout ──
-  root: { flex: 1, backgroundColor: '#f8fafc' },
+  root: { flex: 1, backgroundColor: c.background },
   center: { justifyContent: 'center', alignItems: 'center' },
-  loadingTxt: { marginTop: 12, fontSize: 14, color: '#94a3b8' },
+  loadingTxt: { marginTop: 12, fontSize: 14, color: c.textMuted },
 
   // ── Header ──
   hdr: {
-    backgroundColor: '#1a1a2e', flexDirection: 'row', alignItems: 'center',
+    backgroundColor: mode === 'dark' ? '#0f172a' : '#1a1a2e', flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 14,
   },
   hdrTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  hdrSub: { color: GOLD, fontSize: 12, marginTop: 2 },
+  hdrSub: { color: c.primary, fontSize: 12, marginTop: 2 },
 
   // ── Tabs ──
   tabs: {
-    flexDirection: 'row', backgroundColor: '#1a1a2e',
+    flexDirection: 'row', backgroundColor: mode === 'dark' ? '#0f172a' : '#1a1a2e',
     paddingHorizontal: 16, paddingBottom: 12, gap: 10,
   },
   tab: {
     flex: 1, alignItems: 'center', paddingVertical: 8,
     borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  tabActive: { backgroundColor: GOLD },
+  tabActive: { backgroundColor: c.primary },
   tabTxt: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
-  tabTxtActive: { color: '#000', fontWeight: '700' },
+  tabTxtActive: { color: c.primaryText, fontWeight: '700' },
 
   // ── Date Row ──
   dateRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 10, backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+    paddingVertical: 10, backgroundColor: c.surface,
+    borderBottomWidth: 1, borderBottomColor: c.border,
   },
   dateArrow: { padding: 8 },
-  dateTxt: { fontSize: 15, fontWeight: '600', color: '#334155', marginHorizontal: 16 },
+  dateTxt: { fontSize: 15, fontWeight: '600', color: c.text, marginHorizontal: 16 },
 
   // ── Filter Row ──
   filterRow: {
-    flexDirection: 'row', backgroundColor: '#fff', paddingHorizontal: 12,
-    paddingVertical: 6, gap: 6, borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+    flexDirection: 'row', backgroundColor: c.surface, paddingHorizontal: 12,
+    paddingVertical: 6, gap: 6, borderBottomWidth: 1, borderBottomColor: c.border,
   },
   chip: {
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: c.surface2,
   },
-  chipOn: { backgroundColor: GOLD },
-  chipTxt: { fontSize: 11, fontWeight: '500', color: '#64748b' },
-  chipTxtOn: { color: '#000', fontWeight: '600' },
+  chipOn: { backgroundColor: c.primary },
+  chipTxt: { fontSize: 11, fontWeight: '500', color: c.textMuted },
+  chipTxtOn: { color: '#fff' },
+
+  // ── Route Filter Row ──
+  routeFilterRow: {
+    flexDirection: 'row', backgroundColor: c.surface, paddingHorizontal: 12,
+    paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border,
+  },
+  routeFilterScroll: {
+    flexDirection: 'row', gap: 8,
+  },
+  routeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+    backgroundColor: c.surface2,
+  },
+  routeChipOn: { backgroundColor: c.primary },
+  routeChipTxt: { fontSize: 12, fontWeight: '600', color: c.text },
+  routeChipTxtOn: { color: '#fff' },
+
+  // ── Route Header ──
+  routeHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 12, paddingVertical: 8, backgroundColor: c.surface,
+    borderBottomWidth: 1, borderBottomColor: c.border,
+  },
+  routeHeaderText: {
+    fontSize: 13, fontWeight: '700', color: c.text,
+  },
+  routeHeaderCount: {
+    fontSize: 11, fontWeight: '600', color: c.textMuted,
+  },
 
   // ── Scroll ──
   scroll: { flex: 1 },
@@ -1538,7 +1678,7 @@ const s = StyleSheet.create({
 
   // ── Shared Card ──
   card: {
-    backgroundColor: '#fff', borderRadius: 14, marginBottom: 12,
+    backgroundColor: c.surface, borderRadius: 14, marginBottom: 12,
     flexDirection: 'row', overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
@@ -1553,7 +1693,7 @@ const s = StyleSheet.create({
   posText: { fontSize: 12, fontWeight: '700' },
 
   // ── Registration ──
-  regText: { fontSize: 15, fontWeight: '600', color: '#1e293b', flexShrink: 1 },
+  regText: { fontSize: 15, fontWeight: '600', color: c.text, flexShrink: 1 },
 
   // ── Status badge ──
   badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
@@ -1562,130 +1702,130 @@ const s = StyleSheet.create({
   // ── Meta rows ──
   cardMeta: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 12 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 13, color: '#64748b' },
+  metaText: { fontSize: 13, color: c.textMuted },
 
   // ── Queue action buttons ──
   cardActions: { flexDirection: 'row', marginTop: 12, gap: 8 },
   btnGo: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#22c55e', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
+    backgroundColor: c.success, paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
   },
   btnGoTxt: { color: '#fff', fontSize: 12, fontWeight: '600' },
   btnBk: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: GOLD_LIGHT, paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
-    borderWidth: 1, borderColor: GOLD + '40',
+    backgroundColor: mode === 'dark' ? 'rgba(212,175,55,0.18)' : 'rgba(212,175,55,0.12)', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
+    borderWidth: 1, borderColor: c.primary + '40',
   },
-  btnBkTxt: { color: GOLD, fontSize: 12, fontWeight: '600' },
+  btnBkTxt: { color: c.primary, fontSize: 12, fontWeight: '600' },
   btnEdit: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#f5f3ff', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
-    borderWidth: 1, borderColor: '#ddd6fe',
+    backgroundColor: mode === 'dark' ? 'rgba(139,92,246,0.15)' : '#f5f3ff', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
+    borderWidth: 1, borderColor: mode === 'dark' ? 'rgba(139,92,246,0.4)' : '#ddd6fe',
   },
   btnEditTxt: { color: '#8b5cf6', fontSize: 12, fontWeight: '600' },
   btnRm: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#fef2f2', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
-    borderWidth: 1, borderColor: '#fecaca',
+    backgroundColor: mode === 'dark' ? 'rgba(239,68,68,0.15)' : '#fef2f2', paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8,
+    borderWidth: 1, borderColor: mode === 'dark' ? 'rgba(239,68,68,0.4)' : '#fecaca',
   },
-  btnRmTxt: { color: '#ef4444', fontSize: 12, fontWeight: '600' },
+  btnRmTxt: { color: c.danger, fontSize: 12, fontWeight: '600' },
 
   // ── Trip stats row ──
   tripStats: { flexDirection: 'row', marginTop: 10, gap: 16 },
   tripStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  tripStatTxt: { fontSize: 13, color: '#64748b', fontWeight: '500' },
+  tripStatTxt: { fontSize: 13, color: c.textMuted, fontWeight: '500' },
 
   // ── Empty state ──
   empty: { alignItems: 'center', paddingVertical: 60 },
   emptyCircle: {
-    width: 72, height: 72, borderRadius: 36, backgroundColor: '#f1f5f9',
+    width: 72, height: 72, borderRadius: 36, backgroundColor: c.surface2,
     alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '600', color: '#334155', marginBottom: 6 },
-  emptySub: { fontSize: 13, color: '#94a3b8', textAlign: 'center', paddingHorizontal: 40 },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: c.text, marginBottom: 6 },
+  emptySub: { fontSize: 13, color: c.textMuted, textAlign: 'center', paddingHorizontal: 40 },
 
   // ── Modal ──
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalBgCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalBg: { flex: 1, backgroundColor: mode === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalBgCenter: { flex: 1, backgroundColor: mode === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalCard: {
-    backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     maxHeight: '80%', paddingBottom: 24,
   },
   modalHdr: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+    padding: 16, borderBottomWidth: 1, borderBottomColor: c.border,
   },
-  modalTitle: { fontSize: 17, fontWeight: '700', color: '#1e293b' },
+  modalTitle: { fontSize: 17, fontWeight: '700', color: c.text },
   modalBody: { paddingHorizontal: 16 },
   modalRow: {
     flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#f8fafc',
+    borderBottomWidth: 1, borderBottomColor: c.border,
   },
   modalRowIcon: {
-    width: 32, height: 32, borderRadius: 16, backgroundColor: GOLD_LIGHT,
+    width: 32, height: 32, borderRadius: 16, backgroundColor: mode === 'dark' ? 'rgba(212,175,55,0.18)' : 'rgba(212,175,55,0.12)',
     alignItems: 'center', justifyContent: 'center', marginRight: 12,
   },
-  modalLabel: { fontSize: 12, color: '#94a3b8', marginBottom: 2 },
-  modalValue: { fontSize: 14, fontWeight: '500', color: '#1e293b' },
+  modalLabel: { fontSize: 12, color: c.textMuted, marginBottom: 2 },
+  modalValue: { fontSize: 14, fontWeight: '500', color: c.text },
 
   // ── Passenger List (modal) ──
-  paxHeading: { fontSize: 15, fontWeight: '700', color: '#1e293b', marginTop: 16, marginBottom: 8 },
-  paxNone: { fontSize: 13, color: '#94a3b8', fontStyle: 'italic', marginBottom: 12 },
+  paxHeading: { fontSize: 15, fontWeight: '700', color: c.text, marginTop: 16, marginBottom: 8 },
+  paxNone: { fontSize: 13, color: c.textMuted, fontStyle: 'italic', marginBottom: 12 },
   paxCard: {
-    backgroundColor: '#f8fafc', borderRadius: 10, padding: 10, marginBottom: 8,
-    borderWidth: 1, borderColor: '#f1f5f9',
+    backgroundColor: c.surface2, borderRadius: 10, padding: 10, marginBottom: 8,
+    borderWidth: 1, borderColor: c.border,
   },
   paxCardRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  paxName: { flex: 1, fontSize: 13, fontWeight: '600', color: '#1e293b' },
+  paxName: { flex: 1, fontSize: 13, fontWeight: '600', color: c.text },
   paxAmt: { fontSize: 13, fontWeight: '700', color: '#b45309' },
   paxCardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4, marginLeft: 22 },
-  paxMeta: { fontSize: 11, color: '#64748b' },
+  paxMeta: { fontSize: 11, color: c.textMuted },
 
   // ── FAB ──
   fab: {
     position: 'absolute', bottom: 24, right: 20,
-    width: 56, height: 56, borderRadius: 28, backgroundColor: GOLD,
+    width: 56, height: 56, borderRadius: 28, backgroundColor: c.primary,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.18, shadowRadius: 6, elevation: 6,
   },
 
   // ── Add Vehicle Modal extras ──
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#334155', marginTop: 16, marginBottom: 8 },
-  noItems: { fontSize: 13, color: '#94a3b8', fontStyle: 'italic', marginBottom: 12 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: c.text, marginTop: 16, marginBottom: 8 },
+  noItems: { fontSize: 13, color: c.textMuted, fontStyle: 'italic', marginBottom: 12 },
   pickerRow: { flexDirection: 'row', marginBottom: 4 },
   pickerChip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16,
-    backgroundColor: '#f1f5f9', marginRight: 8,
+    backgroundColor: c.surface2, marginRight: 8,
   },
-  pickerChipOn: { backgroundColor: GOLD },
-  pickerChipTxt: { fontSize: 12, fontWeight: '500', color: '#64748b' },
-  pickerChipTxtOn: { color: '#000', fontWeight: '600' },
+  pickerChipOn: { backgroundColor: c.primary },
+  pickerChipTxt: { fontSize: 12, fontWeight: '500', color: c.textMuted },
+  pickerChipTxtOn: { color: c.primaryText, fontWeight: '600' },
 
   vehicleOption: {
     flexDirection: 'row', alignItems: 'center', padding: 12,
-    borderRadius: 12, backgroundColor: '#f8fafc', marginBottom: 8,
-    borderWidth: 1, borderColor: '#f1f5f9',
+    borderRadius: 12, backgroundColor: c.surface2, marginBottom: 8,
+    borderWidth: 1, borderColor: c.border,
   },
-  vehicleOptionOn: { borderColor: GOLD, backgroundColor: GOLD_LIGHT },
+  vehicleOptionOn: { borderColor: c.primary, backgroundColor: mode === 'dark' ? 'rgba(212,175,55,0.18)' : 'rgba(212,175,55,0.12)' },
   vehicleOptionDisabled: { opacity: 0.55 },
-  vehicleReg: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
-  vehicleMeta: { fontSize: 12, color: '#64748b', marginTop: 1 },
+  vehicleReg: { fontSize: 14, fontWeight: '700', color: c.text },
+  vehicleMeta: { fontSize: 12, color: c.textMuted, marginTop: 1 },
   inQueueBadge: {
-    backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+    backgroundColor: c.surface2, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
   },
-  inQueueTxt: { fontSize: 10, fontWeight: '600', color: '#94a3b8' },
+  inQueueTxt: { fontSize: 10, fontWeight: '600', color: c.textMuted },
 
-  modalFooter: { padding: 16, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  modalFooter: { padding: 16, borderTopWidth: 1, borderTopColor: c.border },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: GOLD, paddingVertical: 14, borderRadius: 12,
+    backgroundColor: c.primary, paddingVertical: 14, borderRadius: 12,
   },
-  addBtnTxt: { fontSize: 15, fontWeight: '700', color: '#000' },
+  addBtnTxt: { fontSize: 15, fontWeight: '700', color: c.primaryText },
   confirmCard: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 20,
     padding: 20,
     alignItems: 'center',
@@ -1694,7 +1834,7 @@ const s = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(212,175,55,0.12)',
+    backgroundColor: mode === 'dark' ? 'rgba(212,175,55,0.18)' : 'rgba(212,175,55,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -1702,14 +1842,14 @@ const s = StyleSheet.create({
   confirmTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: c.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   confirmMessage: {
     fontSize: 14,
     lineHeight: 20,
-    color: '#64748b',
+    color: c.textMuted,
     textAlign: 'center',
     marginBottom: 18,
   },
@@ -1720,14 +1860,14 @@ const s = StyleSheet.create({
   },
   confirmCancelBtn: {
     flex: 1,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: c.surface2,
   },
   confirmDangerBtn: {
     flex: 1,
-    backgroundColor: '#ef4444',
+    backgroundColor: c.danger,
   },
   confirmCancelTxt: {
-    color: '#475569',
+    color: c.text,
   },
   confirmDangerTxt: {
     color: '#fff',
@@ -1739,15 +1879,16 @@ const s = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: 'rgba(34,197,94,0.05)',
+    backgroundColor: mode === 'dark' ? 'rgba(34,197,94,0.08)' : 'rgba(34,197,94,0.05)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(34,197,94,0.1)',
+    borderBottomColor: mode === 'dark' ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)',
     gap: 8,
   },
   voiceTipText: {
     flex: 1,
     fontSize: 12,
     fontWeight: '600',
-    color: '#22c55e',
+    color: c.success,
   },
 });
+}
