@@ -348,11 +348,28 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
     return '';
   }, []);
 
+  // Keep stable refs so the initialisation effect can read current values without
+  // having them as dependencies (avoids re-running while the modal is open).
+  const dispatchDestinationsRef = React.useRef(dispatchDestinations);
+  const getFareForDestinationRef = React.useRef(getFareForDestination);
+  const getNextAvailableSeatRef = React.useRef(getNextAvailableSeat);
+  const rankRef = React.useRef(rank);
+  dispatchDestinationsRef.current = dispatchDestinations;
+  getFareForDestinationRef.current = getFareForDestination;
+  getNextAvailableSeatRef.current = getNextAvailableSeat;
+  rankRef.current = rank;
+
   useEffect(() => {
     if (!dispatchModalVisible || !dispatchEntry) return;
 
-    const defaultDestination = dispatchDestinations[0]?.name || '';
-    const defaultFare = getFareForDestination(defaultDestination);
+    // Snapshot current values via refs — safe to read, won't retrigger the effect
+    const destinations = dispatchDestinationsRef.current;
+    const getfare = getFareForDestinationRef.current;
+    const getNextSeat = getNextAvailableSeatRef.current;
+    const currentRank = rankRef.current;
+
+    const defaultDestination = destinations[0]?.name || '';
+    const defaultFare = getfare(defaultDestination);
     setDispatchPax('');
     setDispatchDefaultFare('');
     setDispatchFare('');
@@ -365,9 +382,9 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
         let bookings = data?.bookings || [];
 
         // If no bookings on this specific queue entry, check rank-level confirmed bookings
-        if (bookings.length === 0 && rank?.id) {
+        if (bookings.length === 0 && currentRank?.id) {
           try {
-            const rankData = await fetchRankBookings(rank.id);
+            const rankData = await fetchRankBookings(currentRank.id);
             const rankBookings = Array.isArray(rankData) ? rankData : (rankData?.bookings || []);
             // Include Confirmed/Pending/CheckedIn bookings not on a dispatched entry
             bookings = rankBookings.filter(b =>
@@ -387,8 +404,8 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
             prePopulated.push({
               name: p.name || bk.riderName || '',
               contact: p.contactNumber || bk.riderPhone || '',
-              nextOfKinName: '',
-              nextOfKinContact: '',
+              nextOfKinName: p.nextOfKinName || '',
+              nextOfKinContact: p.nextOfKinContact || '',
               destination: p.destination || defaultDestination,
               amount: p.fare ? String(p.fare) : (defaultFare ? String(defaultFare) : ''),
               paymentMethod: bk.paymentMethod || 'Ozow',
@@ -405,7 +422,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
         const allUsed = [...usedSeats];
         for (const pax of prePopulated) {
           if (!pax.seatNumber) {
-            const next = getNextAvailableSeat(allUsed, capacity);
+            const next = getNextSeat(allUsed, capacity);
             pax.seatNumber = next;
             if (next) allUsed.push(next);
           }
@@ -435,7 +452,11 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
         setIncludePassengerList(false);
       })
       .finally(() => setDispatchBookingsLoading(false));
-  }, [dispatchModalVisible, dispatchEntry, dispatchDestinations, getFareForDestination, getNextAvailableSeat, rank]);
+  // Only re-initialise when the modal opens or the dispatched entry changes — NOT
+  // when derived memo values (dispatchDestinations, getFareForDestination, etc.)
+  // get new references due to unrelated route-state updates.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatchModalVisible, dispatchEntry?.id]);
 
   // ── Derived date helpers ────────────────────────────────────────────
 
@@ -583,7 +604,6 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
 
   async function handleAddToQueue() {
     if (!addVehicleId) return Alert.alert('Required', 'Please select a vehicle');
-    if (!addRouteId) return Alert.alert('Required', 'Please select a route');
     setAddBusy(true);
     try {
       await addToQueue({
@@ -680,6 +700,16 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       const resp = await dispatchVehicle(dispatchEntry.id, payload);
       console.log('[Dispatch] API response:', resp);
       const reg = dispatchEntry.vehicleRegistration || 'Vehicle';
+
+      // Update local state immediately to reflect dispatched status
+      setQueue(prevQueue =>
+        prevQueue.map(entry =>
+          entry.id === dispatchEntry.id
+            ? { ...entry, status: 'Dispatched', departedAt: new Date().toISOString() }
+            : entry
+        )
+      );
+
       setDispatchModalVisible(false);
       setDispatchEntry(null);
       setDispatchPax('');
@@ -687,14 +717,19 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
       setDispatchFare('');
       setIncludePassengerList(false);
       setPassengerList([{ name: '', contact: '', nextOfKinName: '', nextOfKinContact: '', destination: '', amount: '', paymentMethod: 'Cash' }]);
-      
-      // Force refresh the data
+
+      // Navigate back to Trip Management after dispatch
+      setTimeout(() => {
+        navigation.navigate('TripManagement', { rank });
+      }, 500);
+
+      // Force refresh the data from backend
       console.log('[Dispatch] Refreshing data after dispatch');
       await loadData(true);
-      
+
       // Force component re-render
       setRefreshKey(prev => prev + 1);
-      
+
       // Additional refresh to ensure UI updates
       setTimeout(() => {
         console.log('[Dispatch] Secondary refresh after dispatch');

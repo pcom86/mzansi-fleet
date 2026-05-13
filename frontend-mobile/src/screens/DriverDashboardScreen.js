@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CommonActions, useFocusEffect } from '@react-navigation/native';
+import { AppState } from 'react-native';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
-  Modal, TextInput, RefreshControl, ActivityIndicator, Platform,
+  Modal, TextInput, RefreshControl, ActivityIndicator, Platform, Image, Switch, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { getActiveServiceProviderProfiles } from '../api/serviceProviderProfiles';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import client from '../api/client';
@@ -14,8 +17,55 @@ import { submitMechanicalRequestReview } from '../api/reviews';
 import { fetchDriverEvents } from '../api/driverBehavior';
 import RatingReviewModal from './RatingReviewModal';
 import ThemeToggle from '../components/ThemeToggle';
+import { completeTrip } from '../api/taxiRanks';
+import { getDriverQueueView, completeQueueTrip, getDriverDispatchedTrips } from '../api/queueManagement';
+import { getPendingTripRequests, getPendingRequestsByRank, acceptTripRequest, startTripRequest, completeTripRequest, getAllTripRequests, getTripRequest } from '../api/tripRequests';
 import { startMonitoring, stopMonitoring, isMonitoring, getCurrentSpeed } from '../services/DrivingMonitorService';
 import * as Location from 'expo-location';
+import ActiveTripNavigator from '../components/ActiveTripNavigator';
+
+// ── Expense categories with icons and colors ───────────────────────────────────
+const EXPENSE_CATEGORIES = [
+  { id: 'fuel', name: 'Fuel', icon: 'business', color: '#10B981' },
+  { id: 'maintenance', name: 'Maintenance', icon: 'build', color: '#F59E0B' },
+  { id: 'insurance', name: 'Insurance', icon: 'shield-checkmark', color: '#3B82F6' },
+  { id: 'repairs', name: 'Repairs', icon: 'hammer', color: '#EF4444' },
+  { id: 'towing', name: 'Towing', icon: 'card', color: '#8B5CF6' },
+  { id: 'tires', name: 'Tires', icon: 'car-sport', color: '#06B6D4' },
+  { id: 'electrical', name: 'Electrical', icon: 'flash', color: '#F59E0B' },
+  { id: 'bodywork', name: 'Bodywork', icon: 'car', color: '#EF4444' },
+  { id: 'toll', name: 'Toll', icon: 'cash', color: '#6B7280' },
+  { id: 'other', name: 'Other', icon: 'ellipsis-horizontal', color: '#6B7280' },
+];
+
+const CATEGORY_TO_SERVICE_TYPE = {
+  'maintenance': 'Mechanical',
+  'repairs': 'Mechanical',
+  'towing': 'Towing',
+  'tires': 'Tire Service',
+  'electrical': 'Electrical',
+  'bodywork': 'Bodywork',
+};
+
+const PART_FIXED_OPTIONS = [
+  { id: 'oil_filter', name: 'Oil Filter' },
+  { id: 'air_filter', name: 'Air Filter' },
+  { id: 'fuel_filter', name: 'Fuel Filter' },
+  { id: 'spark_plugs', name: 'Spark Plugs' },
+  { id: 'brake_pads', name: 'Brake Pads' },
+  { id: 'brake_discs', name: 'Brake Discs' },
+  { id: 'battery', name: 'Battery' },
+  { id: 'alternator', name: 'Alternator' },
+  { id: 'starter_motor', name: 'Starter Motor' },
+  { id: 'clutch', name: 'Clutch' },
+  { id: 'timing_belt', name: 'Timing Belt' },
+  { id: 'tires', name: 'Tires' },
+  { id: 'shock_absorbers', name: 'Shock Absorbers' },
+  { id: 'exhaust', name: 'Exhaust System' },
+  { id: 'radiator', name: 'Radiator' },
+  { id: 'water_pump', name: 'Water Pump' },
+  { id: 'other', name: 'Other' },
+];
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 const API = {
@@ -57,6 +107,10 @@ function statusColor(state) {
   }
 }
 
+function getTripId(trip) {
+  return trip?.id || trip?.Id || null;
+}
+
 // ── Modals ───────────────────────────────────────────────────────────────────
 function DatePickerField({ label, date, onChange, c, s }) {
   const [show, setShow] = useState(false);
@@ -92,7 +146,7 @@ function DatePickerField({ label, date, onChange, c, s }) {
       </TouchableOpacity>
       {Platform.OS === 'ios' && (
         <Modal transparent animationType="slide" visible={show} onRequestClose={() => setShow(false)}>
-          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
             <View style={{ backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
                 <TouchableOpacity onPress={() => setShow(false)}><Text style={{ color: c.textMuted, fontWeight: '700' }}>Cancel</Text></TouchableOpacity>
@@ -150,7 +204,7 @@ function AddEarningModal({ visible, vehicleId, onClose, onSuccess, c, s }) {
             <View style={s.row2}>
               <TouchableOpacity style={s.btnGhost} onPress={() => { reset(); onClose(); }}><Text style={s.btnGhostTxt}>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={s.btnPrimary} onPress={submit} disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.btnPrimaryTxt}>Add Earning</Text>}
+                {loading ? <ActivityIndicator color={c.primaryText} size="small" /> : <Text style={s.btnPrimaryTxt}>Add Earning</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -162,51 +216,464 @@ function AddEarningModal({ visible, vehicleId, onClose, onSuccess, c, s }) {
 
 function AddExpenseModal({ visible, vehicleId, onClose, onSuccess, c, s }) {
   const [amount, setAmount] = useState('');
-  const [cat, setCat] = useState('Fuel');
+  const [cat, setCat] = useState('fuel');
   const [desc, setDesc] = useState('');
   const [date, setDate] = useState(new Date());
   const [loading, setLoading] = useState(false);
-  const CATS = ['Fuel', 'Maintenance', 'Repairs', 'Toll', 'Insurance', 'Other'];
+  const [showCategoryGrid, setShowCategoryGrid] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [selectedParts, setSelectedParts] = useState(new Set());
+  const [showPartFixedGrid, setShowPartFixedGrid] = useState(false);
+  const [otherPartDescription, setOtherPartDescription] = useState('');
+  const [frequentReplacement, setFrequentReplacement] = useState(false);
+  const [serviceProviders, setServiceProviders] = useState([]);
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [newProviderName, setNewProviderName] = useState('');
+  const [showAddProvider, setShowAddProvider] = useState(false);
+  const [loadingProviders, setLoadingProviders] = useState(false);
+  const [receiptImage, setReceiptImage] = useState(null);
+  const [mechanicalCategory, setMechanicalCategory] = useState('');
+  const [mechanicalCategories, setMechanicalCategories] = useState([]);
+  const [mechanicalSelectedParts, setMechanicalSelectedParts] = useState(new Set());
+  const [laborDescription, setLaborDescription] = useState('');
+  const [laborCost, setLaborCost] = useState('');
+  const [partsCost, setPartsCost] = useState('');
+  const [odometerReading, setOdometerReading] = useState('');
+  const [warrantyInfo, setWarrantyInfo] = useState('');
+  const [showMechanicalCategoryPicker, setShowMechanicalCategoryPicker] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(false);
 
-  function reset() { setAmount(''); setCat('Fuel'); setDesc(''); setDate(new Date()); }
+  const [allProviderProfiles, setAllProviderProfiles] = useState([]);
+
+  useEffect(() => {
+    if (visible) {
+      loadMechanicalCategories();
+      setLoadingProviders(true);
+      getActiveServiceProviderProfiles()
+        .then(profiles => {
+          const arr = Array.isArray(profiles) ? profiles : (profiles?.$values || profiles?.items || []);
+          setAllProviderProfiles(arr);
+          setServiceProviders(arr);
+        })
+        .catch(error => {
+          console.error('Failed to load service provider profiles:', error);
+          setAllProviderProfiles([]);
+          setServiceProviders([]);
+        })
+        .finally(() => setLoadingProviders(false));
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (allProviderProfiles.length === 0) return;
+    const serviceType = CATEGORY_TO_SERVICE_TYPE[cat];
+    if (serviceType) {
+      const filtered = allProviderProfiles.filter(p =>
+        p.serviceTypes && p.serviceTypes.toLowerCase().includes(serviceType.toLowerCase())
+      );
+      setServiceProviders(filtered.length > 0 ? filtered : allProviderProfiles);
+    } else {
+      setServiceProviders(allProviderProfiles);
+    }
+  }, [cat, allProviderProfiles]);
+
+  function loadMechanicalCategories() {
+    const STATIC_MECH_CATEGORIES = [
+      { Category: 'Engine', DisplayName: 'Engine & Powertrain', CommonParts: ['Oil Filter', 'Air Filter', 'Spark Plugs', 'Timing Belt', 'Water Pump', 'Alternator'] },
+      { Category: 'Brakes', DisplayName: 'Braking System', CommonParts: ['Brake Pads', 'Brake Discs', 'Brake Calipers', 'Brake Lines', 'Brake Fluid'] },
+      { Category: 'Suspension', DisplayName: 'Suspension & Steering', CommonParts: ['Shock Absorbers', 'Struts', 'Coil Springs', 'Ball Joints', 'Tie Rods', 'Control Arms'] },
+      { Category: 'Electrical', DisplayName: 'Electrical System', CommonParts: ['Battery', 'Spark Plug Wires', 'Fuses', 'Light Bulbs', 'Starter Motor'] },
+      { Category: 'Tires', DisplayName: 'Tires & Wheels', CommonParts: ['Tires', 'Wheel Bearings', 'Valve Stems', 'Wheel Nuts', 'Rim'] },
+      { Category: 'Body', DisplayName: 'Body & Interior', CommonParts: ['Door Handles', 'Window Regulators', 'Mirrors', 'Headlights', 'Tail Lights'] },
+      { Category: 'Service', DisplayName: 'Regular Service', CommonParts: ['Engine Oil', 'Oil Filter', 'Air Filter', 'Fuel Filter', 'Transmission Fluid'] },
+    ];
+    setMechanicalCategories(STATIC_MECH_CATEGORIES);
+  }
+
+  const pickReceiptImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      if (!result.canceled) setReceiptImage(result.assets[0]);
+    } catch (e) { Alert.alert('Error', 'Failed to select image'); }
+  };
+
+  const takeReceiptPhoto = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      if (!result.canceled) setReceiptImage(result.assets[0]);
+    } catch (e) { Alert.alert('Error', 'Failed to take photo'); }
+  };
+
+  const toggleMechanicalPart = (partName) => {
+    const next = new Set(mechanicalSelectedParts);
+    if (next.has(partName)) next.delete(partName); else next.add(partName);
+    setMechanicalSelectedParts(next);
+  };
+
+  const getAvailableParts = () => {
+    const found = mechanicalCategories.find(ct => ct.Category === mechanicalCategory);
+    return found ? found.CommonParts : [];
+  };
+
+  async function handleAddProvider() {
+    if (!newProviderName.trim()) return;
+    setLoadingProviders(true);
+    try {
+      const res = await client.post('/ServiceProviders', { businessName: newProviderName });
+      const newEntry = { ...res.data, serviceTypes: '' };
+      setAllProviderProfiles(prev => [...prev, newEntry]);
+      setServiceProviders(prev => [...prev, newEntry]);
+      setSelectedProvider(newEntry);
+      setShowAddProvider(false);
+      setNewProviderName('');
+    } catch (e) { Alert.alert('Error', 'Failed to add service provider'); }
+    finally { setLoadingProviders(false); }
+  }
+
+  function reset() {
+    setAmount(''); setCat('fuel'); setDesc(''); setDate(new Date());
+    setInvoiceNumber('');
+    setSelectedParts(new Set()); setOtherPartDescription(''); setFrequentReplacement(false);
+    setSelectedProvider(null); setNewProviderName(''); setShowAddProvider(false);
+    setReceiptImage(null);
+    setMechanicalCategory(''); setMechanicalSelectedParts(new Set());
+    setLaborDescription(''); setLaborCost(''); setPartsCost('');
+    setOdometerReading(''); setWarrantyInfo('');
+  }
 
   async function submit() {
     if (!amount || isNaN(+amount) || +amount <= 0) return Alert.alert('Validation', 'Enter a valid amount');
     setLoading(true);
     try {
-      await API.addExpense({ vehicleId, amount: +amount, category: cat, description: desc, date: date.toISOString().split('T')[0] });
+      const dateStr = date.toISOString().split('T')[0];
+      const partDesc = isMechCat && selectedParts.size > 0
+        ? Array.from(selectedParts).map(id => PART_FIXED_OPTIONS.find(p => p.id === id)?.name || id).join(', ')
+        : null;
+      const providerNote = selectedProvider ? `Service Provider: ${selectedProvider.businessName}` : null;
+      const descParts = [desc, partDesc, providerNote].filter(Boolean);
+      await API.addExpense({
+        vehicleId,
+        amount: +amount,
+        category: cat,
+        description: descParts.join(' | ') || '',
+        date: dateStr,
+        invoiceNumber: invoiceNumber || undefined,
+      });
       reset(); onSuccess(); onClose();
     } catch (e) { Alert.alert('Error', e?.response?.data?.error || e.message || 'Failed'); }
     finally { setLoading(false); }
   }
 
+  const selectedCategory = EXPENSE_CATEGORIES.find(ct => ct.id === cat);
+  const isMechCat = cat === 'maintenance' || cat === 'repairs';
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={s.overlay}>
-        <ScrollView keyboardShouldPersistTaps="handled">
-          <View style={s.sheet}>
-            <Text style={s.sheetTitle}>Add Expense</Text>
-            <Text style={s.label}>Amount (R)</Text>
-            <TextInput style={s.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="0.00" placeholderTextColor={c.textMuted} />
-            <Text style={s.label}>Category</Text>
-            <View style={s.chips}>{CATS.map(ct => (
-              <TouchableOpacity key={ct} style={[s.chip, cat === ct && s.chipOn]} onPress={() => setCat(ct)}>
-                <Text style={[s.chipTxt, cat === ct && s.chipTxtOn]}>{ct}</Text>
+    <>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View style={s.overlay}>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <View style={s.sheet}>
+              <Text style={s.sheetTitle}>Add Expense</Text>
+              <Text style={s.label}>Amount (R)</Text>
+              <TextInput style={s.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="0.00" placeholderTextColor={c.textMuted} />
+
+              <Text style={s.label}>Category</Text>
+              <TouchableOpacity
+                style={[s.categorySelector, { backgroundColor: c.background, borderColor: c.border }]}
+                onPress={() => setShowCategoryGrid(true)}
+              >
+                {selectedCategory ? (
+                  <View style={s.selectedCategory}>
+                    <View style={[s.categoryIcon, { backgroundColor: selectedCategory.color + '20' }]}>
+                      <Ionicons name={selectedCategory.icon} size={20} color={selectedCategory.color} />
+                    </View>
+                    <Text style={[s.selectedCategoryText, { color: c.text }]}>
+                      {selectedCategory.name}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={[s.placeholderText, { color: c.textMuted }]}>Select category</Text>
+                )}
+                <Ionicons name="chevron-forward" size={20} color={c.textMuted} />
               </TouchableOpacity>
-            ))}</View>
-            <DatePickerField label="Date" date={date} onChange={setDate} c={c} s={s} />
-            <Text style={s.label}>Description (optional)</Text>
-            <TextInput style={[s.input, { height: 70 }]} multiline value={desc} onChangeText={setDesc} placeholder="Details..." placeholderTextColor={c.textMuted} />
-            <View style={s.row2}>
-              <TouchableOpacity style={s.btnGhost} onPress={() => { reset(); onClose(); }}><Text style={s.btnGhostTxt}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={[s.btnPrimary, { backgroundColor: '#ef4444' }]} onPress={submit} disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.btnPrimaryTxt}>Add Expense</Text>}
+
+              {isMechCat && (
+                <View>
+                  <Text style={s.label}>Parts Fixed/Replaced</Text>
+                  <TouchableOpacity
+                    style={[s.categorySelector, { backgroundColor: c.background, borderColor: c.border }]}
+                    onPress={() => setShowPartFixedGrid(true)}
+                  >
+                    {selectedParts.size > 0 ? (
+                      <View style={s.selectedCategory}>
+                        <View style={[s.categoryIcon, { backgroundColor: '#F59E0B20' }]}>
+                          <Ionicons name="build" size={20} color="#F59E0B" />
+                        </View>
+                        <Text style={[s.selectedCategoryText, { color: c.text }]}>
+                          {selectedParts.size === 1
+                            ? PART_FIXED_OPTIONS.find(p => p.id === Array.from(selectedParts)[0])?.name || 'Select parts'
+                            : `${selectedParts.size} parts selected`}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={[s.placeholderText, { color: c.textMuted }]}>Select parts fixed/replaced</Text>
+                    )}
+                    <Ionicons name="chevron-forward" size={20} color={c.textMuted} />
+                  </TouchableOpacity>
+
+                  {selectedParts.size > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                      {Array.from(selectedParts).map(partId => {
+                        const part = PART_FIXED_OPTIONS.find(p => p.id === partId);
+                        return part ? (
+                          <View key={partId} style={[s.partChip, { backgroundColor: '#F59E0B20', borderColor: '#F59E0B' }]}>
+                            <Text style={[s.partChipText, { color: '#F59E0B' }]}>{part.name}</Text>
+                            <TouchableOpacity onPress={() => {
+                              const next = new Set(selectedParts);
+                              next.delete(partId);
+                              if (partId === 'other') setOtherPartDescription('');
+                              setSelectedParts(next);
+                            }}>
+                              <Ionicons name="close-circle" size={16} color="#F59E0B" />
+                            </TouchableOpacity>
+                          </View>
+                        ) : null;
+                      })}
+                    </View>
+                  )}
+
+                  {selectedParts.has('other') && (
+                    <View>
+                      <Text style={s.label}>Specify Part</Text>
+                      <TextInput value={otherPartDescription} onChangeText={setOtherPartDescription} style={s.input} placeholder="Please specify the part fixed/replaced..." placeholderTextColor={c.textMuted} />
+                    </View>
+                  )}
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+                    <TouchableOpacity onPress={() => setFrequentReplacement(v => !v)} style={{ marginRight: 8 }}>
+                      <Ionicons name={frequentReplacement ? 'checkbox' : 'square-outline'} size={22} color={frequentReplacement ? c.primary : c.textMuted} />
+                    </TouchableOpacity>
+                    <Text style={{ color: c.text, fontSize: 13 }}>Frequent replacement?</Text>
+                  </View>
+
+                </View>
+              )}
+
+              {!!CATEGORY_TO_SERVICE_TYPE[cat] && (
+                <View>
+                  <Text style={s.label}>Service Provider</Text>
+                  {loadingProviders ? (
+                    <ActivityIndicator color={c.primary} />
+                  ) : serviceProviders.length === 0 ? (
+                    <View style={{ marginBottom: 8 }}>
+                      <Text style={{ color: c.textMuted, fontSize: 13, fontStyle: 'italic', marginBottom: 8 }}>No service providers yet</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} value={newProviderName} onChangeText={setNewProviderName} placeholder="New Provider Name" placeholderTextColor={c.textMuted} />
+                        <TouchableOpacity onPress={handleAddProvider} style={{ marginLeft: 8 }}>
+                          <Ionicons name="checkmark-circle" size={24} color={c.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={{ marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                          {serviceProviders.map(sp => (
+                            <TouchableOpacity
+                              key={String(sp.id)}
+                              style={[s.chip, selectedProvider && selectedProvider.id === sp.id && s.chipOn]}
+                              onPress={() => { setSelectedProvider(sp); setShowAddProvider(false); }}
+                            >
+                              <Text style={[s.chipTxt, selectedProvider && selectedProvider.id === sp.id && s.chipTxtOn]}>{sp.businessName}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                        <TouchableOpacity onPress={() => { setShowAddProvider(true); setSelectedProvider(null); }} style={{ marginLeft: 8 }}>
+                          <Ionicons name="add-circle-outline" size={24} color={c.primary} />
+                        </TouchableOpacity>
+                      </View>
+                      {showAddProvider && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} value={newProviderName} onChangeText={setNewProviderName} placeholder="New Provider Name" placeholderTextColor={c.textMuted} />
+                          <TouchableOpacity onPress={handleAddProvider} style={{ marginLeft: 8 }}>
+                            <Ionicons name="checkmark-circle" size={24} color={c.primary} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <Text style={s.label}>Invoice Number (optional)</Text>
+              <TextInput style={s.input} value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="Invoice #" placeholderTextColor={c.textMuted} />
+
+              <DatePickerField label="Date" date={date} onChange={setDate} c={c} s={s} />
+
+              <Text style={s.label}>Description (optional)</Text>
+              <TextInput style={[s.input, { height: 70, textAlignVertical: 'top' }]} multiline value={desc} onChangeText={setDesc} placeholder="Details..." placeholderTextColor={c.textMuted} />
+
+              <Text style={s.label}>Receipt (optional)</Text>
+              {receiptImage ? (
+                <View style={s.receiptPreview}>
+                  <Image source={{ uri: receiptImage.uri }} style={s.receiptImage} resizeMode="cover" />
+                  <TouchableOpacity style={s.removeReceipt} onPress={() => setReceiptImage(null)}>
+                    <Ionicons name="close-circle" size={24} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={s.receiptOptions}>
+                  <TouchableOpacity style={[s.receiptButton, { backgroundColor: c.surface, borderColor: c.border }]} onPress={pickReceiptImage}>
+                    <Ionicons name="image" size={20} color={c.primary} />
+                    <Text style={[s.receiptButtonText, { color: c.text }]}>Choose from Gallery</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.receiptButton, { backgroundColor: c.surface, borderColor: c.border }]} onPress={takeReceiptPhoto}>
+                    <Ionicons name="camera" size={20} color={c.primary} />
+                    <Text style={[s.receiptButtonText, { color: c.text }]}>Take Photo</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <View style={[s.row2, { marginTop: 20 }]}>
+                <TouchableOpacity style={s.btnGhost} onPress={() => { reset(); onClose(); }}><Text style={s.btnGhostTxt}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={[s.btnPrimary, { backgroundColor: '#ef4444' }]} onPress={submit} disabled={loading}>
+                  {loading ? <ActivityIndicator color={c.primaryText} size="small" /> : <Text style={s.btnPrimaryTxt}>Add Expense</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Category Grid Modal */}
+      <Modal transparent animationType="slide" visible={showCategoryGrid} onRequestClose={() => setShowCategoryGrid(false)}>
+        <View style={s.modalOverlay}>
+          <View style={[s.categoryModal, { backgroundColor: c.surface }]}>
+            <View style={s.modalHeader}>
+              <TouchableOpacity onPress={() => setShowCategoryGrid(false)}>
+                <Text style={[s.modalCancel, { color: c.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={[s.modalTitle, { color: c.text }]}>Select Category</Text>
+              <View style={{ width: 50 }} />
+            </View>
+            <ScrollView contentContainerStyle={s.categoryGrid}>
+              {EXPENSE_CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    s.categoryCard,
+                    { backgroundColor: c.background, borderColor: c.border },
+                    cat === category.id && { borderColor: category.color, borderWidth: 2 }
+                  ]}
+                  onPress={() => {
+                    setCat(category.id);
+                    setShowCategoryGrid(false);
+                  }}
+                >
+                  <View style={[s.categoryIcon, { backgroundColor: category.color + '20' }]}>
+                    <Ionicons name={category.icon} size={24} color={category.color} />
+                  </View>
+                  <Text style={[s.categoryName, { color: c.text }]}>{category.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Part Fixed Grid Modal */}
+      <Modal transparent animationType="slide" visible={showPartFixedGrid} onRequestClose={() => setShowPartFixedGrid(false)}>
+        <View style={s.modalOverlay}>
+          <View style={[s.categoryModal, { backgroundColor: c.surface }]}>
+            <View style={s.modalHeader}>
+              <TouchableOpacity onPress={() => setShowPartFixedGrid(false)}>
+                <Text style={[s.modalCancel, { color: c.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={[s.modalTitle, { color: c.text }]}>Select Parts Fixed/Replaced</Text>
+              <TouchableOpacity onPress={() => setShowPartFixedGrid(false)}>
+                <Text style={[s.modalCancel, { color: c.primary }]}>Done</Text>
               </TouchableOpacity>
             </View>
+            <ScrollView contentContainerStyle={s.categoryGrid}>
+              {PART_FIXED_OPTIONS.map((part) => (
+                <TouchableOpacity
+                  key={part.id}
+                  style={[
+                    s.categoryCard,
+                    { backgroundColor: c.background, borderColor: c.border },
+                    selectedParts.has(part.id) && { borderColor: '#F59E0B', borderWidth: 2 }
+                  ]}
+                  onPress={() => {
+                    const next = new Set(selectedParts);
+                    if (next.has(part.id)) {
+                      next.delete(part.id);
+                      if (part.id === 'other') setOtherPartDescription('');
+                    } else {
+                      next.add(part.id);
+                    }
+                    setSelectedParts(next);
+                  }}
+                >
+                  <View style={[s.categoryIcon, { backgroundColor: '#F59E0B20' }]}>
+                    <Ionicons name="build" size={24} color="#F59E0B" />
+                  </View>
+                  <Text style={[s.categoryName, { color: c.text }]}>{part.name}</Text>
+                  {selectedParts.has(part.id) && (
+                    <Ionicons name="checkmark-circle" size={20} color="#F59E0B" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
-        </ScrollView>
-      </View>
-    </Modal>
+        </View>
+      </Modal>
+
+      {/* Mechanical Category Picker Modal */}
+      {showMechanicalCategoryPicker && (
+        <Modal transparent animationType="slide" visible={showMechanicalCategoryPicker} onRequestClose={() => setShowMechanicalCategoryPicker(false)}>
+          <View style={s.modalOverlay}>
+            <View style={[s.categoryModal, { backgroundColor: c.surface }]}>
+              <View style={s.modalHeader}>
+                <TouchableOpacity onPress={() => setShowMechanicalCategoryPicker(false)}>
+                  <Text style={[s.modalCancel, { color: c.textMuted }]}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={[s.modalTitle, { color: c.text }]}>Mechanical Category</Text>
+                <TouchableOpacity onPress={() => setShowMechanicalCategoryPicker(false)}>
+                  <Text style={[s.modalCancel, { color: c.primary }]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView>
+                {mechanicalCategories.map(mcat => (
+                  <TouchableOpacity
+                    key={mcat.Category}
+                    style={[s.pickerItem, { backgroundColor: c.surface, borderColor: c.border }]}
+                    onPress={() => {
+                      setMechanicalCategory(mcat.Category);
+                      setMechanicalSelectedParts(new Set());
+                      setShowMechanicalCategoryPicker(false);
+                    }}
+                  >
+                    <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }}>{mcat.DisplayName}</Text>
+                    {mechanicalCategory === mcat.Category && (
+                      <Ionicons name="checkmark" size={20} color="#10B981" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -476,8 +943,592 @@ function DetailRow({ icon, label, value, highlight, c, s }) {
   );
 }
 
+// ── Navigation helper ─────────────────────────────────────────────────────────
+function _openMapsNavigation(req) {
+  const lat = req.dropoffLatitude ?? req.DropoffLatitude;
+  const lon = req.dropoffLongitude ?? req.DropoffLongitude;
+  const label = encodeURIComponent(req.dropoffLocation ?? req.DropoffLocation ?? 'Destination');
+
+  const webFallback = `https://www.google.com/maps/dir/?api=1&destination=${lat && lon ? `${lat},${lon}` : label}&travelmode=driving`;
+
+  if (lat && lon) {
+    if (Platform.OS === 'android') {
+      Linking.openURL(`google.navigation:q=${lat},${lon}&mode=d`).catch(() =>
+        Linking.openURL(webFallback)
+      );
+    } else if (Platform.OS === 'ios') {
+      Linking.canOpenURL('comgooglemaps://').then(supported => {
+        Linking.openURL(
+          supported
+            ? `comgooglemaps://?daddr=${lat},${lon}&directionsmode=driving`
+            : `maps://?daddr=${lat},${lon}&dirflg=d`
+        ).catch(() => Linking.openURL(webFallback));
+      });
+    } else {
+      Linking.openURL(webFallback);
+    }
+  } else {
+    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${label}&travelmode=driving`);
+  }
+}
+
+// ── Shared schedule helpers ───────────────────────────────────────────────────
+function _scheduledMinsAway(req) {
+  const pt = req.pickupTime ?? req.PickupTime ?? req.requestedTime ?? req.RequestedTime;
+  if (!pt) return 0;
+  return Math.round((new Date(pt).getTime() - Date.now()) / 60000);
+}
+function _fmtScheduledLabel(req) {
+  const pt = req.pickupTime ?? req.PickupTime ?? req.requestedTime ?? req.RequestedTime;
+  if (!pt) return '';
+  const d = new Date(pt);
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} · ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+}
+function _timeUntilLabel(mins) {
+  if (mins <= 0) return null;
+  const h = Math.floor(mins / 60); const m = mins % 60;
+  return h > 0 ? `in ${h}h ${m}m` : `in ${m}m`;
+}
+
+// ── Accepted Trips Widget ─────────────────────────────────────────────────────
+function AcceptedTripsWidget({ driverId, vehicleId, onOpenTrips, refreshSignal, c }) {
+  const [accepted, setAccepted] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [startingId, setStartingId] = useState(null);
+  const [arrivedModal, setArrivedModal] = useState(false);
+  const [arrivingReq, setArrivingReq] = useState(null);
+  const [navReq, setNavReq] = useState(null);
+
+  const load = useCallback(async () => {
+    if (!driverId) { setLoading(false); return; }
+    try {
+      const data = await getAllTripRequests('OffersReceived', driverId);
+      setAccepted(Array.isArray(data) ? data : []);
+    } catch {
+      setAccepted([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [driverId]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const iv = setInterval(load, 30000);
+    return () => clearInterval(iv);
+  }, [load]);
+  useEffect(() => { if (refreshSignal) load(); }, [refreshSignal, load]);
+
+  function openMaps(req) {
+    const lat = req.pickupLatitude ?? req.PickupLatitude;
+    const lon = req.pickupLongitude ?? req.PickupLongitude;
+    const label = encodeURIComponent(req.pickupLocation ?? req.PickupLocation ?? 'Pickup');
+    if (lat && lon) {
+      const url = Platform.OS === 'ios'
+        ? `maps:0,0?q=${label}@${lat},${lon}`
+        : `geo:${lat},${lon}?q=${lat},${lon}(${label})`;
+      Linking.openURL(url).catch(() =>
+        Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`)
+      );
+    } else {
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${label}`);
+    }
+  }
+
+  async function confirmStart() {
+    if (!arrivingReq || !driverId) return;
+    const id = arrivingReq.id ?? arrivingReq.Id;
+    const reqSnapshot = arrivingReq;
+    setArrivedModal(false);
+    setArrivingReq(null);
+    setNavReq(reqSnapshot);  // open navigator immediately
+    setStartingId(id);
+    try {
+      await startTripRequest(id, driverId);
+      await load();
+    } catch (err) {
+      setNavReq(null);
+      Alert.alert('Error', err?.response?.data || err?.message || 'Failed to start trip');
+    } finally {
+      setStartingId(null);
+    }
+  }
+
+  if (!loading && accepted.length === 0 && !navReq) return null;
+
+  return (
+    <View>
+      {/* Card content — only shown while there are accepted trips */}
+      {accepted.length > 0 && <View style={{ marginBottom: 16 }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="checkmark-circle" size={17} color="#22c55e" />
+          </View>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>Accepted Trips</Text>
+          {!loading && accepted.length > 0 && (
+            <View style={{ backgroundColor: '#22c55e', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#fff' }}>{accepted.length}</Text>
+            </View>
+          )}
+        </View>
+        <TouchableOpacity onPress={onOpenTrips} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <Text style={{ fontSize: 12, color: '#22c55e', fontWeight: '600' }}>View All</Text>
+          <Ionicons name="chevron-forward" size={14} color="#22c55e" />
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={{ backgroundColor: c.surface, borderRadius: 14, padding: 20, alignItems: 'center' }}>
+          <ActivityIndicator size="small" color="#22c55e" />
+        </View>
+      ) : (
+        accepted.slice(0, 3).map(req => {
+          const id = req.id ?? req.Id;
+          const pickup = req.pickupLocation ?? req.PickupLocation ?? '—';
+          const dropoff = req.dropoffLocation ?? req.DropoffLocation ?? '—';
+          const fare = Number(req.totalPrice ?? req.TotalPrice ?? 0);
+          const pax = req.passengerCount ?? req.PassengerCount ?? 1;
+          const mins = _scheduledMinsAway(req);
+          const isFuture = mins > 30;
+          const schedLabel = _fmtScheduledLabel(req);
+          const countdown = _timeUntilLabel(mins);
+          const isStarting = startingId === id;
+          return (
+            <View key={id} style={{
+              backgroundColor: c.surface, borderRadius: 14, marginBottom: 8, overflow: 'hidden',
+              borderWidth: 1.5, borderColor: isFuture ? '#3b82f630' : '#22c55e30',
+              shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+            }}>
+              <View style={{ height: 3, backgroundColor: isFuture ? '#3b82f6' : '#22c55e' }} />
+              <View style={{ padding: 12 }}>
+                {/* Status + fare */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: isFuture ? '#3b82f6' : '#22c55e' }} />
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: isFuture ? '#3b82f6' : '#22c55e', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      {isFuture ? 'Scheduled' : 'Head to Pickup'}
+                    </Text>
+                  </View>
+                  {fare > 0 && (
+                    <View style={{ backgroundColor: '#D4AF37', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '900', color: '#000' }}>R{fare.toFixed(2)}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Scheduled banner */}
+                {isFuture && schedLabel ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#3b82f610', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, marginBottom: 8 }}>
+                    <Ionicons name="calendar-outline" size={13} color="#3b82f6" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#3b82f6' }}>{schedLabel}</Text>
+                      {countdown ? <Text style={{ fontSize: 11, color: c.textMuted }}>{countdown}</Text> : null}
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Route */}
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+                  <View style={{ alignItems: 'center', paddingTop: 4 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' }} />
+                    <View style={{ width: 1.5, height: 14, backgroundColor: c.border, marginVertical: 2 }} />
+                    <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: '#ef4444' }} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: c.text }} numberOfLines={1}>{pickup}</Text>
+                    <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 8 }} numberOfLines={1}>{dropoff}</Text>
+                  </View>
+                </View>
+
+                {/* Pax */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10, marginTop: 4 }}>
+                  <Ionicons name={pax > 1 ? 'people-outline' : 'person-outline'} size={13} color={c.textMuted} />
+                  <Text style={{ fontSize: 12, color: c.textMuted }}>{pax > 1 ? `${pax} passengers` : '1 passenger'}</Text>
+                </View>
+
+                {/* Action buttons */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      borderWidth: 1.5, borderColor: '#3b82f6', borderRadius: 10, paddingVertical: 9, backgroundColor: c.background }}
+                    onPress={() => openMaps(req)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="navigate" size={14} color="#3b82f6" />
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#3b82f6' }}>Navigate</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      backgroundColor: isFuture ? c.card : '#22c55e', borderRadius: 10, paddingVertical: 9,
+                      opacity: (isStarting || isFuture) ? 0.55 : 1 }}
+                    onPress={() => { if (!isFuture) { setArrivingReq(req); setArrivedModal(true); } }}
+                    disabled={isStarting || isFuture}
+                    activeOpacity={0.8}
+                  >
+                    {isStarting
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Ionicons name={isFuture ? 'time-outline' : 'pin'} size={14} color={isFuture ? c.textMuted : '#fff'} />}
+                    <Text style={{ fontSize: 12, fontWeight: '900', color: isFuture ? c.textMuted : '#fff' }}>
+                      {isStarting ? 'Starting…' : isFuture ? (countdown ? `Due ${countdown}` : 'Not Yet Due') : 'Arrived at Pickup'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          );
+        })
+      )}
+      </View>}
+
+      {/* ── Active Trip In-App Navigator (dashboard) ── */}
+      <ActiveTripNavigator
+        visible={!!navReq}
+        req={navReq}
+        driverId={driverId}
+        vehicleId={vehicleId}
+        c={c}
+        onDone={(total) => {
+          setNavReq(null);
+          load();
+          Alert.alert('Trip Completed!', `Earnings of R${Number(total).toFixed(2)} recorded.`);
+        }}
+        onCancel={() => {
+          setNavReq(null);
+          load();
+        }}
+      />
+
+      {/* Arrived at Pickup confirmation modal */}
+      <Modal visible={arrivedModal} transparent animationType="slide" onRequestClose={() => setArrivedModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: '#22c55e20', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <Ionicons name="pin" size={22} color="#22c55e" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 18, fontWeight: '900', color: c.text }}>Arrived at Pickup</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>Confirm you're at the pickup location to start the trip</Text>
+              </View>
+              <TouchableOpacity onPress={() => setArrivedModal(false)} style={{ padding: 6 }}>
+                <Ionicons name="close" size={22} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {arrivingReq && (
+              <View style={{ backgroundColor: c.background, borderRadius: 14, padding: 14, marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                  <View style={{ alignItems: 'center', paddingTop: 3 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e' }} />
+                    <View style={{ width: 2, height: 16, backgroundColor: c.border, marginVertical: 2 }} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Pickup</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: c.text }}>{arrivingReq.pickupLocation ?? arrivingReq.PickupLocation}</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <View style={{ alignItems: 'center', paddingTop: 3 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#ef4444' }} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Destination</Text>
+                    <Text style={{ fontSize: 13, color: c.textMuted }}>{arrivingReq.dropoffLocation ?? arrivingReq.DropoffLocation}</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', marginBottom: 20 }}>
+              The passenger will be notified and the trip timer will begin.
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: c.border }}
+                onPress={() => setArrivedModal(false)}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>Not Yet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 2, paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#22c55e' }}
+                onPress={confirmStart}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="play-circle" size={20} color="#fff" />
+                  <Text style={{ fontSize: 15, fontWeight: '900', color: '#fff' }}>Confirm & Start Trip</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// ── Trip Requests Widget ──────────────────────────────────────────────────────
+function TripRequestsWidget({ driverId, onOpenRequests, onAccepted, c }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [acceptingId, setAcceptingId] = useState(null);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  const fetchRequests = useCallback(async () => {
+    try {
+      const data = await getAllTripRequests('Requested');
+      setRequests(Array.isArray(data) ? data.slice(0, 3) : []);
+    } catch {
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRequests();
+    const interval = setInterval(fetchRequests, 30000);
+    return () => clearInterval(interval);
+  }, [fetchRequests]);
+
+  async function handleAccept(req) {
+    if (!driverId) return Alert.alert('Error', 'Driver profile not loaded');
+    const id = req.id ?? req.Id;
+    setAcceptingId(id);
+    try {
+      await acceptTripRequest(id, driverId, 0);
+      setRequests(prev => prev.filter(r => (r.id ?? r.Id) !== id));
+      onAccepted?.();
+      Alert.alert('Trip Accepted!', `${(req.pickupLocation ?? req.PickupLocation) || 'Pickup'} → ${(req.dropoffLocation ?? req.DropoffLocation) || 'Dropoff'}`);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data || err?.message || 'Failed to accept trip');
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
+  async function loadRequestDetails(req) {
+    const id = req.id ?? req.Id;
+    setDetailsLoading(true);
+    try {
+      const data = await getTripRequest(id);
+      setSelectedRequest(data || req);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data || err?.message || 'Failed to load request details');
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
+
+  const closeDetails = () => setSelectedRequest(null);
+
+  const count = requests.length;
+
+  return (
+    <View style={{ marginBottom: 16 }}>
+      {/* Widget header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(212,175,55,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="navigate" size={17} color="#D4AF37" />
+          </View>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>Trip Requests</Text>
+          {!loading && count > 0 && (
+            <View style={{ backgroundColor: '#D4AF37', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#000' }}>{count}</Text>
+            </View>
+          )}
+        </View>
+        <TouchableOpacity onPress={onOpenRequests} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <Text style={{ fontSize: 12, color: '#D4AF37', fontWeight: '600' }}>View All</Text>
+          <Ionicons name="chevron-forward" size={14} color="#D4AF37" />
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={{ backgroundColor: c.surface, borderRadius: 14, padding: 20, alignItems: 'center' }}>
+          <ActivityIndicator size="small" color="#D4AF37" />
+        </View>
+      ) : count === 0 ? (
+        <View style={{ backgroundColor: c.surface, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Ionicons name="checkmark-circle-outline" size={22} color={c.textMuted} />
+          <Text style={{ fontSize: 13, color: c.textMuted }}>No pending trip requests right now</Text>
+        </View>
+      ) : (
+        requests.map(req => {
+          const id = req.id ?? req.Id;
+          const isAccepting = acceptingId === id;
+          const pickup = req.pickupLocation ?? req.PickupLocation ?? '—';
+          const dropoff = req.dropoffLocation ?? req.DropoffLocation ?? '—';
+          const pax = req.passengerCount ?? req.PassengerCount ?? 1;
+          const time = req.requestedTime ?? req.RequestedTime;
+          const price = req.totalPrice ?? req.TotalPrice ?? 0;
+          const isGroup = pax > 1;
+          return (
+            <View key={id} style={{
+              backgroundColor: c.surface, borderRadius: 14, marginBottom: 8,
+              flexDirection: 'row', overflow: 'hidden',
+              shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+            }}>
+              <View style={{ width: 4, backgroundColor: '#D4AF37' }} />
+              <View style={{ flex: 1, padding: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: c.text, flex: 1 }} numberOfLines={1}>
+                    {pickup} → {dropoff}
+                  </Text>
+                  {price > 0
+                    ? <View style={{ backgroundColor: '#D4AF37', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, marginLeft: 8 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#000' }}>R{Number(price).toFixed(2)}</Text>
+                      </View>
+                    : <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.15)', marginLeft: 8 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#f59e0b' }}>Requested</Text>
+                      </View>
+                  }
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name={isGroup ? 'people' : 'person'} size={12} color={c.textMuted} />
+                    <Text style={{ fontSize: 11, color: c.textMuted }}>{isGroup ? `${pax} pax` : 'Solo'}</Text>
+                  </View>
+                  {!!time && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="time-outline" size={12} color={c.textMuted} />
+                      <Text style={{ fontSize: 11, color: c.textMuted }}>
+                        {new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                  )}
+                  {price > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="cash-outline" size={12} color='#D4AF37' />
+                      <Text style={{ fontSize: 11, color: '#D4AF37', fontWeight: '700' }}>R{Number(price).toFixed(2)}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#D4AF37', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14,
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      opacity: isAccepting ? 0.6 : 1,
+                    }}
+                    onPress={() => handleAccept(req)}
+                    disabled={isAccepting}
+                    activeOpacity={0.8}
+                  >
+                    {isAccepting
+                      ? <ActivityIndicator size="small" color="#000" />
+                      : <Ionicons name="checkmark-circle" size={14} color="#000" />}
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#000' }}>
+                      {isAccepting ? 'Accepting…' : 'Accept'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: c.mode === 'dark' ? 'rgba(212,175,55,0.12)' : '#f3f4f6',
+                      borderWidth: c.mode === 'dark' ? 1 : 0,
+                      borderColor: c.mode === 'dark' ? '#D4AF37' : 'transparent',
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      paddingHorizontal: 14,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                    }}
+                    onPress={() => loadRequestDetails(req)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="eye-outline" size={14} color={c.mode === 'dark' ? '#D4AF37' : c.text} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: c.mode === 'dark' ? '#D4AF37' : c.text }}>Details</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          );
+        })
+      )}
+
+      <Modal
+        visible={!!selectedRequest}
+        transparent
+        animationType="slide"
+        onRequestClose={closeDetails}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 18 }}>
+          <View style={{ backgroundColor: c.surface, borderRadius: 20, padding: 18, maxHeight: '85%' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: c.text }}>Request Details</Text>
+              <TouchableOpacity onPress={closeDetails} style={{ padding: 6 }}>
+                <Ionicons name="close" size={22} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {detailsLoading ? (
+              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                <ActivityIndicator size="large" color="#D4AF37" />
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {selectedRequest && (
+                  <View style={{ gap: 12 }}>
+                    <RequestDetailRow label="Pickup" value={selectedRequest.pickupLocation ?? selectedRequest.PickupLocation ?? '—'} c={c} />
+                    <RequestDetailRow label="Dropoff" value={selectedRequest.dropoffLocation ?? selectedRequest.DropoffLocation ?? '—'} c={c} />
+                    <RequestDetailRow label="Passengers" value={`${selectedRequest.passengerCount ?? selectedRequest.PassengerCount ?? 1} pax`} c={c} />
+                    <RequestDetailRow label="Requested Time" value={selectedRequest.requestedTime ? new Date(selectedRequest.requestedTime).toLocaleString() : selectedRequest.RequestedTime ? new Date(selectedRequest.RequestedTime).toLocaleString() : '—'} c={c} />
+                    <RequestDetailRow label="Status" value={selectedRequest.status ?? selectedRequest.Status ?? 'Requested'} c={c} />
+                    {(() => {
+                      const total = Number(selectedRequest.totalPrice ?? selectedRequest.TotalPrice ?? 0);
+                      if (total <= 0) return null;
+                      return (
+                        <View style={{ gap: 4 }}>
+                          <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: '700' }}>Total Fare</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ backgroundColor: '#D4AF37', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                              <Text style={{ fontSize: 18, fontWeight: '900', color: '#000' }}>R{total.toFixed(2)}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })()}
+                    {(selectedRequest.offerPrice != null || selectedRequest.offerAmount != null) ? (
+                      <RequestDetailRow label="Driver Offer" value={`R${selectedRequest.offerPrice ?? selectedRequest.offerAmount}`} c={c} />
+                    ) : null}
+                    {selectedRequest.passengerName || selectedRequest.PassengerName ? (
+                      <RequestDetailRow label="Passenger" value={selectedRequest.passengerName ?? selectedRequest.PassengerName} c={c} />
+                    ) : null}
+                    {selectedRequest.notes || selectedRequest.Notes ? (
+                      <RequestDetailRow label="Notes" value={selectedRequest.notes ?? selectedRequest.Notes} c={c} multiline />
+                    ) : null}
+                    {selectedRequest.routeName || selectedRequest.RouteName ? (
+                      <RequestDetailRow label="Route" value={selectedRequest.routeName ?? selectedRequest.RouteName} c={c} />
+                    ) : null}
+                  </View>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function RequestDetailRow({ label, value, multiline, c }) {
+  return (
+    <View style={{ gap: 4 }}>
+      <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: c.text, fontSize: 14, lineHeight: multiline ? 20 : 18 }}>{value}</Text>
+    </View>
+  );
+}
+
 // ── Tab screens ──────────────────────────────────────────────────────────────
-function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onToggle, onAddEarning, onAddExpense, onOpenRankQueue, onOpenBehavior, refreshing, onRefresh, monitorActive, monitorSpeed, recentBehaviorEvents, activeTrip, onViewTripDetails, onCompleteTrip, c, s }) {
+function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onToggle, onAddEarning, onAddExpense, onOpenTrips, onOpenBehavior, onOpenRequests, refreshing, onRefresh, monitorActive, monitorSpeed, recentBehaviorEvents, activeTrip, onViewTripDetails, onCompleteTrip, driverId, c, s }) {
+  const [acceptSignal, setAcceptSignal] = useState(0);
   const { name: month } = monthRange();
   const earn = earnings.reduce((a, e) => a + (e.amount || 0), 0);
   const exp = expenses.reduce((a, e) => a + (e.amount || 0), 0);
@@ -490,7 +1541,7 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
 
       {/* Online/Offline hero toggle */}
       <TouchableOpacity
-        style={[s.heroBanner, { backgroundColor: profile?.isAvailable ? '#22c55e' : '#64748b' }]}
+        style={[s.heroBanner, { backgroundColor: profile?.isAvailable ? c.success : c.mode === 'dark' ? '#374151' : '#64748b' }]}
         onPress={onToggle}
         activeOpacity={0.85}>
         <View style={s.heroBannerIconWrap}>
@@ -500,7 +1551,7 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
           <Text style={s.heroBannerTitle}>{profile?.isAvailable ? 'You are Online' : 'You are Offline'}</Text>
           <Text style={s.heroBannerSub}>Tap to go {profile?.isAvailable ? 'Offline' : 'Online'}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#ffffffcc" />
+        <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.8)" />
       </TouchableOpacity>
 
       {/* Driving Monitor Status */}
@@ -517,6 +1568,9 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
           </View>
         </View>
       )}
+
+      <TripRequestsWidget driverId={profile?.id} onOpenRequests={onOpenRequests} onAccepted={() => setAcceptSignal(n => n + 1)} c={c} />
+      <AcceptedTripsWidget driverId={driverId} vehicleId={vehicle?.id} onOpenTrips={onOpenTrips} refreshSignal={acceptSignal} c={c} />
 
       {/* Recent Behavior Alerts */}
       {recentBehaviorEvents && recentBehaviorEvents.length > 0 && (
@@ -553,35 +1607,65 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
                   : activeTrip.departureStation || 'In progress'}
               </Text>
             </View>
-            <View style={[s.activeTripBadge, activeTrip.status === 'InProgress' && { backgroundColor: '#3b82f6' }]}>
-              <Text style={s.activeTripBadgeTxt}>{(activeTrip.status || 'ACTIVE').toUpperCase()}</Text>
+            <View style={[s.activeTripBadge, activeTrip.status === 'InProgress' && { backgroundColor: c.info }]}>
+              <Text style={s.activeTripBadgeTxt}>
+                {activeTrip.tripType === 'TaxiRankTrip'
+                  ? (activeTrip.status === 'Departed' || activeTrip.status === 'Dispatched' ? 'EN ROUTE' : (activeTrip.status || 'ACTIVE').toUpperCase())
+                  : (activeTrip.status || 'ACTIVE').toUpperCase()}
+              </Text>
+            </View>
+          </View>
+
+          {/* Compact Route & Stats */}
+          <View style={s.activeTripCompact}>
+            <View style={s.activeTripCompactRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.activeTripCompactLabel}>From</Text>
+                <Text style={s.activeTripCompactValue} numberOfLines={1}>
+                  {activeTrip.origin || activeTrip.pickupLocation || activeTrip.PickupLocation || activeTrip.departureStation || '—'}
+                </Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.activeTripCompactLabel}>To</Text>
+                <Text style={s.activeTripCompactValue} numberOfLines={1}>
+                  {activeTrip.destination || activeTrip.dropoffLocation || activeTrip.DropoffLocation || activeTrip.destinationStation || '—'}
+                </Text>
+              </View>
+            </View>
+            <View style={s.activeTripCompactRow}>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={s.activeTripCompactLabel}>Distance</Text>
+                <Text style={s.activeTripCompactValue}>
+                  {activeTrip.distance ? `${activeTrip.distance} km` : activeTrip.route?.distance ? `${activeTrip.route.distance} km` : '—'}
+                </Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={s.activeTripCompactLabel}>ETA</Text>
+                <Text style={s.activeTripCompactValue}>
+                  {activeTrip.eta || activeTrip.route?.estimatedTime || '—'}
+                </Text>
+              </View>
             </View>
           </View>
 
           <View style={s.activeTripMeta}>
             <View style={s.activeTripMetaItem}>
-              <Ionicons name="car-outline" size={14} color="#ffffffaa" />
+              <Ionicons name="car-outline" size={14} color="rgba(255,255,255,0.7)" />
               <Text style={s.activeTripMetaTxt}>
                 {activeTrip.vehicle?.registration || '—'}
               </Text>
             </View>
             {activeTrip.passengerCount > 0 && (
               <View style={s.activeTripMetaItem}>
-                <Ionicons name="people-outline" size={14} color="#ffffffaa" />
+                <Ionicons name="people-outline" size={14} color="rgba(255,255,255,0.7)" />
                 <Text style={s.activeTripMetaTxt}>{activeTrip.passengerCount} pax</Text>
-              </View>
-            )}
-            {activeTrip.departureTime && (
-              <View style={s.activeTripMetaItem}>
-                <Ionicons name="time-outline" size={14} color="#ffffffaa" />
-                <Text style={s.activeTripMetaTxt}>
-                  {new Date(activeTrip.departureTime).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
-                </Text>
               </View>
             )}
             {activeTrip.totalAmount > 0 && (
               <View style={s.activeTripMetaItem}>
-                <Ionicons name="cash-outline" size={14} color="#ffffffaa" />
+                <Ionicons name="cash-outline" size={14} color="rgba(255,255,255,0.7)" />
                 <Text style={s.activeTripMetaTxt}>R{activeTrip.totalAmount}</Text>
               </View>
             )}
@@ -618,10 +1702,10 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
       {/* Metric grid */}
       <View style={s.metricsGrid}>
         {[
-          { icon: 'arrow-up-circle-outline', color: '#10b981', label: 'Earnings',      value: fmt(earn),              sub: `${earnings.length} entries` },
-          { icon: 'arrow-down-circle-outline', color: '#ef4444', label: 'Expenses',    value: fmt(exp),               sub: `${expenses.length} entries` },
+          { icon: 'arrow-up-circle-outline', color: c.success, label: 'Earnings',      value: fmt(earn),              sub: `${earnings.length} entries` },
+          { icon: 'arrow-down-circle-outline', color: c.danger, label: 'Expenses',    value: fmt(exp),               sub: `${expenses.length} entries` },
           { icon: 'construct-outline',        color: '#f59e0b', label: 'Pending Maint', value: String(pending),        sub: 'requests' },
-          { icon: 'car-sport-outline',        color: '#3b82f6', label: 'Vehicle',       value: vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Assigned' : 'None', sub: vehicle?.registration || 'Not assigned' },
+          { icon: 'car-sport-outline',        color: c.info, label: 'Vehicle',       value: vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Assigned' : 'None', sub: vehicle?.registration || 'Not assigned' },
         ].map(m => (
           <View key={m.label} style={s.metricCard}>
             <View style={[s.metricIcon, { backgroundColor: m.color + '20' }]}>
@@ -641,7 +1725,7 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
           style={[s.quickActionBtn, !vehicle && { opacity: 0.45 }]}
           onPress={vehicle ? onAddEarning : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log earnings.')}>
           <View style={[s.quickActionIcon, { backgroundColor: '#10b98120' }]}>
-            <Ionicons name="add-circle-outline" size={24} color="#10b981" />
+            <Ionicons name="add-circle-outline" size={24} color={c.success} />
           </View>
           <Text style={s.quickActionTxt}>Add Earning</Text>
         </TouchableOpacity>
@@ -649,7 +1733,7 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
           style={[s.quickActionBtn, !vehicle && { opacity: 0.45 }]}
           onPress={vehicle ? onAddExpense : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log expenses.')}>
           <View style={[s.quickActionIcon, { backgroundColor: '#ef444420' }]}>
-            <Ionicons name="remove-circle-outline" size={24} color="#ef4444" />
+            <Ionicons name="remove-circle-outline" size={24} color={c.danger} />
           </View>
           <Text style={s.quickActionTxt}>Add Expense</Text>
         </TouchableOpacity>
@@ -660,7 +1744,7 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
           style={s.quickActionBtn}
           onPress={onOpenBehavior}
         >
-          <View style={[s.quickActionIcon, { backgroundColor: '#f59e0b20' }]}>
+          <View style={[s.quickActionIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)' }]}>
             <Ionicons name="shield-checkmark-outline" size={24} color="#f59e0b" />
           </View>
           <Text style={s.quickActionTxt}>My Behavior</Text>
@@ -668,10 +1752,10 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
 
         <TouchableOpacity
           style={[s.quickActionBtn, !vehicle && { opacity: 0.45 }]}
-          onPress={vehicle ? onOpenRankQueue : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to view rank queue.')}
+          onPress={vehicle ? onOpenTrips : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to view rank queue.')}
         >
-          <View style={[s.quickActionIcon, { backgroundColor: '#3b82f620' }]}>
-            <Ionicons name="list-outline" size={24} color="#3b82f6" />
+          <View style={[s.quickActionIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.12)' }]}>
+            <Ionicons name="list-outline" size={24} color={c.info} />
           </View>
           <Text style={s.quickActionTxt}>Trip Management</Text>
         </TouchableOpacity>
@@ -680,16 +1764,192 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
   );
 }
 
-function MaintenanceTab({ maintenance, vehicle, profile, onNew, onEdit, onDelete, refreshing, onRefresh, c, s }) {
+function MaintenanceTab({ maintenance, expenses, vehicle, profile, onNew, onEdit, onDelete, onRate, refreshing, onRefresh, c, s }) {
   const pending = maintenance.filter(r => ['open', 'pending'].includes((r.state || '').toLowerCase())).length;
+
+  const mechExpenses = useMemo(() => (expenses || []).filter(e =>
+    e.category === 'maintenance' || e.category === 'repairs'
+  ), [expenses]);
+
+  const frequentParts = useMemo(() => {
+    const partMap = {};
+    mechExpenses.forEach(exp => {
+      const parts = exp.partFixed ? exp.partFixed.split(',').map(p => p.trim()).filter(Boolean) : [];
+      const expDate = exp.date ? new Date(exp.date) : null;
+      parts.forEach(partId => {
+        if (!partMap[partId]) partMap[partId] = { id: partId, count: 0, dates: [] };
+        partMap[partId].count += 1;
+        if (expDate && !isNaN(expDate)) partMap[partId].dates.push(expDate);
+      });
+    });
+    return Object.values(partMap)
+      .filter(p => p.count >= 1)
+      .sort((a, b) => b.count - a.count)
+      .map(p => {
+        const sorted = p.dates.sort((a, b) => b - a);
+        const lastDate = sorted[0] || null;
+        let nextDate = null;
+        if (sorted.length >= 2) {
+          const avgInterval = (sorted[0] - sorted[sorted.length - 1]) / (sorted.length - 1);
+          nextDate = new Date(sorted[0].getTime() + avgInterval);
+        } else if (lastDate) {
+          nextDate = new Date(lastDate.getTime() + 90 * 24 * 60 * 60 * 1000);
+        }
+        const partDef = PART_FIXED_OPTIONS.find(o => o.id === p.id);
+        return { id: p.id, name: partDef ? partDef.name : p.id, count: p.count, lastDate, nextDate };
+      });
+  }, [mechExpenses]);
+
+  const serviceHistory = useMemo(() => {
+    const catMap = {};
+    (expenses || []).forEach(exp => {
+      const serviceType = CATEGORY_TO_SERVICE_TYPE[exp.category];
+      if (!serviceType) return;
+      const key = exp.category;
+      const expDate = exp.date ? new Date(exp.date) : null;
+      if (!catMap[key]) catMap[key] = { category: key, serviceType, dates: [], totalSpent: 0, providerNames: new Set() };
+      if (expDate && !isNaN(expDate)) catMap[key].dates.push(expDate);
+      catMap[key].totalSpent += (exp.amount || 0);
+      if (exp.serviceProviderName) catMap[key].providerNames.add(exp.serviceProviderName);
+    });
+    return Object.values(catMap)
+      .sort((a, b) => {
+        const aLast = a.dates.sort((x, y) => y - x)[0];
+        const bLast = b.dates.sort((x, y) => y - x)[0];
+        return (bLast || 0) - (aLast || 0);
+      })
+      .map(item => {
+        const sorted = item.dates.sort((a, b) => b - a);
+        const lastDate = sorted[0] || null;
+        let nextDate = null;
+        if (sorted.length >= 2) {
+          const avgInterval = (sorted[0] - sorted[sorted.length - 1]) / (sorted.length - 1);
+          nextDate = new Date(sorted[0].getTime() + avgInterval);
+        } else if (lastDate) {
+          nextDate = new Date(lastDate.getTime() + 90 * 24 * 60 * 60 * 1000);
+        }
+        const catDef = EXPENSE_CATEGORIES.find(ct => ct.id === item.category);
+        return {
+          ...item,
+          name: catDef ? catDef.name : item.category,
+          icon: catDef ? catDef.icon : 'construct',
+          color: catDef ? catDef.color : '#6B7280',
+          lastDate,
+          nextDate,
+          providers: Array.from(item.providerNames),
+        };
+      });
+  }, [expenses]);
+
+  const fmtDate = (d) => d ? d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const isOverdue = (d) => d && d < new Date();
+
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}>
+
+      {/* Frequently Fixed Parts */}
+      {frequentParts.length > 0 && (
+        <View style={{ marginBottom: 20 }}>
+          <View style={s.secHead}>
+            <View>
+              <Text style={s.secTitle}>Frequently Fixed Parts</Text>
+              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>Based on your expense history</Text>
+            </View>
+            <View style={[s.metricIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)' }]}>
+              <Ionicons name="build" size={18} color="#F59E0B" />
+            </View>
+          </View>
+          {frequentParts.map(part => (
+            <View key={part.id} style={[s.reqCard, { borderLeftColor: '#F59E0B', borderLeftWidth: 4 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <View style={[s.reqIconWrap, { backgroundColor: '#F59E0B20' }]}>
+                  <Ionicons name="build" size={15} color="#F59E0B" />
+                </View>
+                <Text style={[s.reqCat, { marginLeft: 10, flex: 1 }]}>{part.name}</Text>
+                <View style={[s.badge, { backgroundColor: '#F59E0B20', borderColor: '#F59E0B' }]}>
+                  <Text style={[s.badgeTxt, { color: '#F59E0B' }]}>{part.count}x fixed</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, fontWeight: '600' }}>Last Fixed</Text>
+                  <Text style={{ fontSize: 13, color: c.text, fontWeight: '700', marginTop: 2 }}>{fmtDate(part.lastDate)}</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, fontWeight: '600' }}>Next Anticipated</Text>
+                  <Text style={{ fontSize: 13, color: isOverdue(part.nextDate) ? '#EF4444' : '#10B981', fontWeight: '700', marginTop: 2 }}>
+                    {fmtDate(part.nextDate)}
+                  </Text>
+                  {isOverdue(part.nextDate) && (
+                    <Text style={{ fontSize: 10, color: '#EF4444', fontWeight: '600', marginTop: 1 }}>Overdue</Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Service History */}
+      {serviceHistory.length > 0 && (
+        <View style={{ marginBottom: 20 }}>
+          <View style={s.secHead}>
+            <View>
+              <Text style={s.secTitle}>Service History</Text>
+              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>Past services & next anticipated dates</Text>
+            </View>
+            <View style={[s.metricIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.12)' }]}>
+              <Ionicons name="time" size={18} color="#3B82F6" />
+            </View>
+          </View>
+          {serviceHistory.map(svc => (
+            <View key={svc.category} style={[s.reqCard, { borderLeftColor: svc.color, borderLeftWidth: 4 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <View style={[s.reqIconWrap, { backgroundColor: svc.color + '20' }]}>
+                  <Ionicons name={svc.icon} size={15} color={svc.color} />
+                </View>
+                <View style={{ marginLeft: 10, flex: 1 }}>
+                  <Text style={s.reqCat}>{svc.name}</Text>
+                  <Text style={{ fontSize: 11, color: c.textMuted }}>{svc.serviceType}</Text>
+                </View>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: c.text }}>R{svc.totalSpent.toFixed(0)}</Text>
+              </View>
+              {svc.providers.length > 0 && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                  {svc.providers.map(p => (
+                    <View key={p} style={{ backgroundColor: svc.color + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '600', color: svc.color }}>{p}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, fontWeight: '600' }}>Last Service</Text>
+                  <Text style={{ fontSize: 13, color: c.text, fontWeight: '700', marginTop: 2 }}>{fmtDate(svc.lastDate)}</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  <Text style={{ fontSize: 11, color: c.textMuted, fontWeight: '600' }}>Next Anticipated</Text>
+                  <Text style={{ fontSize: 13, color: isOverdue(svc.nextDate) ? '#EF4444' : '#10B981', fontWeight: '700', marginTop: 2 }}>
+                    {fmtDate(svc.nextDate)}
+                  </Text>
+                  {isOverdue(svc.nextDate) && (
+                    <Text style={{ fontSize: 10, color: '#EF4444', fontWeight: '600', marginTop: 1 }}>Overdue</Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Maintenance Requests */}
       <View style={s.secHead}>
         <View>
           <Text style={s.secTitle}>Maintenance Requests</Text>
           {pending > 0 && (
-            <View style={[s.badge, { backgroundColor: '#f59e0b20', borderColor: '#f59e0b', alignSelf: 'flex-start', marginTop: 4 }]}>
+            <View style={[s.badge, { backgroundColor: c.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)', borderColor: '#f59e0b', alignSelf: 'flex-start', marginTop: 4 }]}>
               <Text style={[s.badgeTxt, { color: '#f59e0b' }]}>{pending} pending</Text>
             </View>
           )}
@@ -746,7 +2006,7 @@ function MaintenanceTab({ maintenance, vehicle, profile, onNew, onEdit, onDelete
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                 <TouchableOpacity
                   style={[s.reqEditBtn, { borderColor: '#fbbf24' }]}
-                  onPress={() => { setRatingRequest(r); setRatingModalVisible(true); }}
+                  onPress={() => onRate && onRate(r)}
                 >
                   <Ionicons name="star-outline" size={13} color="#fbbf24" />
                   <Text style={[s.reqEditBtnTxt, { color: '#fbbf24' }]}>Rate</Text>
@@ -786,24 +2046,24 @@ function EarningsTab({ earnings, expenses, vehicleId, onAddEarning, onAddExpense
       {/* E / X metric row */}
       <View style={s.earnSummaryRow}>
         <View style={s.earnSummaryItem}>
-          <View style={[s.metricIcon, { backgroundColor: '#10b98120' }]}>
-            <Ionicons name="arrow-up-circle-outline" size={18} color="#10b981" />
+          <View style={[s.metricIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(16,185,129,0.25)' : 'rgba(16,185,129,0.12)' }]}>
+            <Ionicons name="arrow-up-circle-outline" size={18} color={c.success} />
           </View>
-          <Text style={[s.earnSummaryVal, { color: '#10b981' }]}>{fmt(earn)}</Text>
+          <Text style={[s.earnSummaryVal, { color: c.success }]}>{fmt(earn)}</Text>
           <Text style={s.earnSummaryLbl}>Earnings</Text>
         </View>
         <View style={[s.earnSummaryItem, { borderLeftWidth: 1, borderRightWidth: 1, borderColor: c.border }]}>
-          <View style={[s.metricIcon, { backgroundColor: '#ef444420' }]}>
-            <Ionicons name="arrow-down-circle-outline" size={18} color="#ef4444" />
+          <View style={[s.metricIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.12)' }]}>
+            <Ionicons name="arrow-down-circle-outline" size={18} color={c.danger} />
           </View>
-          <Text style={[s.earnSummaryVal, { color: '#ef4444' }]}>{fmt(exp)}</Text>
+          <Text style={[s.earnSummaryVal, { color: c.danger }]}>{fmt(exp)}</Text>
           <Text style={s.earnSummaryLbl}>Expenses</Text>
         </View>
         <View style={s.earnSummaryItem}>
-          <View style={[s.metricIcon, { backgroundColor: profit >= 0 ? '#10b98120' : '#ef444420' }]}>
-            <Ionicons name={profit >= 0 ? 'trending-up' : 'trending-down'} size={18} color={profit >= 0 ? '#10b981' : '#ef4444'} />
+          <View style={[s.metricIcon, { backgroundColor: profit >= 0 ? (c.mode === 'dark' ? 'rgba(16,185,129,0.25)' : 'rgba(16,185,129,0.12)') : (c.mode === 'dark' ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.12)') }]}>
+            <Ionicons name={profit >= 0 ? 'trending-up' : 'trending-down'} size={18} color={profit >= 0 ? c.success : c.danger} />
           </View>
-          <Text style={[s.earnSummaryVal, { color: profit >= 0 ? '#10b981' : '#ef4444' }]}>{fmt(profit)}</Text>
+          <Text style={[s.earnSummaryVal, { color: profit >= 0 ? c.success : c.danger }]}>{fmt(profit)}</Text>
           <Text style={s.earnSummaryLbl}>Profit</Text>
         </View>
       </View>
@@ -813,16 +2073,16 @@ function EarningsTab({ earnings, expenses, vehicleId, onAddEarning, onAddExpense
         <TouchableOpacity
           style={[s.quickActionBtn, !vehicleId && { opacity: 0.45 }]}
           onPress={vehicleId ? onAddEarning : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log earnings.')}>
-          <View style={[s.quickActionIcon, { backgroundColor: '#10b98120' }]}>
-            <Ionicons name="add-circle-outline" size={22} color="#10b981" />
+          <View style={[s.quickActionIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(16,185,129,0.25)' : 'rgba(16,185,129,0.12)' }]}>
+            <Ionicons name="add-circle-outline" size={22} color={c.success} />
           </View>
           <Text style={s.quickActionTxt}>Add Earning</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[s.quickActionBtn, !vehicleId && { opacity: 0.45 }]}
           onPress={vehicleId ? onAddExpense : () => Alert.alert('No Vehicle', 'You need an assigned vehicle to log expenses.')}>
-          <View style={[s.quickActionIcon, { backgroundColor: '#ef444420' }]}>
-            <Ionicons name="remove-circle-outline" size={22} color="#ef4444" />
+          <View style={[s.quickActionIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.12)' }]}>
+            <Ionicons name="remove-circle-outline" size={22} color={c.danger} />
           </View>
           <Text style={s.quickActionTxt}>Add Expense</Text>
         </TouchableOpacity>
@@ -847,15 +2107,15 @@ function EarningsTab({ earnings, expenses, vehicleId, onAddEarning, onAddExpense
         </View>
       ) : items.map((item, i) => (
         <View key={item.id || i} style={s.ledger}>
-          <View style={[s.ledgerIcon, { backgroundColor: list === 'earnings' ? '#10b98120' : '#ef444420' }]}>
-            <Ionicons name={list === 'earnings' ? 'trending-up' : 'trending-down'} size={16} color={list === 'earnings' ? '#10b981' : '#ef4444'} />
+          <View style={[s.ledgerIcon, { backgroundColor: list === 'earnings' ? (c.mode === 'dark' ? 'rgba(16,185,129,0.25)' : 'rgba(16,185,129,0.12)') : (c.mode === 'dark' ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.12)') }]}>
+            <Ionicons name={list === 'earnings' ? 'trending-up' : 'trending-down'} size={16} color={list === 'earnings' ? c.success : c.danger} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.ledgerLbl}>{item.source || item.category || 'Entry'}</Text>
             {item.description ? <Text style={s.ledgerDesc} numberOfLines={1}>{item.description}</Text> : null}
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={[s.ledgerAmt, { color: list === 'earnings' ? '#10b981' : '#ef4444' }]}>
+            <Text style={[s.ledgerAmt, { color: list === 'earnings' ? c.success : c.danger }]}>
               {list === 'earnings' ? '+' : '-'}{fmt(item.amount)}
             </Text>
             <Text style={s.ledgerDate}>{item.date ? new Date(item.date).toLocaleDateString() : ''}</Text>
@@ -920,6 +2180,1233 @@ function MessagesTab({ userId, c, s }) {
         </View>
       ))}
     </ScrollView>
+  );
+}
+
+const QUEUE_GOLD = '#D4AF37';
+const SC_QUEUE = { Waiting: '#f59e0b', Loading: '#3b82f6', Dispatched: '#22c55e', Completed: '#16a34a', Arrived: '#16a34a' };
+function queueStatusColor(st) { return SC_QUEUE[st] || '#94a3b8'; }
+function normQueueStatus(st) {
+  const s = (st || '').toLowerCase();
+  if (s === 'dispatched') return 'dispatched';
+  if (s === 'completed' || s === 'arrived') return 'completed';
+  return 'waiting';
+}
+function isoDate(d) { return d.toISOString().split('T')[0]; }
+function fmtDateLabel(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const today = new Date();
+  if (dateStr === isoDate(today)) return 'Today';
+  const y = new Date(today); y.setDate(y.getDate() - 1);
+  if (dateStr === isoDate(y)) return 'Yesterday';
+  return d.toLocaleDateString('en-ZA', { weekday: 'short', day: '2-digit', month: 'short' });
+}
+
+function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
+  const [innerTab, setInnerTab] = useState(defaultInnerTab || 'queue'); // 'queue' | 'trips' | 'requests'
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [date, setDate] = useState(() => isoDate(new Date()));
+  const [data, setData] = useState(null);
+  const [dispatchedTrips, setDispatchedTrips] = useState([]);
+  const [selectedRoute, setSelectedRoute] = useState('all');
+  const [filter, setFilter] = useState('all');
+  const [completionFare, setCompletionFare] = useState('');
+  const [completionModalVisible, setCompletionModalVisible] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
+  // ── Trip Requests state ──
+  const [tripRequests, setTripRequests] = useState([]);
+  const [acceptedTripRequests, setAcceptedTripRequests] = useState([]);
+  const [inProgressTripRequests, setInProgressTripRequests] = useState([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [acceptingId, setAcceptingId] = useState(null);
+  const [startingRequestId, setStartingRequestId] = useState(null);
+  const [driverRoute, setDriverRoute] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [newRequestCount, setNewRequestCount] = useState(0);
+  const prevRequestIdsRef = useRef(new Set());
+
+  // ── Trip Request Completion Modal state ──
+  const [tripReqCompletionVisible, setTripReqCompletionVisible] = useState(false);
+  const [completingRequest, setCompletingRequest] = useState(null);
+  const [tripDistanceKm, setTripDistanceKm] = useState('');
+  const [tripRatePerKm, setTripRatePerKm] = useState('');
+  const [tripTotalFare, setTripTotalFare] = useState('');
+  const [fareOverridden, setFareOverridden] = useState(false);
+  const [submittingTripCompletion, setSubmittingTripCompletion] = useState(false);
+
+  // ── Arrived at Pickup Modal state ──
+  const [arrivedModalVisible, setArrivedModalVisible] = useState(false);
+  const [arrivingRequest, setArrivingRequest] = useState(null);
+
+  // ── Active trip navigator ──
+  const [navTripReq, setNavTripReq] = useState(null);
+
+  const loadDriverRoute = useCallback(async (routeId) => {
+    if (!routeId) {
+      setDriverRoute(null);
+      return;
+    }
+    setRouteLoading(true);
+    try {
+      const resp = await client.get(`/Routes/${routeId}`);
+      setDriverRoute(resp.data);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status !== 404) console.warn('loadDriverRoute error', err?.message);
+      setDriverRoute(null);
+    } finally {
+      setRouteLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDriverRoute(data?.routeId);
+  }, [data?.routeId, loadDriverRoute]);
+
+  const requestMatchesRoute = useCallback((request, route) => {
+    if (!request || !route) return false;
+    const normalize = value => (value || '').toString().toLowerCase().trim();
+    const pickup = normalize(request.pickupLocation ?? request.PickupLocation);
+    const dropoff = normalize(request.dropoffLocation ?? request.DropoffLocation);
+    const routeName = normalize(route.routeName ?? route.RouteName);
+    const departure = normalize(route.departureStation ?? route.DepartureStation);
+    const destination = normalize(route.destinationStation ?? route.DestinationStation);
+    const stopNames = (route.stops ?? route.Stops ?? []).map(stop => normalize(stop.stopName ?? stop.StopName));
+    const fields = [routeName, departure, destination, ...stopNames].filter(Boolean);
+    if (fields.length === 0) return false;
+    return fields.some(field =>
+      (pickup && (pickup.includes(field) || field.includes(pickup))) ||
+      (dropoff && (dropoff.includes(field) || field.includes(dropoff)))
+    );
+  }, []);
+
+  const loadTripRequests = useCallback(async () => {
+    setRequestsLoading(true);
+    try {
+      const rankId = data?.rankId;
+
+      let requests;
+      if (rankId) {
+        requests = await getPendingRequestsByRank(rankId);
+      } else {
+        // No rank linked yet — show all untagged pending requests so nothing is hidden
+        const all = await getAllTripRequests('Requested');
+        requests = Array.isArray(all) ? all.filter(r => !r.taxiRankId && !r.TaxiRankId) : [];
+      }
+      const filtered = Array.isArray(requests) ? requests : [];
+
+      const currentIds = new Set(filtered.map(req => req.id || req.Id));
+      const previousIds = prevRequestIdsRef.current;
+      if (previousIds.size > 0) {
+        const newRequestIds = Array.from(currentIds).filter(id => !previousIds.has(id));
+        setNewRequestCount(newRequestIds.length);
+      } else {
+        setNewRequestCount(0);
+      }
+      prevRequestIdsRef.current = currentIds;
+      setTripRequests(filtered);
+
+      if (driverId) {
+        const accepted = await getAllTripRequests('OffersReceived', driverId);
+        setAcceptedTripRequests(Array.isArray(accepted) ? accepted : []);
+        const inProgress = await getAllTripRequests('InProgress', driverId);
+        setInProgressTripRequests(Array.isArray(inProgress) ? inProgress : []);
+      } else {
+        setAcceptedTripRequests([]);
+        setInProgressTripRequests([]);
+      }
+    } catch (err) {
+      console.warn('loadTripRequests error', err?.message);
+      setTripRequests([]);
+      setAcceptedTripRequests([]);
+      setInProgressTripRequests([]);
+      setNewRequestCount(0);
+    } finally {
+      setRequestsLoading(false);
+    }
+  }, [data?.rankId, driverId]);
+
+  useEffect(() => {
+    if (innerTab === 'requests') loadTripRequests();
+  }, [innerTab, loadTripRequests]);
+
+  useEffect(() => {
+    if (!data?.rankId) return undefined;
+    const interval = setInterval(() => {
+      loadTripRequests();
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [data?.rankId, loadTripRequests]);
+
+  useEffect(() => {
+    if (innerTab === 'requests') {
+      setNewRequestCount(0);
+    }
+  }, [innerTab]);
+
+  async function handleAcceptRequest(req) {
+    if (!driverId) return Alert.alert('Error', 'Driver profile not loaded');
+    const id = req.id ?? req.Id;
+    setAcceptingId(id);
+    try {
+      await acceptTripRequest(id, driverId, 0);
+      await loadTripRequests();
+      Alert.alert('Trip Accepted!', `You accepted the trip: ${req.pickupLocation} → ${req.dropoffLocation}`);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data || err?.message || 'Failed to accept trip');
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
+  async function handleStartTripRequest(req) {
+    if (!driverId) return Alert.alert('Error', 'Driver profile not loaded');
+    const id = req.id ?? req.Id;
+    setStartingRequestId(id);
+    try {
+      await startTripRequest(id, driverId);
+      await loadTripRequests();
+      Alert.alert('Trip Started', `Trip started for ${req.pickupLocation} → ${req.dropoffLocation}`);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data || err?.message || 'Failed to start trip');
+    } finally {
+      setStartingRequestId(null);
+    }
+  }
+
+  function scheduledMinsAway(req) {
+    const pt = req.pickupTime ?? req.PickupTime ?? req.requestedTime ?? req.RequestedTime;
+    if (!pt) return 0;
+    return Math.round((new Date(pt).getTime() - Date.now()) / 60000);
+  }
+
+  function fmtScheduledLabel(req) {
+    const pt = req.pickupTime ?? req.PickupTime ?? req.requestedTime ?? req.RequestedTime;
+    if (!pt) return '';
+    const d = new Date(pt);
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  function timeUntilLabel(minsAway) {
+    if (minsAway <= 0) return null;
+    const h = Math.floor(minsAway / 60);
+    const m = minsAway % 60;
+    return h > 0 ? `in ${h}h ${m}m` : `in ${m}m`;
+  }
+
+  function openMapsToPickup(req) {
+    const lat = req.pickupLatitude ?? req.PickupLatitude;
+    const lon = req.pickupLongitude ?? req.PickupLongitude;
+    const label = encodeURIComponent(req.pickupLocation ?? req.PickupLocation ?? 'Pickup');
+    if (lat && lon) {
+      const url = Platform.OS === 'ios'
+        ? `maps:0,0?q=${label}@${lat},${lon}`
+        : `geo:${lat},${lon}?q=${lat},${lon}(${label})`;
+      Linking.openURL(url).catch(() =>
+        Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`)
+      );
+    } else {
+      const q = encodeURIComponent(req.pickupLocation ?? req.PickupLocation ?? '');
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${q}`);
+    }
+  }
+
+  function handleArrivedAtPickup(req) {
+    setArrivingRequest(req);
+    setArrivedModalVisible(true);
+  }
+
+  async function confirmStartTrip() {
+    if (!arrivingRequest || !driverId) return;
+    const reqSnapshot = arrivingRequest;
+    const id = reqSnapshot.id ?? reqSnapshot.Id;
+    setArrivedModalVisible(false);
+    setArrivingRequest(null);
+    setNavTripReq(reqSnapshot);  // open navigator immediately — no blocking Alert
+    try {
+      await startTripRequest(id, driverId);
+      await loadTripRequests();
+    } catch (err) {
+      setNavTripReq(null);
+      Alert.alert('Error', err?.response?.data || err?.message || 'Failed to start trip');
+    }
+  }
+
+  function handleCompleteTripRequest(req) {
+    if (!driverId) return Alert.alert('Error', 'Driver profile not loaded');
+    const existingPrice = req.totalPrice ?? req.TotalPrice ?? 0;
+    setCompletingRequest(req);
+    setTripDistanceKm('');
+    setTripRatePerKm('');
+    setTripTotalFare(existingPrice > 0 ? existingPrice.toFixed(2) : '');
+    setFareOverridden(existingPrice > 0);
+    setTripReqCompletionVisible(true);
+  }
+
+  async function confirmCompleteTripRequest() {
+    if (!completingRequest || !driverId) return;
+    const id = completingRequest.id ?? completingRequest.Id;
+    const distKm = parseFloat(tripDistanceKm) || 0;
+    const rateKm = parseFloat(tripRatePerKm) || 0;
+    const autoTotal = distKm > 0 && rateKm > 0 ? distKm * rateKm : 0;
+    const total = parseFloat(tripTotalFare) || autoTotal || 0;
+    if (total <= 0) return Alert.alert('Validation', 'Please enter a valid total fare amount.');
+    setSubmittingTripCompletion(true);
+    try {
+      await completeTripRequest(id, distKm, rateKm, total);
+      setTripReqCompletionVisible(false);
+      setCompletingRequest(null);
+      await loadTripRequests();
+      const pickup = completingRequest.pickupLocation ?? completingRequest.PickupLocation ?? '';
+      const dropoff = completingRequest.dropoffLocation ?? completingRequest.DropoffLocation ?? '';
+      Alert.alert('Trip Completed', `${pickup} → ${dropoff}\nFare: R${total.toFixed(2)}`);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data || err?.message || 'Failed to complete trip');
+    } finally {
+      setSubmittingTripCompletion(false);
+    }
+  }
+
+  const queue = data?.queue || [];
+
+  // Derive unique routes from the queue
+  const routes = useMemo(() => {
+    const seen = new Map();
+    queue.forEach(i => {
+      const key = i.routeId || i.routeName || 'unassigned';
+      if (!seen.has(key)) seen.set(key, { id: key, name: i.routeName || 'Unassigned' });
+    });
+    return [{ id: 'all', name: 'All Routes' }, ...Array.from(seen.values())];
+  }, [queue]);
+
+  // Auto-select driver's route when data loads
+  useEffect(() => {
+    const myEntry = queue.find(i => i.isMine);
+    if (myEntry) {
+      const key = myEntry.routeId || myEntry.routeName || 'unassigned';
+      setSelectedRoute(key);
+    }
+  }, [data]);
+
+  // Queue filtered by selected route then status
+  const routeQueue = useMemo(() => {
+    if (selectedRoute === 'all') return queue;
+    return queue.filter(i => (i.routeId || i.routeName || 'unassigned') === selectedRoute);
+  }, [queue, selectedRoute]);
+
+  const filtered = useMemo(() => {
+    if (filter === 'all') return routeQueue;
+    return routeQueue.filter(i => normQueueStatus(i.status) === filter);
+  }, [routeQueue, filter]);
+
+  const myEntry = useMemo(() => queue.find(i => i.isMine), [queue]);
+  const myDispatchedTrip = useMemo(
+    () => queue.find(i => i.isMine && normQueueStatus(i.status) === 'dispatched' && i.tripId),
+    [queue]
+  );
+  const myDispatchedQueueEntryId = myDispatchedTrip?.id
+    || (((data?.myStatus || '').toLowerCase() === 'dispatched') ? data?.myQueueEntryId : null);
+
+  const waitingCnt = routeQueue.filter(i => normQueueStatus(i.status) === 'waiting').length;
+  const dispatchedCnt = routeQueue.filter(i => normQueueStatus(i.status) === 'dispatched').length;
+  const completedCnt = routeQueue.filter(i => normQueueStatus(i.status) === 'completed').length;
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      if (!driverId) { setData({ message: 'Driver profile not found', queue: [] }); return; }
+      const resp = await getDriverQueueView(driverId, date);
+      setData(resp || { queue: [] });
+      try {
+        const raw = await getDriverDispatchedTrips(driverId, date);
+        const trips = Array.isArray(raw) ? raw : [];
+        setDispatchedTrips(trips.map(t => ({
+          ...t,
+          departureStation: t.route?.departureStation || t.taxiRank?.name || '—',
+          destinationStation: t.route?.destinationStation || '—',
+          status: t.status || 'Dispatched',
+          departureTime: t.departedAt || t.estimatedDepartureTime,
+          vehicleRegistration: t.vehicle?.registration,
+          fareAmount: t.fareAmount || 0,
+        })));
+      } catch { setDispatchedTrips([]); }
+    } catch (e) {
+      setData({ queue: [], message: e?.response?.data?.message || 'Could not load queue' });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [driverId, date]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Re-fetch data when screen regains focus
+  useFocusEffect(useCallback(() => {
+    if (driverId) {
+      load(true); // Silent refresh
+    }
+  }, [driverId, load]));
+
+  // Re-fetch active trip when app becomes active
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && driverId) {
+        load(true); // Silent refresh
+      }
+    });
+
+    return () => subscription?.remove();
+  }, [driverId, load]);
+
+  function changeDate(delta) {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() + delta);
+    setDate(isoDate(d));
+    setSelectedRoute('all');
+    setFilter('all');
+  }
+
+  async function handleCompleteTrip() {
+    if (!myDispatchedQueueEntryId) return;
+    const trip = myDispatchedTrip
+      || dispatchedTrips.find(t => t.id === myDispatchedQueueEntryId);
+    const pax = trip?.passengerCount || 0;
+    const stdFare = trip?.route?.standardFare || 0;
+    const defaultFare = trip?.totalAmount
+      || trip?.fareAmount
+      || (pax > 0 && stdFare > 0 ? pax * stdFare : 0);
+    setCompletionFare(defaultFare > 0 ? defaultFare.toString() : '');
+    setCompletionModalVisible(true);
+  }
+
+  async function confirmCompleteTrip() {
+    if (!myDispatchedQueueEntryId) return;
+    setCompleting(true);
+    try {
+      const fareAmount = completionFare ? parseFloat(completionFare) : 0;
+      await completeTrip(myDispatchedQueueEntryId, 'Completed by driver', driverId, null, fareAmount);
+      setCompletionModalVisible(false);
+      setCompletionFare('');
+      // Refresh active trip data
+      load(true);
+    } catch (e) {
+      Alert.alert('Error', e?.response?.data?.message || e?.message || 'Failed');
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={QUEUE_GOLD} />
+        <Text style={{ marginTop: 10, color: c.textMuted, fontSize: 13 }}>Loading queue…</Text>
+      </View>
+    );
+  }
+
+  function fmtTime(v) {
+    if (!v) return '—';
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.background }}>
+      {/* Inner tab selector */}
+      <View style={{ flexDirection: 'row', backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border, paddingHorizontal: 12, paddingVertical: 6, gap: 8 }}>
+        <TouchableOpacity
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 10, gap: 6, backgroundColor: innerTab === 'queue' ? c.primary : c.card }}
+          onPress={() => setInnerTab('queue')}>
+          <Ionicons name={innerTab === 'queue' ? 'list' : 'list-outline'} size={15} color={innerTab === 'queue' ? '#fff' : c.textMuted} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: innerTab === 'queue' ? '#fff' : c.textMuted }}>Queue ({queue.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 10, gap: 6, backgroundColor: innerTab === 'trips' ? c.primary : c.card }}
+          onPress={() => setInnerTab('trips')}>
+          <Ionicons name={innerTab === 'trips' ? 'car' : 'car-outline'} size={15} color={innerTab === 'trips' ? '#fff' : c.textMuted} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: innerTab === 'trips' ? '#fff' : c.textMuted }}>Trips ({dispatchedTrips.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 10, gap: 6, backgroundColor: innerTab === 'requests' ? '#D4AF37' : c.card }}
+          onPress={() => setInnerTab('requests')}>
+          <Ionicons name={innerTab === 'requests' ? 'navigate' : 'navigate-outline'} size={15} color={innerTab === 'requests' ? '#000' : c.textMuted} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: innerTab === 'requests' ? '#000' : c.textMuted }}>Requests{tripRequests.length > 0 ? ` (${tripRequests.length})` : ''}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Header: rank name + date nav */}
+      <View style={{ backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border, paddingHorizontal: 12, paddingVertical: 6 }}>
+        <Text style={{ fontSize: 14, fontWeight: '800', color: c.text, marginBottom: 4 }}>
+          {data?.rankName || 'Rank Queue'}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <TouchableOpacity onPress={() => changeDate(-1)} style={{ padding: 6 }}>
+            <Ionicons name="chevron-back" size={18} color={c.textMuted} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: c.text, marginHorizontal: 12 }}>{fmtDateLabel(date)}</Text>
+          <TouchableOpacity onPress={() => changeDate(1)} style={{ padding: 6 }}>
+            <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Active trip banner */}
+      {!!myDispatchedQueueEntryId && (
+        <View style={{ marginHorizontal: 12, marginTop: 10, backgroundColor: '#1a1a2e', borderRadius: 14, padding: 14, borderWidth: 1.5, borderColor: '#22c55e' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Active Trip</Text>
+              <Text style={{ color: '#ffffffaa', fontSize: 12, marginTop: 1 }}>
+                {myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration} · {myDispatchedTrip?.routeName || data?.routeName || 'En route'}
+              </Text>
+            </View>
+            <View style={{ backgroundColor: '#22c55e', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 }}>
+              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>Dispatched</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {myDispatchedTrip?.id && (
+              <TouchableOpacity
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingVertical: 9, gap: 6 }}
+                onPress={() => navigation.navigate('DriverTripDetails', { queueEntryId: myDispatchedTrip.id })}
+              >
+                <Ionicons name="eye-outline" size={15} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Details</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#22c55e', borderRadius: 8, paddingVertical: 9, gap: 6 }}
+              onPress={handleCompleteTrip}
+            >
+              <Ionicons name="checkmark-circle" size={15} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Complete</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* ── DISPATCHED TRIPS ── */}
+      {innerTab === 'trips' && (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 28 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={QUEUE_GOLD} />}
+        >
+          {dispatchedTrips.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingTop: 48 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <Ionicons name="document-text-outline" size={30} color={c.textMuted} />
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>No trips yet</Text>
+              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>Dispatched trips will appear here</Text>
+            </View>
+          ) : (
+            dispatchedTrips.map((trip, idx) => {
+              const sc = queueStatusColor(trip.status || 'Dispatched');
+              const isActive = trip.status !== 'Completed' && trip.status !== 'Cancelled';
+              return (
+                <TouchableOpacity key={trip.id || idx}
+                  style={{ backgroundColor: c.surface, borderRadius: 14, marginBottom: 10, flexDirection: 'row', overflow: 'hidden',
+                    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 }}
+                  activeOpacity={0.75}
+                  onPress={() => navigation.navigate('DriverTripDetails', { tripId: trip.id, driverProfileId: driverId })}>
+                  <View style={{ width: 4, backgroundColor: sc }} />
+                  <View style={{ flex: 1, padding: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: c.text, flex: 1 }} numberOfLines={1}>
+                        {trip.departureStation || '—'} → {trip.destinationStation || '—'}
+                      </Text>
+                      <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: sc }}>
+                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{trip.status || 'Active'}</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="car-outline" size={12} color={c.textMuted} />
+                        <Text style={{ fontSize: 11, color: c.textMuted }}>{trip.vehicle?.registration || trip.vehicleRegistration || '—'}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="people-outline" size={12} color={c.textMuted} />
+                        <Text style={{ fontSize: 11, color: c.textMuted }}>{trip.passengerCount ?? 0} pax</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="time-outline" size={12} color={c.textMuted} />
+                        <Text style={{ fontSize: 11, color: c.textMuted }}>{fmtTime(trip.departureTime)}</Text>
+                      </View>
+                    </View>
+                    {isActive && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                        <Ionicons name="checkmark-circle-outline" size={12} color="#22c55e" />
+                        <Text style={{ fontSize: 11, color: '#22c55e' }}>Tap to view &amp; complete</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
+
+      {/* ── TRIP REQUESTS ── */}
+      {innerTab === 'requests' && (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 28 }}
+          refreshControl={<RefreshControl refreshing={requestsLoading} onRefresh={loadTripRequests} tintColor="#D4AF37" />}
+        >
+          {newRequestCount > 0 && (
+            <View style={{ backgroundColor: '#fde68a', borderRadius: 14, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#f59e0b' }}>
+              <Text style={{ color: '#92400e', fontSize: 13, fontWeight: '700' }}>{newRequestCount} new matching request{newRequestCount > 1 ? 's' : ''} available</Text>
+              <Text style={{ color: '#7c2d12', fontSize: 12, marginTop: 4 }}>Pull down to refresh or stay on this tab for automatic updates.</Text>
+            </View>
+          )}
+          {requestsLoading && tripRequests.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingTop: 40 }}>
+              <ActivityIndicator size="large" color="#D4AF37" />
+              <Text style={{ color: c.textMuted, marginTop: 10, fontSize: 13 }}>Loading trip requests…</Text>
+            </View>
+          ) : (
+            <>
+              {acceptedTripRequests.length > 0 && (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: c.text, marginBottom: 8 }}>Accepted Trips — Head to Pickup</Text>
+                  {acceptedTripRequests.map(req => {
+                    const id = req.id ?? req.Id;
+                    const isStarting = startingRequestId === id;
+                    const pickup = req.pickupLocation ?? req.PickupLocation ?? '—';
+                    const dropoff = req.dropoffLocation ?? req.DropoffLocation ?? '—';
+                    const pax = req.passengerCount ?? req.PassengerCount ?? 1;
+                    const agreedFare = Number(req.totalPrice ?? req.TotalPrice ?? 0);
+                    const minsAway = scheduledMinsAway(req);
+                    const isFuture = minsAway > 30;
+                    const scheduledLabel = fmtScheduledLabel(req);
+                    const countdown = timeUntilLabel(minsAway);
+                    return (
+                      <View key={id}
+                        style={{ backgroundColor: c.surface, borderRadius: 14, marginBottom: 10, overflow: 'hidden',
+                          shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
+                          borderWidth: 1.5, borderColor: isFuture ? '#3b82f640' : '#22c55e40' }}>
+                        {/* Top stripe — blue for future, green for ready */}
+                        <View style={{ height: 4, backgroundColor: isFuture ? '#3b82f6' : '#22c55e' }} />
+                        <View style={{ padding: 14 }}>
+                          {/* Status + fare row */}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isFuture ? '#3b82f6' : '#22c55e' }} />
+                              <Text style={{ fontSize: 11, fontWeight: '800', color: isFuture ? '#3b82f6' : '#22c55e', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                {isFuture ? 'Scheduled · Accepted' : 'Accepted · Head to pickup'}
+                              </Text>
+                            </View>
+                            {agreedFare > 0 && (
+                              <View style={{ backgroundColor: '#D4AF37', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '900', color: '#000' }}>R{agreedFare.toFixed(2)}</Text>
+                              </View>
+                            )}
+                          </View>
+
+                          {/* Scheduled date/time banner */}
+                          {isFuture && scheduledLabel ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#3b82f610', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 12 }}>
+                              <Ionicons name="calendar" size={15} color="#3b82f6" />
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: '#3b82f6' }}>{scheduledLabel}</Text>
+                                {countdown ? <Text style={{ fontSize: 11, color: c.textMuted, marginTop: 1 }}>Trip starts {countdown}</Text> : null}
+                              </View>
+                            </View>
+                          ) : null}
+
+                          {/* Pickup */}
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
+                            <View style={{ alignItems: 'center', paddingTop: 3 }}>
+                              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', borderWidth: 2, borderColor: '#22c55e40' }} />
+                              <View style={{ width: 2, height: 18, backgroundColor: c.border, marginVertical: 2 }} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Pickup</Text>
+                              <Text style={{ fontSize: 14, fontWeight: '800', color: c.text }} numberOfLines={2}>{pickup}</Text>
+                            </View>
+                          </View>
+
+                          {/* Dropoff */}
+                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+                            <View style={{ alignItems: 'center', paddingTop: 3 }}>
+                              <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#ef4444' }} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Destination</Text>
+                              <Text style={{ fontSize: 13, color: c.textMuted }} numberOfLines={2}>{dropoff}</Text>
+                            </View>
+                          </View>
+
+                          {/* Passenger count */}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 14 }}>
+                            <Ionicons name={pax > 1 ? 'people-outline' : 'person-outline'} size={13} color={c.textMuted} />
+                            <Text style={{ fontSize: 12, color: c.textMuted }}>{pax > 1 ? `${pax} passengers` : '1 passenger'}</Text>
+                          </View>
+
+                          {/* Action buttons */}
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity
+                              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                backgroundColor: c.background, borderWidth: 1.5, borderColor: '#3b82f6', borderRadius: 10, paddingVertical: 10 }}
+                              onPress={() => openMapsToPickup(req)}
+                              activeOpacity={0.8}
+                            >
+                              <Ionicons name="navigate" size={15} color="#3b82f6" />
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#3b82f6' }}>Navigate</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={{ flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                backgroundColor: isFuture ? c.card : '#22c55e', borderRadius: 10, paddingVertical: 10,
+                                opacity: (isStarting || isFuture) ? 0.6 : 1 }}
+                              onPress={() => !isFuture && handleArrivedAtPickup(req)}
+                              disabled={isStarting || isFuture}
+                              activeOpacity={0.8}
+                            >
+                              {isStarting
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Ionicons name={isFuture ? 'time-outline' : 'pin'} size={15} color={isFuture ? c.textMuted : '#fff'} />}
+                              <Text style={{ fontSize: 13, fontWeight: '900', color: isFuture ? c.textMuted : '#fff' }}>
+                                {isStarting ? 'Starting…' : isFuture ? (countdown ? `Due ${countdown}` : 'Not Yet Due') : 'Arrived at Pickup'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              {inProgressTripRequests.length > 0 && (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: c.text, marginBottom: 8 }}>In Progress Trips</Text>
+                  {inProgressTripRequests.map(req => {
+                    const id = req.id ?? req.Id;
+                    const isCompleting = startingRequestId === id; // reusing loading state
+                    const pickup = req.pickupLocation ?? req.PickupLocation ?? '—';
+                    const dropoff = req.dropoffLocation ?? req.DropoffLocation ?? '—';
+                    return (
+                      <View key={id}
+                        style={{ backgroundColor: c.surface, borderRadius: 14, marginBottom: 10, flexDirection: 'row', overflow: 'hidden',
+                          shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 }}>
+                        <View style={{ width: 4, backgroundColor: '#3b82f6' }} />
+                        <View style={{ flex: 1, padding: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: c.text, flex: 1 }} numberOfLines={1}>
+                              {pickup} → {dropoff}
+                            </Text>
+                            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: '#3b82f6' }}>
+                              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>In Progress</Text>
+                            </View>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                            <TouchableOpacity
+                              style={{
+                                backgroundColor: '#10b981', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14,
+                                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                opacity: isCompleting ? 0.7 : 1,
+                              }}
+                              onPress={() => handleCompleteTripRequest(req)}
+                              disabled={isCompleting}
+                              activeOpacity={0.8}
+                            >
+                              {isCompleting
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Ionicons name="checkmark-circle" size={14} color="#fff" />}
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#fff' }}>
+                                {isCompleting ? 'Completing…' : 'Complete Trip'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              {tripRequests.length === 0 && acceptedTripRequests.length === 0 && inProgressTripRequests.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingTop: 48 }}>
+                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Ionicons name="navigate-outline" size={30} color={c.textMuted} />
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>No pending requests</Text>
+                  <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>
+                    {!data?.rankId
+                      ? 'No taxi rank linked to your vehicle yet. Connect your car to a rank to receive trip requests.'
+                      : `No requests for ${data.rankName || 'your rank'}${data.routeName ? ` · ${data.routeName}` : ''} right now. Pull down to refresh.`}
+                  </Text>
+                  {!!data?.rankId && (
+                    <View style={{ marginTop: 10, paddingHorizontal: 20, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 10, color: c.textMuted }}>
+                        Rank: {data.rankName || data.rankId} {data.routeName ? `· Route: ${data.routeName}` : '(no route assigned)'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                tripRequests.map(req => {
+                  const id = req.id ?? req.Id;
+                  const isAccepting = acceptingId === id;
+                  const isGroup = (req.passengerCount ?? req.PassengerCount) > 1;
+                  const reqPrice = req.totalPrice ?? req.TotalPrice ?? 0;
+                  return (
+                <View key={id}
+                  style={{ backgroundColor: c.surface, borderRadius: 14, marginBottom: 10, flexDirection: 'row', overflow: 'hidden',
+                    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 }}>
+                  <View style={{ width: 4, backgroundColor: '#D4AF37' }} />
+                  <View style={{ flex: 1, padding: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: c.text, flex: 1 }} numberOfLines={1}>
+                        {req.pickupLocation} → {req.dropoffLocation}
+                      </Text>
+                      {reqPrice > 0
+                        ? <View style={{ backgroundColor: '#D4AF37', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '900', color: '#000' }}>R{Number(reqPrice).toFixed(2)}</Text>
+                          </View>
+                        : <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: 'rgba(245,158,11,0.15)' }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#f59e0b' }}>Requested</Text>
+                          </View>
+                      }
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name={isGroup ? 'people' : 'person'} size={12} color={c.textMuted} />
+                        <Text style={{ fontSize: 11, color: c.textMuted }}>{isGroup ? `${req.passengerCount} pax` : 'Individual'}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="time-outline" size={12} color={c.textMuted} />
+                        <Text style={{ fontSize: 11, color: c.textMuted }}>{new Date(req.requestedTime || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                      </View>
+                      {reqPrice > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="cash-outline" size={12} color='#D4AF37' />
+                          <Text style={{ fontSize: 11, color: '#D4AF37', fontWeight: '700' }}>R{Number(reqPrice).toFixed(2)}</Text>
+                        </View>
+                      )}
+                      {!!req.notes && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="document-text-outline" size={12} color={c.textMuted} />
+                          <Text style={{ fontSize: 11, color: c.textMuted }} numberOfLines={1}>{req.notes}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        backgroundColor: '#D4AF37', borderRadius: 8, paddingVertical: 8, marginTop: 8,
+                        opacity: isAccepting ? 0.6 : 1,
+                      }}
+                      onPress={() => handleAcceptRequest(req)}
+                      disabled={isAccepting}
+                      activeOpacity={0.8}
+                    >
+                      {isAccepting
+                        ? <ActivityIndicator size="small" color="#000" />
+                        : <Ionicons name="checkmark-circle" size={14} color="#000" />
+                      }
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#000' }}>
+                        {isAccepting ? 'Accepting…' : 'Accept'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
+            </>
+          )}
+        </ScrollView>
+      )}
+
+      {/* ── QUEUE ── */}
+      {innerTab === 'queue' && <>
+
+      {/* Route selector tabs */}
+      {routes.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={{ backgroundColor: c.background, borderBottomWidth: 1, borderBottomColor: c.border }}
+          contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 6, gap: 6, flexDirection: 'row' }}>
+          {routes.map(r => {
+            const isActive = selectedRoute === r.id;
+            const routeItems = queue.filter(i => (i.routeId || i.routeName || 'unassigned') === r.id);
+            return (
+              <TouchableOpacity key={r.id}
+                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10,
+                  backgroundColor: isActive ? QUEUE_GOLD : c.card, borderWidth: 1, borderColor: isActive ? QUEUE_GOLD : c.border }}
+                onPress={() => setSelectedRoute(r.id)}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: isActive ? '#000' : c.textMuted }}>
+                  {r.name}
+                </Text>
+                <Text style={{ fontSize: 10, color: isActive ? 'rgba(255,255,255,0.7)' : c.textMuted }}>
+                  ({routeItems.length})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {/* Status filter chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={{ backgroundColor: c.background, borderBottomWidth: 1, borderBottomColor: c.border }}
+        contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 5, gap: 6, flexDirection: 'row' }}>
+        {[
+          { key: 'all', label: 'All', cnt: routeQueue.length },
+          { key: 'waiting', label: 'Waiting', cnt: waitingCnt },
+          { key: 'dispatched', label: 'Dispatched', cnt: dispatchedCnt },
+          { key: 'completed', label: 'Completed', cnt: completedCnt },
+        ].map(f => (
+          <TouchableOpacity key={f.key}
+            style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+              backgroundColor: filter === f.key ? QUEUE_GOLD : c.card }}
+            onPress={() => setFilter(f.key)}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: filter === f.key ? '#000' : c.textMuted }}>
+              {f.label} {f.cnt}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Queue list */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 28 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={QUEUE_GOLD} />}
+      >
+        {/* My vehicle summary — only when viewing its route or all */}
+        {myEntry && (selectedRoute === 'all' || (myEntry.routeId || myEntry.routeName || 'unassigned') === selectedRoute) && (
+          <View style={{ backgroundColor: 'rgba(212,175,55,0.12)', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1.5, borderColor: QUEUE_GOLD }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: QUEUE_GOLD, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#000', fontSize: 13, fontWeight: '800' }}>#{data?.myPosition || myEntry.queuePosition}</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: c.text }}>{data?.vehicleRegistration || myEntry.vehicleRegistration}</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 1 }}>
+                  {data?.myStatus || myEntry.status} · {myEntry.routeName || data?.routeName || '—'}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 10, color: c.textMuted }}>Your position</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {filtered.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingTop: 40 }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Ionicons name="car-outline" size={30} color={c.textMuted} />
+            </View>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>No vehicles in queue</Text>
+            <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>
+              {data?.message || 'No vehicles for this route today'}
+            </Text>
+          </View>
+        ) : (
+          filtered.map((item, idx) => {
+            const sc = queueStatusColor(item.status);
+            const isMine = item.isMine;
+            return (
+              <View key={item.id || idx}
+                style={{ backgroundColor: c.surface, borderRadius: 14, marginBottom: 10, flexDirection: 'row', overflow: 'hidden',
+                  borderWidth: isMine ? 1.5 : 0, borderColor: QUEUE_GOLD,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 }}>
+                <View style={{ width: 4, backgroundColor: sc }} />
+                <View style={{ flex: 1, padding: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: isMine ? QUEUE_GOLD : sc + '18' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: isMine ? '#000' : sc }}>#{item.queuePosition}</Text>
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: c.text, flex: 1 }} numberOfLines={1}>
+                        {item.vehicleRegistration || '—'}{isMine ? '  (You)' : ''}
+                      </Text>
+                    </View>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: sc }}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{item.status}</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="person-outline" size={12} color={c.textMuted} />
+                      <Text style={{ fontSize: 11, color: c.textMuted }}>{item.driverName || 'No Driver'}</Text>
+                    </View>
+                    {selectedRoute === 'all' && item.routeName ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="navigate-outline" size={12} color={c.textMuted} />
+                        <Text style={{ fontSize: 11, color: c.textMuted }}>{item.routeName}</Text>
+                      </View>
+                    ) : null}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="time-outline" size={12} color={c.textMuted} />
+                      <Text style={{ fontSize: 11, color: c.textMuted }}>{item.joinedAt || '—'}</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+      </> }
+
+      {/* ── Arrived at Pickup Confirmation Modal ── */}
+      <Modal
+        visible={arrivedModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setArrivedModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: '#22c55e20', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <Ionicons name="pin" size={22} color="#22c55e" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 18, fontWeight: '900', color: c.text }}>Arrived at Pickup</Text>
+                <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>Confirm you're at the pickup location to start the trip</Text>
+              </View>
+              <TouchableOpacity onPress={() => setArrivedModalVisible(false)} style={{ padding: 6 }}>
+                <Ionicons name="close" size={22} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Trip details card */}
+            {arrivingRequest && (
+              <View style={{ backgroundColor: c.background, borderRadius: 14, padding: 14, marginBottom: 20 }}>
+                {/* Pickup */}
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                  <View style={{ alignItems: 'center', paddingTop: 3 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e' }} />
+                    <View style={{ width: 2, height: 16, backgroundColor: c.border, marginVertical: 2 }} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Pickup Location</Text>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: c.text }}>
+                      {arrivingRequest.pickupLocation ?? arrivingRequest.PickupLocation}
+                    </Text>
+                  </View>
+                </View>
+                {/* Dropoff */}
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+                  <View style={{ alignItems: 'center', paddingTop: 3 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#ef4444' }} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Destination</Text>
+                    <Text style={{ fontSize: 13, color: c.textMuted }}>
+                      {arrivingRequest.dropoffLocation ?? arrivingRequest.DropoffLocation}
+                    </Text>
+                  </View>
+                </View>
+                {/* Pax + fare chips */}
+                <View style={{ flexDirection: 'row', gap: 12, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 }}>
+                  {(arrivingRequest.passengerCount ?? arrivingRequest.PassengerCount) > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Ionicons name="people-outline" size={14} color={c.textMuted} />
+                      <Text style={{ fontSize: 13, color: c.textMuted }}>
+                        {arrivingRequest.passengerCount ?? arrivingRequest.PassengerCount} pax
+                      </Text>
+                    </View>
+                  )}
+                  {Number(arrivingRequest.totalPrice ?? arrivingRequest.TotalPrice ?? 0) > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Ionicons name="cash-outline" size={14} color="#D4AF37" />
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#D4AF37' }}>
+                        R{Number(arrivingRequest.totalPrice ?? arrivingRequest.TotalPrice).toFixed(2)} agreed
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', marginBottom: 20 }}>
+              The passenger will be notified and the trip timer will begin.
+            </Text>
+
+            {/* Buttons */}
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: c.border }}
+                onPress={() => setArrivedModalVisible(false)}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>Not Yet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 2, paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#22c55e' }}
+                onPress={confirmStartTrip}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="play-circle" size={20} color="#fff" />
+                  <Text style={{ fontSize: 15, fontWeight: '900', color: '#fff' }}>Confirm & Start Trip</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Active Trip In-App Navigator ── */}
+      <ActiveTripNavigator
+        visible={!!navTripReq}
+        req={navTripReq}
+        driverId={driverId}
+        vehicleId={vehicleId}
+        c={c}
+        onDone={(total) => {
+          setNavTripReq(null);
+          loadTripRequests();
+          Alert.alert('Trip Completed!', `Earnings of R${Number(total).toFixed(2)} recorded.`);
+        }}
+        onCancel={() => {
+          setNavTripReq(null);
+          loadTripRequests();
+        }}
+      />
+
+      {/* ── Trip Request Completion Modal ── */}
+      <Modal
+        visible={tripReqCompletionVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !submittingTripCompletion && setTripReqCompletionVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#D4AF3720', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <Ionicons name="cash" size={18} color="#D4AF37" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 17, fontWeight: '900', color: c.text }}>Complete Trip</Text>
+                {completingRequest ? (
+                  <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 1 }} numberOfLines={1}>
+                    {completingRequest.pickupLocation ?? completingRequest.PickupLocation} → {completingRequest.dropoffLocation ?? completingRequest.DropoffLocation}
+                  </Text>
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={() => !submittingTripCompletion && setTripReqCompletionVisible(false)} style={{ padding: 6 }}>
+                <Ionicons name="close" size={22} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Passengers / requested fare hint */}
+            {completingRequest && (completingRequest.passengerCount ?? completingRequest.PassengerCount) > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.background, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginTop: 12 }}>
+                <Ionicons name="people-outline" size={14} color={c.textMuted} />
+                <Text style={{ fontSize: 12, color: c.textMuted }}>
+                  {completingRequest.passengerCount ?? completingRequest.PassengerCount} passenger{(completingRequest.passengerCount ?? completingRequest.PassengerCount) > 1 ? 's' : ''}
+                </Text>
+                {(completingRequest.totalPrice ?? completingRequest.TotalPrice) > 0 && (
+                  <>
+                    <Text style={{ fontSize: 12, color: c.textMuted }}>·</Text>
+                    <Text style={{ fontSize: 12, color: '#D4AF37', fontWeight: '700' }}>Agreed fare: R{Number(completingRequest.totalPrice ?? completingRequest.TotalPrice).toFixed(2)}</Text>
+                  </>
+                )}
+              </View>
+            )}
+
+            {/* Distance + Rate row */}
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted, marginBottom: 6 }}>Distance (km)</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: c.background, color: c.text, fontSize: 16, fontWeight: '600' }}
+                  placeholder="0.0"
+                  placeholderTextColor={c.textMuted}
+                  keyboardType="decimal-pad"
+                  value={tripDistanceKm}
+                  onChangeText={v => {
+                    setTripDistanceKm(v);
+                    if (!fareOverridden) {
+                      const d = parseFloat(v) || 0;
+                      const r = parseFloat(tripRatePerKm) || 0;
+                      if (d > 0 && r > 0) setTripTotalFare((d * r).toFixed(2));
+                    }
+                  }}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted, marginBottom: 6 }}>Rate (R/km)</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: c.background, color: c.text, fontSize: 16, fontWeight: '600' }}
+                  placeholder="0.00"
+                  placeholderTextColor={c.textMuted}
+                  keyboardType="decimal-pad"
+                  value={tripRatePerKm}
+                  onChangeText={v => {
+                    setTripRatePerKm(v);
+                    if (!fareOverridden) {
+                      const d = parseFloat(tripDistanceKm) || 0;
+                      const r = parseFloat(v) || 0;
+                      if (d > 0 && r > 0) setTripTotalFare((d * r).toFixed(2));
+                    }
+                  }}
+                />
+              </View>
+            </View>
+
+            {/* Total Fare */}
+            <View style={{ marginTop: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: c.textMuted }}>Total Fare (R)</Text>
+                {fareOverridden && (
+                  <TouchableOpacity onPress={() => {
+                    setFareOverridden(false);
+                    const d = parseFloat(tripDistanceKm) || 0;
+                    const r = parseFloat(tripRatePerKm) || 0;
+                    if (d > 0 && r > 0) setTripTotalFare((d * r).toFixed(2));
+                    else setTripTotalFare('');
+                  }}>
+                    <Text style={{ fontSize: 11, color: '#D4AF37', fontWeight: '700' }}>Auto-calculate</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TextInput
+                style={{ borderWidth: 2, borderColor: '#D4AF37', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: c.background, color: c.text, fontSize: 22, fontWeight: '900', textAlign: 'right' }}
+                placeholder="0.00"
+                placeholderTextColor={c.textMuted}
+                keyboardType="decimal-pad"
+                value={tripTotalFare}
+                onChangeText={v => { setTripTotalFare(v); setFareOverridden(true); }}
+              />
+            </View>
+
+            {/* Action buttons */}
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: c.border }}
+                onPress={() => !submittingTripCompletion && setTripReqCompletionVisible(false)}
+                disabled={submittingTripCompletion}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#16a34a', opacity: submittingTripCompletion ? 0.7 : 1 }}
+                onPress={confirmCompleteTripRequest}
+                disabled={submittingTripCompletion}
+              >
+                {submittingTripCompletion
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={{ fontSize: 15, fontWeight: '900', color: '#fff' }}>Confirm R{parseFloat(tripTotalFare) > 0 ? Number(tripTotalFare).toFixed(2) : '0.00'}</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -990,15 +3477,15 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
       <View style={[s.performanceCard, { backgroundColor: c.surface }]}>
         <View style={s.performanceRow}>
           <View style={s.performanceItem}>
-            <View style={[s.performanceIcon, { backgroundColor: behaviorScore >= 80 ? '#22c55e20' : behaviorScore >= 60 ? '#f59e0b20' : '#ef444420' }]}>
-              <Ionicons name="shield-checkmark-outline" size={20} color={behaviorScore >= 80 ? '#22c55e' : behaviorScore >= 60 ? '#f59e0b' : '#ef4444'} />
+            <View style={[s.performanceIcon, { backgroundColor: behaviorScore >= 80 ? (c.mode === 'dark' ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.12)') : behaviorScore >= 60 ? (c.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)') : (c.mode === 'dark' ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.12)') }]}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={behaviorScore >= 80 ? c.success : behaviorScore >= 60 ? '#f59e0b' : c.danger} />
             </View>
-            <Text style={[s.performanceValue, { color: behaviorScore >= 80 ? '#22c55e' : behaviorScore >= 60 ? '#f59e0b' : '#ef4444' }]}>{behaviorScore}</Text>
+            <Text style={[s.performanceValue, { color: behaviorScore >= 80 ? c.success : behaviorScore >= 60 ? '#f59e0b' : c.danger }]}>{behaviorScore}</Text>
             <Text style={s.performanceLabel}>Behavior Score</Text>
           </View>
           <View style={s.performanceDivider} />
           <View style={s.performanceItem}>
-            <View style={[s.performanceIcon, { backgroundColor: '#f59e0b20' }]}>
+            <View style={[s.performanceIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)' }]}>
               <Ionicons name="star-outline" size={20} color="#f59e0b" />
             </View>
             <Text style={[s.performanceValue, { color: '#f59e0b' }]}>{avgRating}</Text>
@@ -1006,10 +3493,10 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
           </View>
           <View style={s.performanceDivider} />
           <View style={s.performanceItem}>
-            <View style={[s.performanceIcon, { backgroundColor: '#3b82f620' }]}>
-              <Ionicons name="ribbon-outline" size={20} color="#3b82f6" />
+            <View style={[s.performanceIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.12)' }]}>
+              <Ionicons name="ribbon-outline" size={20} color={c.info} />
             </View>
-            <Text style={[s.performanceValue, { color: '#3b82f6' }]}>{ratings?.length || 0}</Text>
+            <Text style={[s.performanceValue, { color: c.info }]}>{ratings?.length || 0}</Text>
             <Text style={s.performanceLabel}>Reviews</Text>
           </View>
         </View>
@@ -1021,7 +3508,7 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
         {profile?.licenseNumber ? (
           <View style={s.profRow}>
             <View style={[s.profRowIcon, { backgroundColor: '#3b82f620' }]}>
-              <Ionicons name="id-card-outline" size={16} color="#3b82f6" />
+              <Ionicons name="id-card-outline" size={16} color={c.info} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.profRowTxt}>License No: {profile.licenseNumber}</Text>
@@ -1030,7 +3517,7 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
         ) : null}
         {profile?.category ? (
           <View style={s.profRow}>
-            <View style={[s.profRowIcon, { backgroundColor: '#8b5cf620' }]}>
+            <View style={[s.profRowIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(139,92,246,0.25)' : 'rgba(139,92,246,0.12)' }]}>
               <Ionicons name="car-outline" size={16} color="#8b5cf6" />
             </View>
             <Text style={s.profRowTxt}>Category: {profile.category}</Text>
@@ -1060,8 +3547,8 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
       <Text style={s.profGroupLabel}>PROFESSIONAL DRIVING PERMIT (PDP)</Text>
       <View style={s.profSection}>
         <View style={s.profRow}>
-          <View style={[s.profRowIcon, { backgroundColor: profile?.hasPdp ? '#10b98120' : '#ef444420' }]}>
-            <Ionicons name={profile?.hasPdp ? "checkmark-circle-outline" : "close-circle-outline"} size={16} color={profile?.hasPdp ? '#10b981' : '#ef4444'} />
+          <View style={[s.profRowIcon, { backgroundColor: profile?.hasPdp ? (c.mode === 'dark' ? 'rgba(16,185,129,0.25)' : 'rgba(16,185,129,0.12)') : (c.mode === 'dark' ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.12)') }]}>
+            <Ionicons name={profile?.hasPdp ? "checkmark-circle-outline" : "close-circle-outline"} size={16} color={profile?.hasPdp ? c.success : c.danger} />
           </View>
           <Text style={s.profRowTxt}>{profile?.hasPdp ? 'PDP Certified' : 'No PDP on file'}</Text>
         </View>
@@ -1087,7 +3574,7 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
       <View style={s.profSection}>
         {profile?.idNumber ? (
           <View style={s.profRow}>
-            <View style={[s.profRowIcon, { backgroundColor: '#6366f120' }]}>
+            <View style={[s.profRowIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.12)' }]}>
               <Ionicons name="person-outline" size={16} color="#6366f1" />
             </View>
             <Text style={s.profRowTxt}>ID: {profile.idNumber}</Text>
@@ -1095,15 +3582,15 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
         ) : null}
         {profile?.phone ? (
           <View style={s.profRow}>
-            <View style={[s.profRowIcon, { backgroundColor: '#3b82f620' }]}>
-              <Ionicons name="call-outline" size={16} color="#3b82f6" />
+            <View style={[s.profRowIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.12)' }]}>
+              <Ionicons name="call-outline" size={16} color={c.info} />
             </View>
             <Text style={s.profRowTxt}>{profile.phone}</Text>
           </View>
         ) : null}
         {profile?.experience ? (
           <View style={s.profRow}>
-            <View style={[s.profRowIcon, { backgroundColor: '#f59e0b20' }]}>
+            <View style={[s.profRowIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)' }]}>
               <Ionicons name="briefcase-outline" size={16} color="#f59e0b" />
             </View>
             <Text style={s.profRowTxt}>{profile.experience}</Text>
@@ -1114,12 +3601,12 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
       {/* Recent Behavior Issues */}
       {recentIssues.length > 0 && (
         <>
-          <Text style={[s.profGroupLabel, { color: '#ef4444' }]}>RECENT BEHAVIOR ALERTS</Text>
-          <View style={[s.profSection, { borderColor: '#ef444440' }]}>
+          <Text style={[s.profGroupLabel, { color: c.danger }]}>RECENT BEHAVIOR ALERTS</Text>
+          <View style={[s.profSection, { borderColor: c.mode === 'dark' ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.25)' }]}>
             {recentIssues.map((issue, idx) => (
               <View key={idx} style={s.behaviorRow}>
-                <View style={[s.behaviorIcon, { backgroundColor: '#ef444420' }]}>
-                  <Ionicons name="warning-outline" size={14} color="#ef4444" />
+                <View style={[s.behaviorIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.12)' }]}>
+                  <Ionicons name="warning-outline" size={14} color={c.danger} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.behaviorTitle}>{issue.category}</Text>
@@ -1153,7 +3640,7 @@ function ProfileTab({ profile, user, vehicle, behaviorEvents, ratings, onToggle,
       {/* Preferences */}
       <Text style={[s.profGroupLabel, { marginTop: 4 }]}>PREFERENCES</Text>
       <TouchableOpacity style={s.profActionRow} onPress={() => setMode(mode === 'dark' ? 'light' : 'dark')}>
-        <View style={[s.profActionIcon, { backgroundColor: '#f59e0b20' }]}>
+        <View style={[s.profActionIcon, { backgroundColor: c.mode === 'dark' ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.12)' }]}>
           <Ionicons name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={20} color="#f59e0b" />
         </View>
         <Text style={s.profActionTxt}>{mode === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
@@ -1177,6 +3664,7 @@ export default function DriverDashboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
 
   const [tab, setTab] = useState('overview');
+  const [tripsDefaultTab, setTripsDefaultTab] = useState('queue');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -1199,6 +3687,113 @@ export default function DriverDashboardScreen({ navigation }) {
   const [monitorSpeed, setMonitorSpeed] = useState(0);
   const [recentBehaviorEvents, setRecentBehaviorEvents] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
+  const [activeTripNavigatorVisible, setActiveTripNavigatorVisible] = useState(false);
+
+  const fetchActiveTrip = useCallback(async (driverId) => {
+    if (!driverId) return null;
+    try {
+      // First check TripRequests for in-progress trips (like rider dashboard does)
+      const tripRequestsResp = await client.get(`/TripRequests?status=InProgress&driverId=${driverId}`);
+      const tripRequests = Array.isArray(tripRequestsResp.data) ? tripRequestsResp.data : [];
+      if (tripRequests.length > 0) {
+        const t = tripRequests[0];
+        return {
+          ...t,
+          id: t.id,
+          tripType: 'TripRequest',
+          departureStation: t.departureStation || t.origin || '—',
+          destinationStation: t.destinationStation || t.destination || '—',
+          status: t.state || t.Status || 'InProgress',
+          departureTime: t.departureTime || t.startedAt,
+          vehicle: t.vehicle,
+          passengerCount: t.passengerCount || t.numberOfPassengers || 0,
+          totalAmount: t.totalAmount || t.fareAmount || 0,
+        };
+      }
+    } catch {}
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const raw = await getDriverDispatchedTrips(driverId, today);
+      const trips = Array.isArray(raw) ? raw : [];
+      if (trips.length > 0) {
+        const t = trips[0];
+        return {
+          ...t,
+          tripType: 'TaxiRankTrip',
+          departureStation: t.route?.departureStation || t.taxiRank?.name || '—',
+          destinationStation: t.route?.destinationStation || '—',
+          status: t.status || 'Dispatched',
+          departureTime: t.departedAt || t.estimatedDepartureTime,
+          vehicleRegistration: t.vehicle?.registration,
+          fareAmount: t.fareAmount || 0,
+        };
+      }
+    } catch {}
+    try {
+      const resp = await client.get(`/TaxiRankTrips/driver/${driverId}/active`);
+      const trips = Array.isArray(resp.data) ? resp.data : [];
+      if (trips.length > 0) {
+        return {
+          ...trips[0],
+          tripType: 'TaxiRankTrip',
+        };
+      }
+    } catch {}
+    return null;
+  }, []);
+
+  const [completeModalVisible, setCompleteModalVisible] = useState(false);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [completionFare, setCompletionFare] = useState('');
+  const [completing, setCompleting] = useState(false);
+
+  async function handleDashboardCompleteTrip() {
+    const tripId = getTripId(activeTrip);
+    if (!tripId) { Alert.alert('Error', 'Invalid trip ID'); return; }
+    try {
+      setCompleting(true);
+      let lat, lng;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          lat = loc.coords.latitude;
+          lng = loc.coords.longitude;
+        }
+      } catch {}
+      const fareAmount = completionFare ? parseFloat(completionFare) : null;
+      const payload = {
+        Notes: completionNotes || 'Completed from driver dashboard',
+        CompletedByDriverId: profile?.id,
+        CompletedAt: new Date().toISOString(),
+        Latitude: lat,
+        Longitude: lng,
+        TotalAmount: fareAmount,
+      };
+      const completeTripUrl = activeTrip?.CompleteTripUrl ?? activeTrip?.completeTripUrl;
+      const shouldUseTaxiRankTrip = activeTrip && !completeTripUrl;
+      if (shouldUseTaxiRankTrip) {
+        await completeTrip(
+          tripId,
+          payload.Notes,
+          payload.CompletedByDriverId,
+          { completedAt: payload.CompletedAt, latitude: payload.Latitude, longitude: payload.Longitude },
+          payload.TotalAmount
+        );
+      } else {
+        await completeQueueTrip(tripId, payload);
+      }
+      setCompleteModalVisible(false);
+      setCompletionNotes('');
+      setCompletionFare('');
+      Alert.alert('Success', 'Trip completed successfully');
+      await load();
+    } catch (e) {
+      Alert.alert('Error', e?.response?.data?.message || e?.message || 'Failed to complete trip');
+    } finally {
+      setCompleting(false);
+    }
+  }
 
   async function submitReview({ rating, review }) {
     await submitMechanicalRequestReview({
@@ -1251,16 +3846,8 @@ export default function DriverDashboardScreen({ navigation }) {
 
       // Fetch active trip for this driver
       if (prof?.id) {
-        try {
-          console.log('[Dashboard] Fetching active trips for driver:', prof.id);
-          const resp = await client.get(`/TaxiRankTrips/driver/${prof.id}/active`);
-          const trips = Array.isArray(resp.data) ? resp.data : [];
-          console.log('[Dashboard] Active trips found:', trips.length);
-          setActiveTrip(trips.length > 0 ? trips[0] : null);
-        } catch (err) {
-          console.warn('[Dashboard] Active trips fetch error:', err?.message, err?.response?.status);
-          setActiveTrip(null);
-        }
+        const trip = await fetchActiveTrip(prof.id);
+        setActiveTrip(trip);
       }
 
       if (veh) {
@@ -1293,16 +3880,19 @@ export default function DriverDashboardScreen({ navigation }) {
   // Re-fetch active trip when screen regains focus (e.g. after completing from details)
   useFocusEffect(useCallback(() => {
     if (!profile?.id) return;
-    (async () => {
-      try {
-        const resp = await client.get(`/TaxiRankTrips/driver/${profile.id}/active`);
-        const trips = Array.isArray(resp.data) ? resp.data : [];
-        setActiveTrip(trips.length > 0 ? trips[0] : null);
-      } catch {
-        setActiveTrip(null);
+    fetchActiveTrip(profile.id).then(setActiveTrip);
+  }, [profile?.id, fetchActiveTrip]));
+
+  // Re-fetch active trip when app becomes active
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && profile?.id) {
+        fetchActiveTrip(profile.id).then(setActiveTrip);
       }
-    })();
-  }, [profile?.id]));
+    });
+
+    return () => subscription?.remove();
+  }, [profile?.id]);
 
   async function toggleAvailability() {
     if (!profile) return;
@@ -1382,6 +3972,7 @@ export default function DriverDashboardScreen({ navigation }) {
   const TABS = [
     { key: 'overview', label: 'Overview', icon: 'grid-outline', activeIcon: 'grid' },
     { key: 'maintenance', label: 'Maintenance', icon: 'construct-outline', activeIcon: 'construct', badge: pendingCount },
+    { key: 'trips', label: 'Trips', icon: 'car-outline', activeIcon: 'car' },
     { key: 'earnings', label: 'Earnings', icon: 'wallet-outline', activeIcon: 'wallet' },
     { key: 'messages', label: 'Messages', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
     { key: 'profile', label: 'Profile', icon: 'person-outline', activeIcon: 'person' },
@@ -1406,7 +3997,7 @@ export default function DriverDashboardScreen({ navigation }) {
           <Text style={s.headerAvatarTxt}>{driverInitials}</Text>
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={s.greeting}>Hello, {profile?.name?.split(' ')[0] || user?.fullName?.split(' ')[0] || 'Driver'} 👋</Text>
+          <Text style={s.greeting}>{profile?.name?.split(' ')[0] || user?.fullName?.split(' ')[0] || 'Driver'} </Text>
           <Text style={s.subhead}>Driver Portal</Text>
         </View>
         <ThemeToggle style={{ marginRight: 8 }} size={20} />
@@ -1422,43 +4013,31 @@ export default function DriverDashboardScreen({ navigation }) {
           <OverviewTab profile={profile} vehicle={vehicle} earnings={earnings} expenses={expenses} maintenance={maintenance}
             onToggle={toggleAvailability} onAddEarning={() => setEarnModal(true)} onAddExpense={() => setExpModal(true)}
             onOpenBehavior={() => navigation.navigate('DriverBehavior')}
-            onOpenRankQueue={() => navigation.navigate('DriverRankQueue', { driverId: profile?.id })}
+            onOpenTrips={() => setTab('trips')}
+            onOpenRequests={() => { setTripsDefaultTab('requests'); setTab('trips'); }}
+            driverId={profile?.id}
             refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
             monitorActive={monitorActive} monitorSpeed={monitorSpeed} recentBehaviorEvents={recentBehaviorEvents}
             activeTrip={activeTrip}
-            onViewTripDetails={(trip) => navigation.navigate('DriverTripDetails', { tripId: trip.id, driverProfileId: profile?.id })}
-            onCompleteTrip={async (trip) => {
-              Alert.alert('Complete Trip', 'Are you sure you want to complete this trip?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Complete', onPress: async () => {
-                  try {
-                    let lat, lng;
-                    try {
-                      const { status } = await Location.requestForegroundPermissionsAsync();
-                      if (status === 'granted') {
-                        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-                        lat = loc.coords.latitude; lng = loc.coords.longitude;
-                      }
-                    } catch {}
-                    await client.put(`/TaxiRankTrips/${trip.id}/complete`, {
-                      notes: 'Completed from driver dashboard',
-                      completedByDriverId: profile?.id,
-                      completedAt: new Date().toISOString(),
-                      latitude: lat, longitude: lng,
-                    });
-                    Alert.alert('Success', 'Trip completed successfully');
-                    load();
-                  } catch (e) {
-                    Alert.alert('Error', e?.response?.data?.message || e?.message || 'Failed to complete trip');
-                  }
-                }},
-              ]);
+            onViewTripDetails={(trip) => {
+              setActiveTripNavigatorVisible(true);
+            }}
+            onCompleteTrip={() => {
+              const pax = activeTrip?.passengerCount || 0;
+              const stdFare = activeTrip?.route?.standardFare || 0;
+              const defaultFare = activeTrip?.totalAmount
+                || activeTrip?.fareAmount
+                || (pax > 0 && stdFare > 0 ? pax * stdFare : 0);
+              setCompletionFare(defaultFare > 0 ? defaultFare.toString() : '');
+              setCompletionNotes('');
+              setCompleteModalVisible(true);
             }}
             c={c} s={s} />
         )}
         {tab === 'maintenance' && (
-          <MaintenanceTab maintenance={maintenance} vehicle={vehicle} profile={profile} onNew={() => setMaintModal(true)}
+          <MaintenanceTab maintenance={maintenance} expenses={expenses} vehicle={vehicle} profile={profile} onNew={() => setMaintModal(true)}
             onEdit={r => { setEditingRequest(r); setEditMaintModal(true); }}
+            onRate={r => { setRatingRequest(r); setRatingModalVisible(true); }}
             onDelete={async r => {
               let confirmed = false;
               if (Platform.OS === 'web') {
@@ -1486,6 +4065,7 @@ export default function DriverDashboardScreen({ navigation }) {
             onAddEarning={() => setEarnModal(true)} onAddExpense={() => setExpModal(true)}
             refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} c={c} s={s} />
         )}
+        {tab === 'trips' && <TripsTab driverId={profile?.id} vehicleId={vehicle?.id} navigation={navigation} defaultInnerTab={tripsDefaultTab} c={c} s={s} />}
         {tab === 'messages' && <MessagesTab userId={user?.id} c={c} s={s} />}
         {tab === 'profile' && (
           <ProfileTab profile={profile} user={user} vehicle={vehicle}
@@ -1522,6 +4102,63 @@ export default function DriverDashboardScreen({ navigation }) {
         request={ratingRequest}
         role="driver"
       />
+      <ActiveTripNavigator
+        visible={activeTripNavigatorVisible}
+        req={activeTrip}
+        driverId={profile?.id}
+        vehicleId={vehicle?.id}
+        onDone={(total) => {
+          setActiveTripNavigatorVisible(false);
+          setActiveTrip(null);
+          load();
+        }}
+        onCancel={() => {
+          setActiveTripNavigatorVisible(false);
+          setActiveTrip(null);
+          load();
+        }}
+        c={c}
+      />
+
+      {/* Complete Trip Modal */}
+      <Modal visible={completeModalVisible} transparent animationType="fade" onRequestClose={() => setCompleteModalVisible(false)}>
+        <View style={s.ctOverlay}>
+          <View style={s.ctContent}>
+            <Text style={s.ctTitle}>Complete Trip</Text>
+            <Text style={s.ctSubtitle}>Are you sure you want to complete this trip? This action cannot be undone.</Text>
+            <View style={s.ctFareRow}>
+              <Text style={s.ctFareLabel}>Total Fare (R)</Text>
+              <TextInput
+                style={s.ctFareInput}
+                placeholder="0.00"
+                placeholderTextColor={c.textMuted}
+                value={completionFare}
+                onChangeText={setCompletionFare}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <TextInput
+              style={s.ctNotesInput}
+              placeholder="Add completion notes (optional)"
+              placeholderTextColor={c.textMuted}
+              value={completionNotes}
+              onChangeText={setCompletionNotes}
+              multiline
+              numberOfLines={3}
+            />
+            <View style={s.ctButtons}>
+              <TouchableOpacity style={s.ctCancelBtn} onPress={() => setCompleteModalVisible(false)} disabled={completing}>
+                <Text style={s.ctCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.ctConfirmBtn} onPress={handleDashboardCompleteTrip} disabled={completing}>
+                {completing
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={s.ctConfirmTxt}>Complete</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1534,20 +4171,20 @@ function createStyles(c) {
     // ── Header ──
     header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 52, paddingBottom: 14, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border },
     headerAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' },
-    headerAvatarTxt: { color: '#fff', fontSize: 15, fontWeight: '900' },
+    headerAvatarTxt: { color: c.primaryText, fontSize: 15, fontWeight: '900' },
     greeting: { fontSize: 16, fontWeight: '800', color: c.text },
     subhead: { fontSize: 11, color: c.textMuted, marginTop: 1 },
     onBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
-    onBadgeGreen: { backgroundColor: '#22c55e18', borderColor: '#22c55e' },
+    onBadgeGreen: { backgroundColor: c.mode === 'dark' ? 'rgba(34,197,94,0.2)' : 'rgba(34,197,94,0.1)', borderColor: '#22c55e' },
     onBadgeGrey: { backgroundColor: c.surface2, borderColor: c.border },
     onDot: { width: 7, height: 7, borderRadius: 4, marginRight: 6 },
     onTxt: { fontSize: 12, fontWeight: '700', color: c.text },
 
     // ── Hero online/offline banner ──
     heroBanner: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, padding: 16, marginBottom: 14 },
-    heroBannerIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
+    heroBannerIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
     heroBannerTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
-    heroBannerSub: { fontSize: 12, color: '#ffffffcc', marginTop: 2 },
+    heroBannerSub: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
 
     // ── Driving Monitor ──
     monitorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0d6efd15', borderWidth: 1, borderColor: '#0d6efd44', borderRadius: 14, padding: 12, marginBottom: 12 },
@@ -1567,34 +4204,38 @@ function createStyles(c) {
 
     // ── Active Trip Card ──
     activeTripCard: {
-      backgroundColor: '#1a1a2e', borderRadius: 16, padding: 16, marginBottom: 14,
+      backgroundColor: c.mode === 'dark' ? '#0f172a' : '#1a1a2e', borderRadius: 16, padding: 16, marginBottom: 14,
       borderWidth: 1.5, borderColor: '#22c55e',
       shadowColor: '#22c55e', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4,
     },
     activeTripHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
     activeTripDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 10 },
     activeTripTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
-    activeTripSub: { fontSize: 12, color: '#ffffffaa', marginTop: 1 },
+    activeTripSub: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 1 },
     activeTripBadge: { backgroundColor: '#22c55e', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
     activeTripBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
-    activeTripMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 14 },
+    activeTripCompact: { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: 10, marginBottom: 10 },
+    activeTripCompactRow: { flexDirection: 'row', marginBottom: 8 },
+    activeTripCompactLabel: { fontSize: 9, color: 'rgba(255,255,255,0.5)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+    activeTripCompactValue: { fontSize: 12, color: '#fff', fontWeight: '600' },
+    activeTripMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
     activeTripMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    activeTripMetaTxt: { fontSize: 12, color: '#ffffffaa' },
+    activeTripMetaTxt: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
     activeTripActions: { flexDirection: 'row', gap: 10 },
     activeTripBtn: {
       flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-      backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, paddingVertical: 11,
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+      backgroundColor: c.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.1)', borderRadius: 10, paddingVertical: 10,
+      borderWidth: 1, borderColor: c.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.15)',
     },
     activeTripBtnGreen: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
-    activeTripBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '600' },
+    activeTripBtnTxt: { color: '#fff', fontSize: 12, fontWeight: '600' },
 
     // ── Hero profit card ──
     heroCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, borderRadius: 20, padding: 20, marginBottom: 14 },
-    heroLabel: { fontSize: 12, color: '#ffffff99', fontWeight: '600', marginBottom: 4 },
+    heroLabel: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontWeight: '600', marginBottom: 4 },
     heroValue: { fontSize: 28, fontWeight: '900', color: '#fff' },
-    heroSub: { fontSize: 12, color: '#ffffffaa', marginTop: 4 },
-    heroIconWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
+    heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
+    heroIconWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
 
     // ── Metrics grid ──
     metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
@@ -1613,6 +4254,8 @@ function createStyles(c) {
 
     // ── Vehicle card ──
     card: { backgroundColor: c.surface, borderRadius: 20, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: c.border },
+    cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+    cardTitle: { fontSize: 15, fontWeight: '800', color: c.text, flex: 1 },
     vehMain: { fontSize: 20, fontWeight: '900', color: c.text },
     vehSub: { fontSize: 13, color: c.textMuted, marginTop: 2, marginBottom: 10 },
     vehStatusBadge: { marginLeft: 'auto', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
@@ -1661,7 +4304,7 @@ function createStyles(c) {
     secHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
     secTitle: { fontSize: 16, fontWeight: '800', color: c.text, marginBottom: 8 },
     btnSm: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, gap: 4 },
-    btnSmTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
+    btnSmTxt: { color: c.primaryText, fontWeight: '700', fontSize: 13 },
 
     // ── Maintenance cards ──
     reqCard: { backgroundColor: c.surface, borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: c.border, overflow: 'hidden' },
@@ -1679,8 +4322,8 @@ function createStyles(c) {
     metaSep: { fontSize: 11, color: c.textMuted, marginHorizontal: 5 },
 
     // ── Messages ──
-    unreadBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fef3c7', borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#f59e0b' },
-    unreadBannerTxt: { fontSize: 13, fontWeight: '700', color: '#92400e' },
+    unreadBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.mode === 'dark' ? '#78350f' : '#fef3c7', borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#f59e0b' },
+    unreadBannerTxt: { fontSize: 13, fontWeight: '700', color: c.mode === 'dark' ? '#fef3c7' : '#92400e' },
     msgRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: c.border, overflow: 'hidden' },
     avatar: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
     avatarTxt: { fontWeight: '800', fontSize: 16 },
@@ -1699,30 +4342,30 @@ function createStyles(c) {
     tabBar: { flexDirection: 'row', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 10 },
     tabItem: { flex: 1, alignItems: 'center', gap: 3, minHeight: 44, justifyContent: 'center' },
     tabLbl: { fontSize: 10, fontWeight: '600', color: c.textMuted },
-    tabBadge: { position: 'absolute', top: -4, right: -10, backgroundColor: '#ef4444', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+    tabBadge: { position: 'absolute', top: -4, right: -10, backgroundColor: c.danger, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
     tabBadgeTxt: { color: '#fff', fontSize: 9, fontWeight: '900' },
 
     // ── Modal ──
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+    overlay: { flex: 1, backgroundColor: c.mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', width: '100%' },
+    sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, width: '100%' },
     sheetTitle: { fontSize: 18, fontWeight: '900', color: c.text, marginBottom: 4 },
     label: { fontSize: 12, fontWeight: '700', color: c.textMuted, marginTop: 16, marginBottom: 6 },
-    input: { borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, backgroundColor: c.background, color: c.text, fontSize: 14 },
+    input: { borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 12, backgroundColor: c.background, color: c.text, fontSize: 14, width: '100%' },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border },
     chipOn: { backgroundColor: c.primary, borderColor: c.primary },
     chipTxt: { fontSize: 12, fontWeight: '600', color: c.textMuted },
-    chipTxtOn: { color: '#fff' },
+    chipTxtOn: { color: c.primaryText },
     row2: { flexDirection: 'row', gap: 10, marginBottom: 16 },
     btnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 13, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    btnPrimaryTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
+    btnPrimaryTxt: { color: c.primaryText, fontWeight: '900', fontSize: 15 },
     btnGhost: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: c.border, marginRight: 8 },
     btnGhostTxt: { color: c.text, fontWeight: '700', fontSize: 15 },
 
     // ── Profile tab ──
     profHeader: { alignItems: 'center', paddingVertical: 28, backgroundColor: c.surface, borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: c.border },
     profAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-    profAvatarTxt: { fontSize: 30, fontWeight: '900', color: '#fff' },
+    profAvatarTxt: { fontSize: 30, fontWeight: '900', color: c.primaryText },
     profName: { fontSize: 20, fontWeight: '900', color: c.text },
     profEmail: { fontSize: 13, color: c.textMuted, marginTop: 3 },
     profGroupLabel: { fontSize: 11, fontWeight: '800', color: c.textMuted, letterSpacing: 1, marginBottom: 8, marginLeft: 2 },
@@ -1733,7 +4376,7 @@ function createStyles(c) {
     profActionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 14, borderWidth: 1, borderColor: c.border, paddingHorizontal: 14, paddingVertical: 14, marginBottom: 10, gap: 12 },
     profActionIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     profActionTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: c.text },
-    logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ef4444', borderRadius: 16, paddingVertical: 16, marginTop: 16, gap: 8 },
+    logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: c.danger, borderRadius: 16, paddingVertical: 16, marginTop: 16, gap: 8 },
     logoutTxt: { fontSize: 16, fontWeight: '900', color: '#fff' },
 
     // ── Profile Performance Card ──
@@ -1755,5 +4398,62 @@ function createStyles(c) {
     behaviorTitle: { fontSize: 13, fontWeight: '700', color: c.text },
     behaviorDesc: { fontSize: 11, color: c.textMuted, marginTop: 1 },
     behaviorPoints: { fontSize: 14, fontWeight: '900', color: '#ef4444' },
+
+    // ── Complete Trip Modal ──
+    ctOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 32 },
+    ctContent: { backgroundColor: c.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12 },
+    ctTitle: { fontSize: 20, fontWeight: '800', color: c.text, marginBottom: 8, textAlign: 'center' },
+    ctSubtitle: { fontSize: 14, color: c.textMuted, marginBottom: 20, textAlign: 'center', lineHeight: 20 },
+    ctFareRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+    ctFareLabel: { fontSize: 14, fontWeight: '600', color: c.text, marginRight: 12 },
+    ctFareInput: { flex: 1, backgroundColor: c.background, borderRadius: 10, padding: 12, fontSize: 16, color: c.text, borderWidth: 1, borderColor: c.border, textAlign: 'right', fontWeight: '600' },
+    ctNotesInput: { backgroundColor: c.background, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, borderWidth: 1, borderColor: c.border, marginBottom: 20, minHeight: 80, textAlignVertical: 'top' },
+    ctButtons: { flexDirection: 'row', gap: 12 },
+    ctCancelBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', backgroundColor: c.background, borderWidth: 1, borderColor: c.border },
+    ctCancelTxt: { color: c.text, fontWeight: '700', fontSize: 15 },
+    ctConfirmBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', backgroundColor: '#16a34a' },
+    ctConfirmTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
+
+    // ── Category Selector ──
+    categorySelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 12, borderWidth: 1, width: '100%', marginHorizontal: 0 },
+    selectedCategory: { flexDirection: 'row', alignItems: 'center' },
+    selectedCategoryText: { fontSize: 14, fontWeight: '600', marginLeft: 10 },
+    placeholderText: { fontSize: 14, color: c.textMuted },
+
+    // ── Category Grid Modal ──
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    categoryModal: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, paddingBottom: 32, maxHeight: '80%', width: '100%' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    modalCancel: { fontSize: 14, fontWeight: '600' },
+    modalTitle: { fontSize: 16, fontWeight: '800' },
+    categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 0, gap: 12 },
+    categoryCard: { width: '30.5%', alignItems: 'center', padding: 14, borderRadius: 16, borderWidth: 1 },
+    categoryIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+    categoryName: { fontSize: 12, fontWeight: '700', textAlign: 'center' },
+
+    // ── Part Chips ──
+    partChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
+    partChipText: { fontSize: 12, fontWeight: '600', marginRight: 6 },
+
+    // ── Receipt ──
+    receiptPreview: { position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: 8 },
+    receiptImage: { width: '100%', height: 180, borderRadius: 12 },
+    removeReceipt: { position: 'absolute', top: 8, right: 8 },
+    receiptOptions: { flexDirection: 'row', gap: 10 },
+    receiptButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, borderWidth: 1 },
+    receiptButtonText: { fontSize: 13, fontWeight: '600' },
+
+    // ── Dropdown / Picker ──
+    dropdown: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 12, borderWidth: 1 },
+    dropdownText: { fontSize: 14, fontWeight: '500' },
+    pickerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1 },
+
+    // ── Mechanical Parts Checkbox ──
+    partCheckbox: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 6 },
+    checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+
+    // ── Cost Row ──
+    costRow: { flexDirection: 'row', gap: 12 },
+    costItem: { flex: 1 },
   });
 }

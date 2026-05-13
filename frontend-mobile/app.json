@@ -10,7 +10,9 @@
       "web"
     ],
     "extra": {
-      "apiUrl": "http://10.12.26.164:5000/api",
+      "apiUrl": "http://192.168.68.109:5000/api",
+      "googlePlacesApiKey": "AIzaSyBqH5TZCrgN-edxVNOkstX68GZM2v8_F-0",
+      "taxiRankSearchDistanceKm": 20,
       "eas": {
         "projectId": "2bcdc50c-c61e-4d29-b4c0-00643c195802"
       }
@@ -20,11 +22,19 @@
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.NFC"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_PLACES_API_KEY_HERE"
+        }
+      }
     },
     "ios": {
       "infoPlist": {
         "NFCReaderUsageDescription": "This app uses NFC to process card payments at the point of sale."
+      },
+      "config": {
+        "googleMapsApiKey": "YOUR_GOOGLE_PLACES_API_KEY_HERE"
       }
     },
     "plugins": [

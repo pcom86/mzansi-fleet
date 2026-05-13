@@ -213,14 +213,23 @@ export async function startMonitoring(options = {}) {
     }
 
     // Start location tracking
-    _locationSubscription = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        timeInterval: THRESHOLDS.locationIntervalMs,
-        distanceInterval: 10, // meters
-      },
-      handleLocationUpdate
-    );
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => handleLocationUpdate({ coords: { speed: pos.coords.speed, latitude: pos.coords.latitude, longitude: pos.coords.longitude } }),
+        null,
+        { enableHighAccuracy: true, maximumAge: THRESHOLDS.locationIntervalMs }
+      );
+      _locationSubscription = { remove: () => navigator.geolocation.clearWatch(watchId) };
+    } else {
+      _locationSubscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: THRESHOLDS.locationIntervalMs,
+          distanceInterval: 10, // meters
+        },
+        handleLocationUpdate
+      );
+    }
 
     _isMonitoring = true;
     if (_onStatusChange) _onStatusChange({ monitoring: true, speed: 0 });
@@ -242,7 +251,11 @@ export function stopMonitoring() {
     _accelSubscription = null;
   }
   if (_locationSubscription) {
-    _locationSubscription.remove();
+    try {
+      if (typeof _locationSubscription.remove === 'function') {
+        _locationSubscription.remove();
+      }
+    } catch {}
     _locationSubscription = null;
   }
   _isMonitoring = false;

@@ -21,7 +21,10 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
   const { user } = useAuth();
   const { theme } = useAppTheme();
   const c = theme.colors;
-  const preSelectedRankId = navRoute?.params?.preSelectedRankId || '';
+  const params = navRoute?.params || {};
+  const preSelectedRankId = params?.preSelectedRankId || '';
+  const pickupAddress = params?.pickupAddress || '';
+  const destinationAddress = params?.destinationAddress || '';
 
   // Data state
   const [taxiRanks, setTaxiRanks] = useState([]);
@@ -490,6 +493,8 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
         seatsBooked: passengerCart.length,
         seatNumbers: selectedSeats.slice(0, passengerCart.length),
         totalFare: calculateTotalFare(),
+        pickupLocation: pickupAddress || selectedRoute?.departureStation || getTripRoute(selectedTrip)?.departureStation || '',
+        dropoffLocation: destinationAddress || selectedRoute?.destinationStation || getTripRoute(selectedTrip)?.destinationStation || '',
         passengers: passengerCart.map(p => ({
           name: p.name,
           contactNumber: p.contactNumber,
@@ -497,7 +502,7 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
           destination: p.destination || selectedRoute?.destinationStation || getTripRoute(selectedTrip)?.destinationStation || '',
         })),
         paymentMethod,
-        notes: `Seats: ${selectedSeats.slice(0, passengerCart.length).join(', ')}`
+        notes: `Seats: ${selectedSeats.slice(0, passengerCart.length).join(', ')}${pickupAddress ? `, Pickup: ${pickupAddress}` : ''}`
       };
 
       const result = await createTripBooking(bookingData);
@@ -553,6 +558,25 @@ export default function RiderTripBrowserScreen({ navigation, route: navRoute }) 
           <View><Ionicons name="ticket-outline" size={20} color={GOLD} /></View>
         </TouchableOpacity>
       </View>
+
+      {/* Route Summary - shows when addresses are provided */}
+      {(pickupAddress || destinationAddress) && (
+        <View style={[styles.routeSummary, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <View style={styles.summaryRow}>
+            <View style={[styles.summaryDot, { backgroundColor: GOLD }]} />
+            <Text style={[styles.summaryText, { color: c.text }]} numberOfLines={1}>
+              {pickupAddress || 'Pickup'}
+            </Text>
+          </View>
+          <View style={styles.summaryLine} />
+          <View style={styles.summaryRow}>
+            <View style={[styles.summaryDot, { backgroundColor: RED }]} />
+            <Text style={[styles.summaryText, { color: c.text }]} numberOfLines={1}>
+              {destinationAddress || 'Destination'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Filters */}
       <View style={[styles.filterSection, { backgroundColor: c.surface, borderColor: c.border }]}>
@@ -1749,6 +1773,41 @@ const styles = StyleSheet.create({
     borderRadius: 8 
   },
   checkoutBtnText: { fontSize: 16, fontWeight: '600', color: '#000' },
+
+  headerSub: { fontSize: 12, fontWeight: '600', marginTop: 2, color: GOLD },
+  bookingsBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(212,175,55,0.2)', alignItems: 'center', justifyContent: 'center' },
+
+  routeSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  summaryDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  summaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  summaryLine: {
+    width: 2,
+    height: 20,
+    backgroundColor: '#1e293b',
+    marginHorizontal: 8,
+  },
 
   // Enhanced Form Styles
   passengerCard: { padding: 16, borderRadius: 8, borderWidth: 1, marginBottom: 16 },

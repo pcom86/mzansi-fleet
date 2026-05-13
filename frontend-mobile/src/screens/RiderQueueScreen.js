@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  StyleSheet, Alert, Modal, TextInput, RefreshControl, Clipboard, Platform,
+  StyleSheet, Alert, Modal, TextInput, RefreshControl, Clipboard, Platform, Dimensions,
 } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +12,8 @@ import {
   fetchRanksWithQueues, fetchLiveQueue, createQueueBooking,
   confirmQueuePayment, fetchUserQueueBookings, cancelQueueBooking,
 } from '../api/queueBooking';
+
+const { height: SCREEN_H } = Dimensions.get('window');
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -861,7 +864,14 @@ export default function RiderQueueScreen({ navigation, route: navRoute }) {
       </Modal>
 
       {/* ===== BOOKING MODAL ===== */}
-      <Modal visible={bookModalVisible} transparent animationType="slide">
+      <Modal
+        visible={bookModalVisible}
+        transparent
+        animationType="slide"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent={true}
+        onRequestClose={() => setBookModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.bookCard, { backgroundColor: c.surface }]}>
             {bookingStep === 'details' && renderBookingDetails()}
@@ -872,7 +882,14 @@ export default function RiderQueueScreen({ navigation, route: navRoute }) {
       </Modal>
 
       {/* ===== EDIT BOOKING MODAL ===== */}
-      <Modal visible={editModalVisible} transparent animationType="slide" onRequestClose={() => setEditModalVisible(false)}>
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="slide"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent={true}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.bookCard, { backgroundColor: c.surface }]}>
             {/* Header */}
@@ -1280,6 +1297,7 @@ export default function RiderQueueScreen({ navigation, route: navRoute }) {
               style={styles.bookBtn}
               onPress={() => openBookModal(entry)}
               activeOpacity={0.85}
+              hitSlop={12}
             >
               <Ionicons name="ticket" size={16} color="#000" />
               <Text style={styles.bookBtnText}>Book Seat{available > 1 ? 's' : ''}</Text>
@@ -1336,7 +1354,7 @@ export default function RiderQueueScreen({ navigation, route: navRoute }) {
         </View>
 
         {/* ── Body ── */}
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="always">
 
           {/* Route summary */}
           <View style={[styles.routeSummary, { backgroundColor: BLUE + '08', borderColor: BLUE + '30' }]}>
@@ -1519,19 +1537,18 @@ export default function RiderQueueScreen({ navigation, route: navRoute }) {
             );
           })}
 
-          {/* Add passenger button */}
-          {passengers.length < (entry.seatsAvailable || 4) && (
-            <TouchableOpacity
-              style={[styles.dAddPaxBtn, { borderColor: GOLD + '40' }]}
-              onPress={addPassengerRow}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.dAddPaxIcon, { backgroundColor: GOLD_LIGHT }]}>
-                <Ionicons name="person-add" size={16} color={GOLD} />
-              </View>
-              <Text style={[styles.dAddPaxText, { color: GOLD }]}>Add Passenger</Text>
-            </TouchableOpacity>
-          )}
+          {/* Add passenger button (always visible) */}
+          <TouchableOpacity
+            style={[styles.dAddPaxBtn, { borderColor: GOLD + '40' }]}
+            onPress={addPassengerRow}
+            activeOpacity={0.7}
+            hitSlop={12}
+          >
+            <View style={[styles.dAddPaxIcon, { backgroundColor: GOLD_LIGHT }]}>
+              <Ionicons name="person-add" size={16} color={GOLD} />
+            </View>
+            <Text style={[styles.dAddPaxText, { color: GOLD }]}>Add Passenger</Text>
+          </TouchableOpacity>
         </ScrollView>
 
         {/* ── Footer ── */}
@@ -1925,7 +1942,13 @@ function createStyles(c) {
     // Picker modal
     modalOverlay: {
       flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
+      justifyContent: 'flex-end', alignItems: 'center',
+    },
+    bookCard: {
+      width: '100%',
+      minHeight: '50%',
+      borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      maxHeight: '90%',
     },
     pickerCard: {
       borderTopLeftRadius: 20, borderTopRightRadius: 20,
@@ -1946,8 +1969,9 @@ function createStyles(c) {
 
     // Booking modal
     bookCard: {
+      width: '100%',
       borderTopLeftRadius: 20, borderTopRightRadius: 20,
-      maxHeight: '90%',
+      height: Math.round(SCREEN_H * 0.9),
     },
     routeSummary: {
       padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 12,

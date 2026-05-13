@@ -104,7 +104,7 @@ namespace MzansiFleet.Api.Controllers
                 .Include(s => s.Stops)
                 .Include(s => s.RouteVehicles.Where(rv => rv.IsActive))
                     .ThenInclude(rv => rv.Vehicle)
-                .FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
+                .FirstOrDefaultAsync(s => s.Id == id);
 
             if (schedule == null)
                 return NotFound(new { message = "Route not found" });
@@ -117,8 +117,7 @@ namespace MzansiFleet.Api.Controllers
                 .Where(s => s.TaxiRankId == schedule.TaxiRankId 
                     && s.RouteName == schedule.RouteName
                     && s.DepartureStation == schedule.DepartureStation
-                    && s.DestinationStation == schedule.DestinationStation
-                    && s.IsActive)
+                    && s.DestinationStation == schedule.DestinationStation)
                 .ToListAsync();
 
             var route = new RouteDto

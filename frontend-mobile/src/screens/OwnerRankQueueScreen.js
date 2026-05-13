@@ -52,6 +52,11 @@ export default function OwnerRankQueueScreen({ navigation }) {
   const [data, setData] = useState(null);
   const [expandedRanks, setExpandedRanks] = useState({});
   const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'trips'
+  const [selectedRoutes, setSelectedRoutes] = useState({}); // { [rankId]: routeKey }
+
+  function selectRoute(rankId, routeKey) {
+    setSelectedRoutes(prev => ({ ...prev, [rankId]: routeKey }));
+  }
 
   const load = useCallback(async () => {
     if (!ownerIds.length) return;
@@ -217,52 +222,79 @@ export default function OwnerRankQueueScreen({ navigation }) {
                 {/* Expanded Content */}
                 {isExpanded && (
                   <View style={s.rankBody}>
-                    {activeTab === 'queue' ? (
-                      /* Queue View */
-                      queue.length === 0 ? (
-                        <Text style={s.noDataTxt}>No vehicles in queue today</Text>
-                      ) : (
-                        queue.map((entry, idx) => (
-                          <View
-                            key={entry.id || idx}
-                            style={[s.queueItem, entry.isOwnerVehicle && s.queueItemOwner]}
-                          >
-                            <View style={s.queuePos}>
-                              <Text style={s.queuePosNum}>#{entry.queuePosition}</Text>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={s.queueVehicle}>{entry.vehicleRegistration || '—'}</Text>
-                                {entry.isOwnerVehicle && (
-                                  <View style={s.yoursBadge}>
-                                    <Text style={s.yoursBadgeTxt}>Yours</Text>
-                                  </View>
+                    {activeTab === 'queue' ? (() => {
+                      if (queue.length === 0) return <Text style={s.noDataTxt}>No vehicles in queue today</Text>;
+
+                      // Build unique routes for this rank
+                      const routeMap = new Map();
+                      queue.forEach(e => {
+                        const key = e.routeId || e.routeName || 'unassigned';
+                        if (!routeMap.has(key)) routeMap.set(key, { id: key, name: e.routeName || 'Unassigned' });
+                      });
+                      const rankRoutes = [{ id: 'all', name: 'All Routes' }, ...Array.from(routeMap.values())];
+                      const activeRoute = selectedRoutes[rank.id] || 'all';
+                      const visibleQueue = activeRoute === 'all'
+                        ? queue
+                        : queue.filter(e => (e.routeId || e.routeName || 'unassigned') === activeRoute);
+
+                      return (
+                        <>
+                          {/* Route selector — only when multiple routes */}
+                          {rankRoutes.length > 2 && (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                              style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border }}
+                              contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 6, flexDirection: 'row' }}>
+                              {rankRoutes.map(r => {
+                                const isOn = activeRoute === r.id;
+                                const cnt = r.id === 'all' ? queue.length : queue.filter(e => (e.routeId || e.routeName || 'unassigned') === r.id).length;
+                                const hasOwner = r.id !== 'all' && queue.filter(e => (e.routeId || e.routeName || 'unassigned') === r.id).some(e => e.isOwnerVehicle);
+                                return (
+                                  <TouchableOpacity key={r.id}
+                                    style={[s.routeChip, isOn && s.routeChipOn, hasOwner && !isOn && s.routeChipOwner]}
+                                    onPress={() => selectRoute(rank.id, r.id)}>
+                                    {hasOwner && !isOn && <View style={s.routeOwnerDot} />}
+                                    <Text style={[s.routeChipTxt, isOn && s.routeChipTxtOn]}>{r.name}</Text>
+                                    <Text style={[s.routeChipCnt, isOn && { color: 'rgba(255,255,255,0.7)' }]}>{cnt}</Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </ScrollView>
+                          )}
+                          {visibleQueue.map((entry, idx) => (
+                            <View key={entry.id || idx} style={[s.queueItem, entry.isOwnerVehicle && s.queueItemOwner]}>
+                              <View style={s.queuePos}>
+                                <Text style={s.queuePosNum}>#{entry.queuePosition}</Text>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                  <Text style={s.queueVehicle}>{entry.vehicleRegistration || '—'}</Text>
+                                  {entry.isOwnerVehicle && (
+                                    <View style={s.yoursBadge}><Text style={s.yoursBadgeTxt}>Yours</Text></View>
+                                  )}
+                                </View>
+                                <Text style={s.queueDriver}>{entry.driverName || 'No driver'}</Text>
+                                {activeRoute === 'all' && entry.routeName && (
+                                  <Text style={s.queueRoute}>{entry.routeName}</Text>
                                 )}
                               </View>
-                              <Text style={s.queueDriver}>{entry.driverName || 'No driver'}</Text>
-                              {entry.routeName && (
-                                <Text style={s.queueRoute}>{entry.routeName}</Text>
-                              )}
-                            </View>
-                            <View style={{ alignItems: 'flex-end' }}>
-                              <View style={[s.statusBadge, { backgroundColor: statusColor(entry.status) + '20' }]}>
-                                <Text style={[s.statusBadgeTxt, { color: statusColor(entry.status) }]}>{entry.status}</Text>
-                              </View>
-                              {entry.passengerCount > 0 && (
-                                <Text style={s.queuePax}>{entry.passengerCount} pax</Text>
-                              )}
-                              <Text style={s.queueTime}>{entry.joinedAt || '—'}</Text>
-                              {entry.estimatedDepartureTime ? (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 3 }}>
-                                  <Ionicons name="log-out-outline" size={10} color="#f59e0b" />
-                                  <Text style={[s.queueTime, { color: '#f59e0b' }]}>ETD {fmtTime(entry.estimatedDepartureTime)}</Text>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <View style={[s.statusBadge, { backgroundColor: statusColor(entry.status) + '20' }]}>
+                                  <Text style={[s.statusBadgeTxt, { color: statusColor(entry.status) }]}>{entry.status}</Text>
                                 </View>
-                              ) : null}
+                                {entry.passengerCount > 0 && <Text style={s.queuePax}>{entry.passengerCount} pax</Text>}
+                                <Text style={s.queueTime}>{entry.joinedAt || '—'}</Text>
+                                {entry.estimatedDepartureTime ? (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 3 }}>
+                                    <Ionicons name="log-out-outline" size={10} color="#f59e0b" />
+                                    <Text style={[s.queueTime, { color: '#f59e0b' }]}>ETD {fmtTime(entry.estimatedDepartureTime)}</Text>
+                                  </View>
+                                ) : null}
+                              </View>
                             </View>
-                          </View>
-                        ))
-                      )
-                    ) : (
+                          ))}
+                        </>
+                      );
+                    })() : (
                       /* Trips View */
                       trips.length === 0 ? (
                         <Text style={s.noDataTxt}>No active trips at this rank</Text>
@@ -414,6 +446,19 @@ function createStyles(c) {
 
     statusBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
     statusBadgeTxt: { fontSize: 10, fontWeight: '700' },
+
+    // Route chips
+    routeChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16,
+      backgroundColor: c.card,
+    },
+    routeChipOn: { backgroundColor: c.primary },
+    routeChipOwner: { borderWidth: 1.5, borderColor: c.primary },
+    routeOwnerDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: c.primary },
+    routeChipTxt: { fontSize: 12, fontWeight: '600', color: c.text },
+    routeChipTxtOn: { color: '#fff' },
+    routeChipCnt: { fontSize: 11, color: c.textMuted },
 
     // Trip items
     tripItem: {

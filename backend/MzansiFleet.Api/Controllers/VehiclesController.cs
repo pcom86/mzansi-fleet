@@ -120,7 +120,15 @@ namespace MzansiFleet.Api.Controllers
         [HttpGet("taxirank/{taxiRankId}")]
         public ActionResult<IEnumerable<Vehicle>> GetByTaxiRankId(Guid taxiRankId)
         {
-            var vehicles = _context.Vehicles.Where(v => v.TaxiRankId == taxiRankId).ToList();
+            // Include vehicles linked directly via TaxiRankId OR via the VehicleTaxiRanks junction table
+            var junctionVehicleIds = _context.VehicleTaxiRanks
+                .Where(vtr => vtr.TaxiRankId == taxiRankId && vtr.IsActive)
+                .Select(vtr => vtr.VehicleId)
+                .ToHashSet();
+
+            var vehicles = _context.Vehicles
+                .Where(v => v.TaxiRankId == taxiRankId || junctionVehicleIds.Contains(v.Id))
+                .ToList();
             return Ok(vehicles);
         }
 

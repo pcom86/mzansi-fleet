@@ -78,6 +78,16 @@ namespace MzansiFleet.Api.Controllers
             Guid? rankId = myEntry?.TaxiRankId;
             Guid? routeId = myEntry?.RouteId;
 
+            // Fallback to active route assignment if no route is set on today's queue entry.
+            if ((!routeId.HasValue || routeId.Value == Guid.Empty) && vehicleId.HasValue)
+            {
+                routeId = await _context.RouteVehicles
+                    .Where(rv => rv.VehicleId == vehicleId.Value && rv.IsActive)
+                    .OrderByDescending(rv => rv.AssignedAt)
+                    .Select(rv => (Guid?)rv.RouteId)
+                    .FirstOrDefaultAsync();
+            }
+
             // Fallback to active vehicle-rank assignment if no queue entry exists yet today.
             if (!rankId.HasValue || rankId.Value == Guid.Empty)
             {
@@ -402,6 +412,11 @@ namespace MzansiFleet.Api.Controllers
                 // Auto-calculate passenger count from list if provided, otherwise use explicit count
                 var passengerList = dto?.Passengers;
                 entry.PassengerCount = passengerList?.Count > 0 ? passengerList.Count : (dto?.PassengerCount ?? 0);
+                
+                // Store fare at dispatch time: sum of passenger amounts or explicit FareAmount
+                entry.FareAmount = passengerList?.Count > 0
+                    ? passengerList.Sum(p => p.Amount)
+                    : dto?.FareAmount;
 
                 // Validate passenger count against vehicle capacity
                 var vehicle = await _context.Vehicles.FindAsync(entry.VehicleId);
@@ -409,7 +424,14 @@ namespace MzansiFleet.Api.Controllers
                 {
                     _logger.LogWarning($"[Queue] Passenger count {entry.PassengerCount} exceeds vehicle capacity {vehicle.Capacity} for vehicle {entry.VehicleId}");
                 }
-                
+
+                // Mark vehicle as dispatched
+                if (vehicle != null)
+                {
+                    vehicle.Status = "Dispatched";
+                    _logger.LogInformation($"[Queue] Updated vehicle {vehicle.Id} ({vehicle.Registration}) status to Dispatched");
+                }
+
                 entry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
                 _logger.LogInformation($"[Queue] Updated entry: PassengerCount={entry.PassengerCount}, DispatchedByUserId={entry.DispatchedByUserId}");
@@ -522,13 +544,14 @@ namespace MzansiFleet.Api.Controllers
                         _totalFare = passengerList.Sum(p => p.Amount);
                         if (_totalFare > 0)
                         {
+                            var routeName = $"{taxiRank?.Name} → {route?.DestinationStation}";
                             var earnings = new VehicleEarnings
                             {
                                 Id = Guid.NewGuid(),
                                 VehicleId = entry.VehicleId,
                                 Date = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
                                 Amount = _totalFare,
-                                Source = "Trip",
+                                Source = routeName,
                                 Description = $"Taxi rank trip from {taxiRank?.Name} to {route?.DestinationStation} - {passengerList.Count} passengers",
                                 Period = "Daily",
                                 CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
@@ -584,13 +607,14 @@ namespace MzansiFleet.Api.Controllers
                         if (quickFare > 0)
                         {
                             _totalFare = quickFare;
+                            var routeName = $"{taxiRank?.Name} → {route?.DestinationStation}";
                             var earnings = new VehicleEarnings
                             {
                                 Id = Guid.NewGuid(),
                                 VehicleId = entry.VehicleId,
                                 Date = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc),
                                 Amount = quickFare,
-                                Source = "Trip",
+                                Source = routeName,
                                 Description = $"Quick dispatch from {taxiRank?.Name} to {route?.DestinationStation} - {entry.PassengerCount} passengers",
                                 Period = "Daily",
                                 CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
@@ -874,7 +898,7 @@ namespace MzansiFleet.Api.Controllers
         }
 
         // PUT: api/DailyTaxiQueue/{id}/complete-trip
-        [HttpPut("{id}/complete-trip")]
+        [HttpPut("{id:guid}/complete-trip")]
         public async Task<ActionResult> CompleteQueueTrip(Guid id, [FromBody] CompleteQueueTripDto dto)
         {
             try
@@ -897,19 +921,47 @@ namespace MzansiFleet.Api.Controllers
                         && t.Status != "Cancelled");
 
                 if (trip == null)
-                    return NotFound(new { message = "No active trip found for this queue entry" });
-
-                // Driver authorization check
-                if (dto.CompletedByDriverId.HasValue && dto.CompletedByDriverId.Value != Guid.Empty)
                 {
-                    if (!trip.DriverId.HasValue || trip.DriverId.Value == Guid.Empty)
+                    // No TaxiRankTrip was created at dispatch (e.g. no passengers captured) — create one now
+                    var route = queueEntry.RouteId.HasValue
+                        ? await _context.Routes.FindAsync(queueEntry.RouteId.Value)
+                        : null;
+                    var taxiRank = await _context.TaxiRanks.FindAsync(queueEntry.TaxiRankId);
+                    var resolvedDriver = queueEntry.DriverId ?? (dto.CompletedByDriverId.HasValue && dto.CompletedByDriverId.Value != Guid.Empty ? dto.CompletedByDriverId : null);
+                    trip = new TaxiRankTrip
                     {
-                        return BadRequest(new { message = "This trip has no assigned driver" });
-                    }
-
-                    if (trip.DriverId.Value != dto.CompletedByDriverId.Value)
+                        Id = Guid.NewGuid(),
+                        TenantId = queueEntry.TenantId,
+                        VehicleId = queueEntry.VehicleId,
+                        DriverId = resolvedDriver,
+                        TaxiRankId = queueEntry.TaxiRankId,
+                        DepartureStation = taxiRank?.Name ?? "Unknown",
+                        DestinationStation = route?.DestinationStation ?? "Unknown",
+                        DepartureTime = queueEntry.DepartedAt ?? queueEntry.QueueDate,
+                        TotalAmount = dto.TotalAmount ?? queueEntry.FareAmount ?? 0,
+                        TotalCosts = 0,
+                        NetAmount = dto.TotalAmount ?? queueEntry.FareAmount ?? 0,
+                        Status = "Completed",
+                        PassengerCount = queueEntry.PassengerCount,
+                        CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                    };
+                    _context.TaxiRankTrips.Add(trip);
+                    _logger.LogInformation($"[Queue] Created TaxiRankTrip on completion for queue entry {id}: {trip.Id}");
+                }
+                else
+                {
+                    // Driver authorization check — only enforce when trip has an assigned driver
+                    if (dto.CompletedByDriverId.HasValue && dto.CompletedByDriverId.Value != Guid.Empty
+                        && trip.DriverId.HasValue && trip.DriverId.Value != Guid.Empty
+                        && trip.DriverId.Value != dto.CompletedByDriverId.Value)
                     {
                         return Forbid();
+                    }
+                    // If trip has no driver, assign the completing driver
+                    if ((!trip.DriverId.HasValue || trip.DriverId.Value == Guid.Empty)
+                        && dto.CompletedByDriverId.HasValue && dto.CompletedByDriverId.Value != Guid.Empty)
+                    {
+                        trip.DriverId = dto.CompletedByDriverId;
                     }
                 }
 
@@ -932,6 +984,14 @@ namespace MzansiFleet.Api.Controllers
                 queueEntry.Status = "Completed";
                 queueEntry.UpdatedAt = completedAt;
 
+                // Mark vehicle as available after trip completion
+                var vehicle = await _context.Vehicles.FindAsync(queueEntry.VehicleId);
+                if (vehicle != null)
+                {
+                    vehicle.Status = "Available";
+                    _logger.LogInformation($"[Queue] Updated vehicle {vehicle.Id} ({vehicle.Registration}) status to Available after trip completion");
+                }
+
                 // Get actual passengers and finalize earnings
                 var passengers = await _context.TripPassengers
                     .Where(p => p.TaxiRankTripId == trip.Id)
@@ -940,6 +1000,12 @@ namespace MzansiFleet.Api.Controllers
                 var cashTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Cash").Sum(p => p.Amount);
                 var cardTotal = passengers.Where(p => (p.PaymentMethod ?? "Cash") == "Card").Sum(p => p.Amount);
                 var totalEarnings = passengers.Sum(p => p.Amount);
+
+                // Use TotalAmount from DTO as fallback if provided and no passengers exist
+                if (totalEarnings == 0 && dto.TotalAmount.HasValue && dto.TotalAmount.Value > 0)
+                {
+                    totalEarnings = dto.TotalAmount.Value;
+                }
 
                 // Update vehicle earnings record
                 var routeName = $"{trip.DepartureStation} → {trip.DestinationStation}";
@@ -986,6 +1052,11 @@ namespace MzansiFleet.Api.Controllers
         {
             try
             {
+                var targetDate = date.HasValue
+                    ? DateTime.SpecifyKind(date.Value.Date, DateTimeKind.Utc)
+                    : (DateTime?)null;
+
+                // Primary: entries directly linked to the driver by DriverId
                 var query = _context.DailyTaxiQueues
                     .Include(q => q.Vehicle)
                     .Include(q => q.Driver)
@@ -993,15 +1064,38 @@ namespace MzansiFleet.Api.Controllers
                     .Include(q => q.Route)
                     .Where(q => q.DriverId == driverId && q.Status == "Dispatched");
 
-                if (date.HasValue)
-                {
-                    var targetDate = DateTime.SpecifyKind(date.Value.Date, DateTimeKind.Utc);
-                    query = query.Where(q => q.QueueDate == targetDate);
-                }
+                if (targetDate.HasValue)
+                    query = query.Where(q => q.QueueDate == targetDate.Value);
 
                 var dispatchedEntries = await query
                     .OrderByDescending(q => q.DepartedAt)
                     .ToListAsync();
+
+                // Fallback: find by assigned vehicle when DriverId was not set on the queue entry
+                if (!dispatchedEntries.Any())
+                {
+                    var assignedVehicleId = await _context.DriverProfiles
+                        .Where(d => d.Id == driverId)
+                        .Select(d => d.AssignedVehicleId)
+                        .FirstOrDefaultAsync();
+
+                    if (assignedVehicleId.HasValue && assignedVehicleId.Value != Guid.Empty)
+                    {
+                        var fallbackQuery = _context.DailyTaxiQueues
+                            .Include(q => q.Vehicle)
+                            .Include(q => q.Driver)
+                            .Include(q => q.TaxiRank)
+                            .Include(q => q.Route)
+                            .Where(q => q.VehicleId == assignedVehicleId.Value && q.Status == "Dispatched");
+
+                        if (targetDate.HasValue)
+                            fallbackQuery = fallbackQuery.Where(q => q.QueueDate == targetDate.Value);
+
+                        dispatchedEntries = await fallbackQuery
+                            .OrderByDescending(q => q.DepartedAt)
+                            .ToListAsync();
+                    }
+                }
 
                 // Build fallback driver lookup for entries missing Driver nav prop
                 var vehicleIdsNoDriver = dispatchedEntries.Where(e => e.Driver == null).Select(e => e.VehicleId).Distinct().ToList();
@@ -1020,6 +1114,24 @@ namespace MzansiFleet.Api.Controllers
                     }
                 }
 
+                // Look up TaxiRankTrip fares for entries missing FareAmount (dispatched before column was added)
+                var vehicleIdsNeedFare = dispatchedEntries
+                    .Where(e => e.FareAmount == null || e.FareAmount == 0)
+                    .Select(e => e.VehicleId).Distinct().ToList();
+                var taxiRankTripFareLookup = new Dictionary<Guid, decimal>();
+                if (vehicleIdsNeedFare.Any())
+                {
+                    var tripFares = await _context.TaxiRankTrips
+                        .Where(t => vehicleIdsNeedFare.Contains(t.VehicleId)
+                            && t.TotalAmount > 0
+                            && (!targetDate.HasValue || t.DepartureTime.Date == targetDate.Value.Date))
+                        .GroupBy(t => t.VehicleId)
+                        .Select(g => new { VehicleId = g.Key, Fare = g.Max(t => t.TotalAmount) })
+                        .ToListAsync();
+                    foreach (var tf in tripFares)
+                        taxiRankTripFareLookup[tf.VehicleId] = tf.Fare;
+                }
+
                 var result = dispatchedEntries.Select(entry =>
                 {
                     var dn = entry.Driver?.Name;
@@ -1029,6 +1141,9 @@ namespace MzansiFleet.Api.Controllers
                         driverNameLookup.TryGetValue(entry.VehicleId, out dn);
                         driverPhoneLookup.TryGetValue(entry.VehicleId, out dp);
                     }
+                    var fareAmount = entry.FareAmount > 0
+                        ? entry.FareAmount
+                        : (taxiRankTripFareLookup.TryGetValue(entry.VehicleId, out var tripFare) ? tripFare : (decimal?)null);
 
                     return new
                     {
@@ -1037,6 +1152,7 @@ namespace MzansiFleet.Api.Controllers
                         entry.DepartedAt,
                         entry.EstimatedDepartureTime,
                         entry.PassengerCount,
+                        FareAmount = fareAmount,
                         entry.Notes,
                         DriverName = dn,
                         DriverPhone = dp,
@@ -1199,7 +1315,69 @@ namespace MzansiFleet.Api.Controllers
             }
         }
 
-        // PUT: api/DailyTaxiQueue/{id} — Update queue entry details
+        // PUT: api/DailyTaxiQueue/{id}/assign-route — Assign or change route for a queue entry
+        [HttpPut("{id}/assign-route")]
+        public async Task<ActionResult> AssignRoute(Guid id, [FromBody] AssignRouteDto dto)
+        {
+            try
+            {
+                var entry = await _context.DailyTaxiQueues.FindAsync(id);
+                if (entry == null)
+                    return NotFound(new { message = "Queue entry not found" });
+
+                if (entry.Status == "Dispatched" || entry.Status == "Removed")
+                    return BadRequest(new { message = "Cannot change route of a dispatched or removed entry" });
+
+                entry.RouteId = dto.RouteId;
+                entry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Route assigned", id = entry.Id, routeId = entry.RouteId });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Queue] Error assigning route to entry {id}: {ex.Message}");
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
+        // GET: api/DailyTaxiQueue/stats/{rankId}?date=2026-03-13
+        [HttpGet("stats/{rankId}")]
+        public async Task<ActionResult<QueueStatsDto>> GetQueueStats(Guid rankId, [FromQuery] DateTime? date)
+        {
+            var targetDate = (date ?? DateTime.UtcNow).Date;
+
+            var entries = await _context.DailyTaxiQueues
+                .Where(q => q.TaxiRankId == rankId && q.QueueDate == targetDate)
+                .ToListAsync();
+
+            var waiting = entries.Count(e => e.Status == "Waiting");
+            var dispatched = entries.Count(e => e.Status == "Dispatched");
+            var removed = entries.Count(e => e.Status == "Removed");
+            var totalPassengers = entries.Where(e => e.Status == "Dispatched").Sum(e => e.PassengerCount);
+            var dispatchedEntries = entries.Where(e => e.Status == "Dispatched" && e.DepartedAt.HasValue).ToList();
+            var avgWaitMinutes = 0d;
+            if (dispatchedEntries.Count > 0)
+            {
+                avgWaitMinutes = dispatchedEntries
+                    .Average(e => (e.DepartedAt!.Value - e.CreatedAt).TotalMinutes);
+            }
+            
+            var result = new QueueStatsDto
+            {
+                Loading = waiting,
+                Dispatched = dispatched,
+                Removed = removed,
+                Total = entries.Count,
+                TotalPassengers = totalPassengers,
+                AverageWaitMinutes = Math.Round(avgWaitMinutes, 1)
+            };
+
+            return Ok(result);
+        }
+
+        // PUT: api/DailyTaxiQueue/{id} — Update queue entry details (catch-all, must be last)
         [HttpPut("{id}")]
         public async Task<ActionResult> UpdateQueueEntry(Guid id, [FromBody] UpdateQueueEntryDto dto)
         {
@@ -1261,7 +1439,9 @@ namespace MzansiFleet.Api.Controllers
 
                 // Update estimated departure time if provided
                 if (dto.EstimatedDepartureTime.HasValue)
+                {
                     entry.EstimatedDepartureTime = dto.EstimatedDepartureTime.Value;
+                }
 
                 // Update status if provided (only Waiting <-> Loading transitions)
                 if (!string.IsNullOrEmpty(dto.Status))
@@ -1274,7 +1454,9 @@ namespace MzansiFleet.Api.Controllers
 
                 // Update notes if provided
                 if (dto.Notes != null)
+                {
                     entry.Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes;
+                }
 
                 entry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
                 await _context.SaveChangesAsync();
@@ -1315,68 +1497,6 @@ namespace MzansiFleet.Api.Controllers
                 _logger.LogError(ex, $"[Queue] Error updating queue entry {id}: {ex.Message}");
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
-        }
-
-        // PUT: api/DailyTaxiQueue/{id}/assign-route — Assign or change route for a queue entry
-        [HttpPut("{id}/assign-route")]
-        public async Task<ActionResult> AssignRoute(Guid id, [FromBody] AssignRouteDto dto)
-        {
-            try
-            {
-                var entry = await _context.DailyTaxiQueues.FindAsync(id);
-                if (entry == null)
-                    return NotFound(new { message = "Queue entry not found" });
-
-                if (entry.Status == "Dispatched" || entry.Status == "Removed")
-                    return BadRequest(new { message = "Cannot change route of a dispatched or removed entry" });
-
-                entry.RouteId = dto.RouteId;
-                entry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
-
-                await _context.SaveChangesAsync();
-
-                return Ok(new { message = "Route assigned", id = entry.Id, routeId = entry.RouteId });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"[Queue] Error assigning route to entry {id}: {ex.Message}");
-                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
-            }
-        }
-
-        // GET: api/DailyTaxiQueue/stats/{rankId}?date=2026-03-13
-        [HttpGet("stats/{rankId}")]
-        public async Task<ActionResult<QueueStatsDto>> GetQueueStats(Guid rankId, [FromQuery] DateTime? date)
-        {
-            var targetDate = (date ?? DateTime.UtcNow).Date;
-
-            var entries = await _context.DailyTaxiQueues
-                .Where(q => q.TaxiRankId == rankId && q.QueueDate == targetDate)
-                .ToListAsync();
-
-            var waiting = entries.Count(e => e.Status == "Waiting");
-            var dispatched = entries.Count(e => e.Status == "Dispatched");
-            var removed = entries.Count(e => e.Status == "Removed");
-            var totalPassengers = entries.Where(e => e.Status == "Dispatched").Sum(e => e.PassengerCount);
-            var dispatchedEntries = entries.Where(e => e.Status == "Dispatched" && e.DepartedAt.HasValue).ToList();
-            var avgWaitMinutes = 0d;
-            if (dispatchedEntries.Count > 0)
-            {
-                avgWaitMinutes = dispatchedEntries
-                    .Average(e => (e.DepartedAt!.Value - e.CreatedAt).TotalMinutes);
-            }
-            
-            var result = new QueueStatsDto
-            {
-                Loading = waiting,
-                Dispatched = dispatched,
-                Removed = removed,
-                Total = entries.Count,
-                TotalPassengers = totalPassengers,
-                AverageWaitMinutes = Math.Round(avgWaitMinutes, 1)
-            };
-
-            return Ok(result);
         }
 
     public class QueueStatsDto
@@ -1610,6 +1730,7 @@ namespace MzansiFleet.Api.Controllers
         public DateTime? CompletedAt { get; set; }
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }
+        public decimal? TotalAmount { get; set; }
     }
 
     }

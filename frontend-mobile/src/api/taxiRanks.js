@@ -72,10 +72,8 @@ export function fetchSchedules(userId) {
 
 // Fetch trip schedules via JWT auth (works for TaxiMarshal and TaxiRankAdmin)
 export function fetchTripSchedules(rankId, tenantId) {
-  const params = new URLSearchParams();
-  if (rankId) params.append('rankId', rankId);
-  if (tenantId) params.append('tenantId', tenantId);
-  return client.get(`/TripSchedules?${params.toString()}`);
+  // Use the existing Routes endpoint which accepts taxiRankId as query parameter
+  return rankId ? client.get(`/Routes?taxiRankId=${rankId}`) : client.get('/Routes');
 }
 
 // Create a route/schedule
@@ -183,12 +181,13 @@ export async function updateTripStatus(tripId, status) {
 }
 
 // Complete a trip — finalizes earnings and notifies the vehicle owner
-export async function completeTrip(tripId, notes = '', completedByDriverId = null, completionContext = null) {
-  const payload = { notes };
-  if (completedByDriverId) payload.completedByDriverId = completedByDriverId;
-  if (completionContext?.completedAt) payload.completedAt = completionContext.completedAt;
-  if (completionContext?.latitude != null) payload.latitude = completionContext.latitude;
-  if (completionContext?.longitude != null) payload.longitude = completionContext.longitude;
+export async function completeTrip(tripId, notes = '', completedByDriverId = null, completionContext = null, totalAmount = null) {
+  const payload = { Notes: notes };
+  if (completedByDriverId) payload.CompletedByDriverId = completedByDriverId;
+  if (completionContext?.completedAt) payload.CompletedAt = completionContext.completedAt;
+  if (completionContext?.latitude != null) payload.Latitude = completionContext.latitude;
+  if (completionContext?.longitude != null) payload.Longitude = completionContext.longitude;
+  if (totalAmount != null) payload.TotalAmount = totalAmount;
   const resp = await client.put(`/TaxiRankTrips/${tripId}/complete`, payload);
   return resp.data;
 }

@@ -13,6 +13,7 @@ import DriverRegistrationScreen from './src/screens/DriverRegistrationScreen';
 import DriverDashboardScreen from './src/screens/DriverDashboardScreen';
 import DriverRankQueueScreen from './src/screens/DriverRankQueueScreen';
 import DriverTripDetailsScreen from './src/screens/DriverTripDetailsScreen';
+import AdminTripDetailsScreen from './src/screens/AdminTripDetailsScreen';
 import DriverBehaviorScreen from './src/screens/DriverBehaviorScreen';
 import DriverOnboardingStep2Screen from './src/screens/DriverOnboardingStep2Screen';
 import ServiceProviderRegistrationScreen from './src/screens/ServiceProviderRegistrationScreen';
@@ -59,6 +60,8 @@ import CompleteTripScreen from './src/screens/CompleteTripScreen';
 import RiderDashboardScreen from './src/screens/RiderDashboardScreen';
 import RiderTripBrowserScreen from './src/screens/RiderTripBrowserScreen';
 import RiderQueueScreen from './src/screens/RiderQueueScreen';
+import TripRequestAddressScreen from './src/screens/TripRequestAddressScreen';
+import TaxiRankSelectionScreen from './src/screens/TaxiRankSelectionScreen';
 import DriverScoreboardScreen from './src/screens/DriverScoreboardScreen';
 import QueueManagementScreen from './src/screens/QueueManagementScreen';
 import DispatchedItemsScreen from './src/screens/DispatchedItemsScreen';
@@ -131,6 +134,7 @@ function AppNavigator() {
           <Stack.Screen name="DriverDashboard" component={DriverDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverRankQueue" component={DriverRankQueueScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverTripDetails" component={DriverTripDetailsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TripDetails" component={AdminTripDetailsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverBehavior" component={DriverBehaviorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverOnboardingStep2" component={DriverOnboardingStep2Screen} options={{ title: 'Driver Details' }} />
           <Stack.Screen name="ServiceProviderRegistration" component={ServiceProviderRegistrationScreen} />
@@ -174,6 +178,8 @@ function AppNavigator() {
           <Stack.Screen name="PassengerTrips" component={PassengerTripsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CompleteTrip" component={CompleteTripScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RiderDashboard" component={RiderDashboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TripRequestAddress" component={TripRequestAddressScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TaxiRankSelection" component={TaxiRankSelectionScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RiderTripBrowser" component={RiderTripBrowserScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RiderQueue" component={RiderQueueScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DriverScoreboard" component={DriverScoreboardScreen} options={{ headerShown: false }} />

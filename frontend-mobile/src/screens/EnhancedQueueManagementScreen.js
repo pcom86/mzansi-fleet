@@ -146,6 +146,7 @@ export default function EnhancedQueueManagementScreen({ navigation, route: navRo
       return;
     }
 
+    if (!assignRouteId) { Alert.alert('Required', 'Please select a route to assign the vehicle to.'); setAssignBusy(false); return; }
     setAssignBusy(true);
     try {
       if (selectedVehicles.length === 1) {
@@ -528,15 +529,8 @@ export default function EnhancedQueueManagementScreen({ navigation, route: navRo
           <View style={[styles.modalSheet, { backgroundColor: c.surface }]}>
             <Text style={[styles.modalTitle, { color: c.text }]}>Assign to Queue</Text>
             
-            <Text style={[styles.label, { color: c.textMuted }]}>Route (optional)</Text>
+            <Text style={[styles.label, { color: c.textMuted }]}>Route (required)</Text>
             <ScrollView horizontal style={styles.routeSelector}>
-              <TouchableOpacity
-                style={[styles.routeChip, !assignRouteId && styles.routeChipActive]}
-                onPress={() => setAssignRouteId(null)}>
-                <Text style={[styles.routeChipText, !assignRouteId && styles.routeChipTextActive]}>
-                  No Route
-                </Text>
-              </TouchableOpacity>
               {routes.map(route => (
                 <TouchableOpacity
                   key={route.routeId}

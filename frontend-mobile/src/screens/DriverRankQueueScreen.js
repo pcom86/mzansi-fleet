@@ -64,9 +64,9 @@ export default function DriverRankQueueScreen({ navigation, route }) {
     () => queue.find(i => i.isMine && norm(i.status) === 'dispatched' && i.tripId),
     [queue]
   );
-  const myDispatchedTripId = myDispatchedTrip?.tripId
-    || (((data?.myStatus || '').toLowerCase() === 'dispatched') ? data?.myTripId : null);
-  const canCompleteTrip = Boolean(myDispatchedTripId);
+  const myDispatchedQueueEntryId = myDispatchedTrip?.id
+    || (((data?.myStatus || '').toLowerCase() === 'dispatched') ? data?.myQueueEntryId : null);
+  const canCompleteTrip = Boolean(myDispatchedQueueEntryId);
 
   const fmtTime = (v) => {
     if (!v) return '—';
@@ -133,7 +133,7 @@ export default function DriverRankQueueScreen({ navigation, route }) {
   }
 
   async function handleCompleteTrip() {
-    if (!myDispatchedTripId) return;
+    if (!myDispatchedQueueEntryId) return;
     Alert.alert(
       'Complete Trip?',
       `Mark ${myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration || 'vehicle'} as completed.`,
@@ -144,7 +144,7 @@ export default function DriverRankQueueScreen({ navigation, route }) {
           onPress: async () => {
             try {
               const ctx = await captureCompletionContext();
-              await completeQueueTrip(myDispatchedTripId, {
+              await completeQueueTrip(myDispatchedQueueEntryId, {
                 notes: 'Completed by driver',
                 completedByDriverId: driverId, ...ctx,
               });
@@ -225,7 +225,7 @@ export default function DriverRankQueueScreen({ navigation, route }) {
                 {myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration} · {myDispatchedTrip?.routeName || data?.routeName || 'En route'}
               </Text>
             </View>
-            <View style={st.bannerBadge}><Text style={st.bannerBadgeTxt}>Dispatched</Text></View>
+            <View style={st.bannerBadge}><Text style={st.bannerBadgeTxt}>EN ROUTE</Text></View>
           </View>
           <View style={st.bannerActions}>
             <TouchableOpacity style={st.bannerBtn} onPress={() => openDetails(myDispatchedTrip)}>
@@ -354,44 +354,38 @@ export default function DriverRankQueueScreen({ navigation, route }) {
             dispatchedTrips.map((trip, idx) => {
               const sc = statusColor(trip.status || 'Dispatched');
               const isActive = trip.status !== 'Completed' && trip.status !== 'Cancelled';
+              const displayStatus = (trip.status === 'Dispatched' || trip.status === 'Departed') ? 'EN ROUTE' : (trip.status || 'Active');
               return (
                 <TouchableOpacity
                   key={trip.id || idx}
-                  style={st.card}
-                  activeOpacity={0.7}
-                  onPress={() => navigation.navigate('DriverTripDetails', { tripId: trip.id, driverProfileId: driverId })}
+                  style={[st.card, { backgroundColor: c.card, borderColor: c.border }]}
+                  onPress={() => openDetails({ id: trip.id, tripId: trip.id })}
+                  activeOpacity={0.8}
                 >
-                  <View style={[st.cardAccent, { backgroundColor: sc }]} />
-                  <View style={st.cardBody}>
-                    <View style={st.cardRow}>
-                      <Text style={st.regText} numberOfLines={1}>
-                        {trip.departureStation || '—'} → {trip.destinationStation || '—'}
-                      </Text>
-                      <View style={[st.badge, { backgroundColor: sc }]}>
-                        <Text style={st.badgeText}>{trip.status || 'Active'}</Text>
-                      </View>
+                  <View style={st.cardTop}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.regText}>{trip.vehicleRegistration || '—'}</Text>
                     </View>
-                    <View style={st.cardMeta}>
-                      <View style={st.metaItem}>
-                        <Ionicons name="car-outline" size={13} color="#64748b" />
-                        <Text style={st.metaText}>{trip.vehicle?.registration || '—'}</Text>
-                      </View>
-                      <View style={st.metaItem}>
-                        <Ionicons name="people-outline" size={13} color="#64748b" />
-                        <Text style={st.metaText}>{trip.passengerCount ?? 0} pax</Text>
-                      </View>
-                      <View style={st.metaItem}>
-                        <Ionicons name="time-outline" size={13} color="#64748b" />
-                        <Text style={st.metaText}>{fmtTime(trip.departureTime)}</Text>
-                      </View>
+                    <View style={[st.badge, { backgroundColor: sc }]}>
+                      <Text style={st.badgeText}>{displayStatus}</Text>
                     </View>
-                    {isActive && (
-                      <View style={st.tapHint}>
-                        <Ionicons name="checkmark-circle-outline" size={12} color="#22c55e" />
-                        <Text style={[st.tapHintTxt, { color: '#22c55e' }]}>Tap to view & complete</Text>
-                      </View>
-                    )}
                   </View>
+                  <View style={st.cardMeta}>
+                    <View style={st.metaItem}>
+                      <Ionicons name="people-outline" size={13} color="#64748b" />
+                      <Text style={st.metaText}>{trip.passengerCount ?? 0} pax</Text>
+                    </View>
+                    <View style={st.metaItem}>
+                      <Ionicons name="time-outline" size={13} color="#64748b" />
+                      <Text style={st.metaText}>{fmtTime(trip.departureTime)}</Text>
+                    </View>
+                  </View>
+                  {isActive && (
+                    <View style={st.tapHint}>
+                      <Ionicons name="checkmark-circle-outline" size={12} color="#22c55e" />
+                      <Text style={[st.tapHintTxt, { color: '#22c55e' }]}>Tap to view & complete</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })

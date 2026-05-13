@@ -7,6 +7,8 @@ namespace MzansiFleet.Application.Commands
     public class CreateTripRequestCommand : IRequest<TripRequest>
     {
         public Guid PassengerId { get; set; }
+        public Guid? TaxiRankId { get; set; }
+        public Guid? RouteId { get; set; }
         public string PickupLocation { get; set; }
         public string DropoffLocation { get; set; }
         public DateTime PickupTime { get; set; }

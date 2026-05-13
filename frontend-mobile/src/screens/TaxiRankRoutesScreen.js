@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
-import { fetchAdminByUserId, fetchSchedules, createSchedule, createScheduleForManager, updateSchedule, deleteSchedule, assignVehicleToRoute, unassignVehicleFromRoute } from '../api/taxiRanks';
+import { fetchAdminByUserId, fetchSchedules, fetchTripSchedules, createSchedule, createScheduleForManager, updateSchedule, deleteSchedule, assignVehicleToRoute, unassignVehicleFromRoute } from '../api/taxiRanks';
 import { fetchVehiclesByTenant } from '../api/vehicles';
 import client from '../api/client';
 
@@ -71,8 +71,18 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
 
         if (admin?.id) {
           setAdminProfile(admin);
-          const schedResp = await fetchSchedules(user.userId || user.id).catch(() => ({ data: [] }));
+          // Fetch schedules filtered by taxi rank if rank parameter is provided
+          const rankId = rank?.id;
+          const tenantId = admin.tenantId || user?.tenantId;
+          
+          let schedResp;
+          if (rankId) {
+            schedResp = await fetchTripSchedules(rankId, tenantId).catch(() => ({ data: [] }));
+          } else {
+            schedResp = await fetchSchedules(user.userId || user.id).catch(() => ({ data: [] }));
+          }
           setRoutes(Array.isArray(schedResp) ? schedResp : (schedResp?.data || []));
+          
           try {
             const vehResp = await fetchVehiclesByTenant(admin.tenantId);
             setVehicles(vehResp || []);
@@ -89,15 +99,23 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
             fullName: user.fullName || 'Manager',
             email: user.email,
             adminCode: null, // Not a mock, real manager
-            taxiRankId: null,
+            taxiRankId: rank?.id || null,
             canManageSchedules: true,
             status: 'Active'
           };
           setAdminProfile(managerProfile);
           
           try {
-            const schedResp = await client.get('/TripSchedules');
-            setRoutes(schedResp.data || []);
+            const rankId = rank?.id;
+            const tenantId = user?.tenantId;
+            
+            let schedResp;
+            if (rankId) {
+              schedResp = await fetchTripSchedules(rankId, tenantId).catch(() => ({ data: [] }));
+            } else {
+              schedResp = await client.get('/TripSchedules');
+            }
+            setRoutes(schedResp?.data || schedResp || []);
           } catch (_) {
             setRoutes([]);
           }
@@ -119,14 +137,22 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
             fullName: user.fullName || 'User',
             email: user.email,
             adminCode: 'ADMIN', // Mark as mock to prevent actual operations
-            taxiRankId: null,
+            taxiRankId: rank?.id || null,
             status: 'Active'
           };
           setAdminProfile(mockProfile);
           
           try {
-            const schedResp = await client.get('/TripSchedules');
-            setRoutes(schedResp.data || []);
+            const rankId = rank?.id;
+            const tenantId = user?.tenantId;
+            
+            let schedResp;
+            if (rankId) {
+              schedResp = await fetchTripSchedules(rankId, tenantId).catch(() => ({ data: [] }));
+            } else {
+              schedResp = await client.get('/TripSchedules');
+            }
+            setRoutes(schedResp?.data || schedResp || []);
           } catch (_) {
             setRoutes([]);
           }
@@ -246,11 +272,13 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
       standardFare: parseFloat(fare),
       expectedDurationMinutes: duration ? parseInt(duration, 10) : null,
       maxPassengers: maxPassengers ? parseInt(maxPassengers, 10) : null,
-      notes: notes.trim() || null,
+      notes: notes.trim() || '',
       stops: stops.map((s, i) => ({
         stopName: s.stopName.trim(),
         stopOrder: i + 1,
         fareFromOrigin: parseFloat(s.fareFromOrigin),
+        estimatedMinutesFromDeparture: null,
+        stopNotes: null,
       })),
     };
 
@@ -278,7 +306,8 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
         return;
       }
       
-      console.log('Proceeding with save, adminId:', adminProfile.id);
+      console.log('Proceeding with save, adminId:', adminProfile.id, 'type:', typeof adminProfile.id);
+      console.log('Request body:', JSON.stringify(body, null, 2));
       
       if (editing) {
         await updateSchedule(adminProfile.id, editing.id, body);
@@ -292,6 +321,10 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
       loadData(true);
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Unknown error';
+      const errorData = err?.response?.data;
+      console.error('Create route error:', err);
+      console.error('Error response data:', errorData);
+      console.error('Error status:', err?.response?.status);
       Alert.alert('Error', msg);
     } finally {
       setSaving(false);
@@ -464,8 +497,8 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
               <Text style={[styles.emptyHint, { color: c.textMuted }]}>Tap + to create a route</Text>
             </View>
           ) : (
-            routes.map((r) => (
-              <TouchableOpacity key={r.id} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => openEdit(r)} activeOpacity={0.85}>
+            routes.map((r, rIndex) => (
+              <TouchableOpacity key={r.id || `route-${rIndex}`} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]} onPress={() => openEdit(r)} activeOpacity={0.85}>
                 <View style={styles.cardTop}>
                   <View style={[styles.cardIcon, { backgroundColor: GOLD_LIGHT }]}>
                     <Ionicons name="git-branch-outline" size={20} color={GOLD} />
@@ -482,6 +515,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                     console.log(`Route ${r.routeName}: ${assignedVehicles.length} assigned vehicles, hasAssigned: ${hasAssignedVehicles}`);
                     return (
                       <TouchableOpacity 
+                        key={`delete-${r.id}`}
                         onPress={() => {
                           console.log('Delete button pressed for route:', r.routeName);
                           handleDelete(r);
@@ -505,18 +539,18 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                   {(() => {
                     const activeVehicles = r.routeVehicles?.filter(rv => rv.isActive !== false) || [];
                     return activeVehicles.length > 0 && (
-                      <Tag icon="car-outline" label={`${activeVehicles.length} vehicle${activeVehicles.length > 1 ? 's' : ''} assigned`} c={c} />
+                      <Tag key={`vehicles-${r.id}`} icon="car-outline" label={`${activeVehicles.length} vehicle${activeVehicles.length > 1 ? 's' : ''} assigned`} c={c} />
                     );
                   })()}
                 </View>
                 {r.routeVehicles?.length > 0 && (
                   <View style={styles.vehiclesRow}>
                     <Text style={[styles.vehiclesLabel, { color: c.textMuted }]}>Vehicles:</Text>
-                    {r.routeVehicles.map(rv => {
+                    {r.routeVehicles.map((rv, vIndex) => {
                       const isActive = rv.isActive !== false;
                       return (
                         <View 
-                          key={rv.id} 
+                          key={rv.id || `route-vehicle-${vIndex}`} 
                           style={[
                             styles.vehicleChip, 
                             { 
@@ -546,10 +580,12 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
                 {r.stops?.length > 0 && (
                   <View style={styles.cardStops}>
                     <Text style={[styles.cardMeta, { color: c.textMuted }]}>{r.departureStation}</Text>
-                    {[...r.stops].sort((a, b) => a.stopOrder - b.stopOrder).map(s => (
-                      <React.Fragment key={s.id}>
+                    {[...r.stops].sort((a, b) => a.stopOrder - b.stopOrder).map((s, index) => (
+                      <React.Fragment key={s.id || `stop-${index}`}>
                         <Ionicons name="chevron-forward" size={10} color={c.textMuted} />
-                        <Text style={[styles.cardMeta, { color: c.textMuted }]}>{s.stopName} <Text style={{ color: GOLD }}>R{s.fareFromOrigin}</Text></Text>
+                        <Text style={[styles.cardMeta, { color: c.textMuted }]}>
+                          {s.stopName} <Text style={{ color: GOLD }}>R{s.fareFromOrigin}</Text>
+                        </Text>
                       </React.Fragment>
                     ))}
                     <Ionicons name="chevron-forward" size={10} color={c.textMuted} />
@@ -635,7 +671,7 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
               </View>
 
               {stops.map((s, idx) => (
-                <View key={s.id}>
+                <View key={s.id || `stop-edit-${idx}`}>
                   <View style={styles.stopLine} />
                   <View style={[styles.stopRow, { backgroundColor: c.surface, borderColor: c.border }]}>
                     <View style={[styles.stopNumBadge, { backgroundColor: GOLD_LIGHT }]}>
@@ -704,8 +740,8 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
               {selectedRoute?.routeVehicles?.length > 0 && (
                 <>
                   <Text style={[styles.label, { color: c.textMuted }]}>Assigned Vehicles</Text>
-                  {selectedRoute.routeVehicles.map(rv => (
-                    <View key={rv.id} style={[styles.vehicleItem, { backgroundColor: c.surface, borderColor: c.border }]}>
+                  {selectedRoute.routeVehicles.map((rv, rvIndex) => (
+                    <View key={rv.id || `assigned-vehicle-${rvIndex}`} style={[styles.vehicleItem, { backgroundColor: c.surface, borderColor: c.border }]}>
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.vehicleReg, { color: c.text }]}>{rv.vehicle?.registration || rv.vehicle?.registrationNumber}</Text>
                         <Text style={[styles.vehicleMake, { color: c.textMuted }]}>
@@ -741,9 +777,9 @@ export default function TaxiRankRoutesScreen({ route: navRoute, navigation }) {
               ) : (
                 vehicles
                   .filter(v => !selectedRoute?.routeVehicles?.some(rv => rv.vehicleId === v.id))
-                  .map(v => (
+                  .map((v, vIndex) => (
                     <TouchableOpacity 
-                      key={v.id} 
+                      key={v.id || `available-vehicle-${vIndex}`} 
                       style={[styles.vehicleItem, { backgroundColor: c.surface, borderColor: GOLD, borderWidth: 1.5 }]}
                       onPress={() => {
                         handleAssignVehicle(v.id);

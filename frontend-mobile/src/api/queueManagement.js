@@ -269,10 +269,10 @@ export async function getQueueTripDetails(queueEntryId) {
 }
 
 // Complete a trip from queue context
-export async function completeQueueTrip(queueEntryId, { notes, completedByDriverId, completedAt, latitude, longitude } = {}) {
-  const resp = await client.put(`/DailyTaxiQueue/${queueEntryId}/complete-trip`, {
-    notes, completedByDriverId, completedAt, latitude, longitude,
-  });
+export async function completeQueueTrip(queueEntryId, { notes, completedByDriverId, completedAt, latitude, longitude, totalAmount } = {}) {
+  const payload = { Notes: notes, CompletedByDriverId: completedByDriverId, CompletedAt: completedAt, Latitude: latitude, Longitude: longitude };
+  if (totalAmount != null) payload.TotalAmount = totalAmount;
+  const resp = await client.put(`/DailyTaxiQueue/${queueEntryId}/complete-trip`, payload);
   return resp.data;
 }
 

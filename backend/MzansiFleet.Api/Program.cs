@@ -130,6 +130,11 @@ builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IVehicleT
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IRouteRepository, MzansiFleet.Repository.Repositories.RouteRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.IScheduledTripBookingRepository, MzansiFleet.Repository.Repositories.ScheduledTripBookingRepository>();
 
+// Register Trip Request repositories and handlers
+builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITripRequestRepository, MzansiFleet.Repository.Repositories.TripRequestRepository>();
+builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITripOfferRepository, MzansiFleet.Repository.Repositories.TripOfferRepository>();
+builder.Services.AddScoped<MzansiFleet.Application.Handlers.CreateTripRequestCommandHandler>();
+
 // Register AI Services
 builder.Services.AddScoped<MzansiFleet.Api.Services.AI.RouteOptimizationService>();
 builder.Services.AddScoped<MzansiFleet.Api.Services.AI.DemandForecastingService>();
@@ -252,6 +257,55 @@ try
         END $$;
     ");
     logger.LogInformation("QueueMarshal Permissions columns ensured");
+
+    // Add TripRequests lifecycle columns if missing (safe idempotent alter)
+    await dbContext.Database.ExecuteSqlRawAsync(@"
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'TripRequests') THEN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TripRequests' AND column_name = 'DriverId') THEN
+                    ALTER TABLE ""TripRequests"" ADD COLUMN ""DriverId"" uuid;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TripRequests' AND column_name = 'AcceptedAt') THEN
+                    ALTER TABLE ""TripRequests"" ADD COLUMN ""AcceptedAt"" timestamp with time zone;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TripRequests' AND column_name = 'PickupStartedAt') THEN
+                    ALTER TABLE ""TripRequests"" ADD COLUMN ""PickupStartedAt"" timestamp with time zone;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TripRequests' AND column_name = 'CompletedAt') THEN
+                    ALTER TABLE ""TripRequests"" ADD COLUMN ""CompletedAt"" timestamp with time zone;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TripRequests' AND column_name = 'DistanceKm') THEN
+                    ALTER TABLE ""TripRequests"" ADD COLUMN ""DistanceKm"" numeric NOT NULL DEFAULT 0;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TripRequests' AND column_name = 'RatePerKm') THEN
+                    ALTER TABLE ""TripRequests"" ADD COLUMN ""RatePerKm"" numeric NOT NULL DEFAULT 0;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TripRequests' AND column_name = 'TotalPrice') THEN
+                    ALTER TABLE ""TripRequests"" ADD COLUMN ""TotalPrice"" numeric NOT NULL DEFAULT 0;
+                END IF;
+            END IF;
+        END $$;
+    ");
+    logger.LogInformation("TripRequests lifecycle columns ensured");
+
+    // Add RatePerKm to TaxiRanks and DistanceKm to Routes
+    await dbContext.Database.ExecuteSqlRawAsync(@"
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'TaxiRanks') THEN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'TaxiRanks' AND column_name = 'RatePerKm') THEN
+                    ALTER TABLE ""TaxiRanks"" ADD COLUMN ""RatePerKm"" numeric NOT NULL DEFAULT 0;
+                END IF;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'Routes') THEN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Routes' AND column_name = 'DistanceKm') THEN
+                    ALTER TABLE ""Routes"" ADD COLUMN ""DistanceKm"" numeric NOT NULL DEFAULT 0;
+                END IF;
+            END IF;
+        END $$;
+    ");
+    logger.LogInformation("RatePerKm and DistanceKm columns ensured");
 
     // Add ScheduledTripId column if missing (safe idempotent alter)
     await dbContext.Database.ExecuteSqlRawAsync(@"
@@ -573,6 +627,13 @@ try
         END $$;
     ";
     fixTaxiRankTripsCmd.ExecuteNonQuery();
+
+    // Add FareAmount column to DailyTaxiQueues to store fare captured at dispatch
+    using var fixDailyQueueFareCmd = conn.CreateCommand();
+    fixDailyQueueFareCmd.CommandText = @"
+        ALTER TABLE ""DailyTaxiQueues"" ADD COLUMN IF NOT EXISTS ""FareAmount"" DECIMAL(18,2);
+    ";
+    fixDailyQueueFareCmd.ExecuteNonQuery();
     
     logger.LogInformation("Taxi rank tables created successfully");
 

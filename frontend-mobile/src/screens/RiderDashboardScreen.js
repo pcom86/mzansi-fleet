@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   StyleSheet, RefreshControl, Image,
@@ -8,7 +8,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import { fetchAllTaxiRanks, fetchUserBookings } from '../api/taxiRanks';
+import { getMyTripRequests } from '../api/tripRequests';
 import ThemeToggle from '../components/ThemeToggle';
+import RiderTripProgress from '../components/RiderTripProgress';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -26,18 +28,29 @@ export default function RiderDashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [taxiRanks, setTaxiRanks] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [activeTrip, setActiveTrip] = useState(null);
+  const [trackingOpen, setTrackingOpen] = useState(false);
+  const tripPollRef = useRef(null);
 
   const userId = user?.userId || user?.id;
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [rankResp, bookingResp] = await Promise.all([
+      const [rankResp, bookingResp, tripResp] = await Promise.all([
         fetchAllTaxiRanks().catch(() => ({ data: [] })),
         userId ? fetchUserBookings(userId).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+        userId ? getMyTripRequests(userId).catch(() => []) : Promise.resolve([]),
       ]);
       setTaxiRanks(rankResp.data || rankResp || []);
       setBookings(bookingResp.data || bookingResp || []);
+      const trips = Array.isArray(tripResp) ? tripResp : [];
+      // Only show trips that are InProgress - exclude Completed and Cancelled
+      const inProgress = trips.find(t => {
+        const state = t.state ?? t.State;
+        return state === 'InProgress' && state !== 'Completed' && state !== 'Cancelled';
+      }) ?? null;
+      setActiveTrip(inProgress);
     } catch (err) {
       console.warn('RiderDashboard load error:', err?.message);
     } finally {
@@ -45,6 +58,28 @@ export default function RiderDashboardScreen({ navigation }) {
       setRefreshing(false);
     }
   }, [userId]);
+
+  // Poll for active trip state changes every 15 s while one is in progress
+  useEffect(() => {
+    if (activeTrip) {
+      tripPollRef.current = setInterval(async () => {
+        try {
+          const trips = await getMyTripRequests(userId);
+          const arr = Array.isArray(trips) ? trips : [];
+          // Only show trips that are InProgress - exclude Completed and Cancelled
+          const inProgress = arr.find(t => {
+            const state = t.state ?? t.State;
+            return state === 'InProgress' && state !== 'Completed' && state !== 'Cancelled';
+          }) ?? null;
+          setActiveTrip(inProgress);
+          if (!inProgress) clearInterval(tripPollRef.current);
+        } catch {}
+      }, 15000);
+    } else {
+      clearInterval(tripPollRef.current);
+    }
+    return () => clearInterval(tripPollRef.current);
+  }, [!!activeTrip, userId]);
 
   useEffect(() => { loadData(); }, [loadData]);
   const onRefresh = () => { setRefreshing(true); loadData(true); };
@@ -76,7 +111,7 @@ export default function RiderDashboardScreen({ navigation }) {
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
         <View style={styles.headerTop}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerGreeting}>Hello, {user?.fullName || user?.email || 'Rider'} 👋</Text>
+            <Text style={styles.headerGreeting}>{user?.fullName || user?.email || 'Rider'}</Text>
             <Text style={styles.headerSub}>Where are you heading today?</Text>
           </View>
           <ThemeToggle showBackground={false} size={22} />
@@ -104,13 +139,41 @@ export default function RiderDashboardScreen({ navigation }) {
         contentContainerStyle={styles.bodyContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} colors={[GOLD]} />}
       >
+        {/* ====== ACTIVE TRIP BANNER ====== */}
+        {activeTrip && (
+          <TouchableOpacity
+            style={atStyles.banner}
+            onPress={() => setTrackingOpen(true)}
+            activeOpacity={0.88}
+          >
+            <View style={atStyles.liveDot} />
+            <View style={{ flex: 1 }}>
+              <Text style={atStyles.bannerLabel}>TRIP IN PROGRESS</Text>
+              <Text style={atStyles.bannerRoute} numberOfLines={1}>
+                {activeTrip.pickupLocation ?? activeTrip.PickupLocation ?? 'Pickup'}{' '}
+                {'→'}{' '}
+                {activeTrip.dropoffLocation ?? activeTrip.DropoffLocation ?? 'Destination'}
+              </Text>
+              {(activeTrip.totalPrice ?? activeTrip.TotalPrice ?? 0) > 0 && (
+                <Text style={atStyles.bannerFare}>
+                  R{Number(activeTrip.totalPrice ?? activeTrip.TotalPrice).toFixed(2)}
+                </Text>
+              )}
+            </View>
+            <View style={atStyles.bannerBtn}>
+              <Ionicons name="navigate" size={16} color="#fff" />
+              <Text style={atStyles.bannerBtnText}>Track</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* ====== QUICK ACTIONS ====== */}
         <View style={styles.quickGrid}>
           <QuickAction
             icon="bus-outline" label="Book Trip"
-            desc="Browse & book"
+            desc="On-demand & scheduled"
             color={GOLD} bg={GOLD_LIGHT}
-            onPress={() => navigation.navigate('RiderTripBrowser')}
+            onPress={() => navigation.navigate('TripRequestAddress')}
           />
           <QuickAction
             icon="ticket-outline" label="My Bookings"
@@ -222,6 +285,18 @@ export default function RiderDashboardScreen({ navigation }) {
         <View style={{ height: 32 }} />
       </ScrollView>
 
+      {/* ====== RIDER TRIP PROGRESS MODAL ====== */}
+      <RiderTripProgress
+        visible={trackingOpen}
+        req={activeTrip}
+        onClose={() => setTrackingOpen(false)}
+        onCompleted={() => {
+          setActiveTrip(null);
+          setTrackingOpen(false);
+          loadData(true); // Refresh to ensure completed trip is removed
+        }}
+      />
+
       {/* ====== BOTTOM BAR ====== */}
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
         <BottomTab icon="home-outline" label="Home" active onPress={() => {}} c={c} />
@@ -321,6 +396,60 @@ function BottomTab({ icon, label, active, onPress, c }) {
 }
 
 // ===== STYLES =====
+
+const atStyles = StyleSheet.create({
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#022c22',
+    borderWidth: 1.5,
+    borderColor: '#22c55e50',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  liveDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#22c55e',
+  },
+  bannerLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#22c55e',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  bannerRoute: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  bannerFare: {
+    fontSize: 11,
+    color: '#D4AF37',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  bannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#22c55e',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  bannerBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#fff',
+  },
+});
 
 const qStyles = StyleSheet.create({
   card: { width: '48%', borderRadius: 14, padding: 14, marginBottom: 12 },

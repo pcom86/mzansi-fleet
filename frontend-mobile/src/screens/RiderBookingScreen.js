@@ -7,7 +7,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import client from '../api/client';
+import Constants from 'expo-constants';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -18,6 +20,7 @@ export default function RiderBookingScreen({ navigation }) {
   const { user } = useAuth();
   const { theme } = useAppTheme();
   const c = theme.colors;
+  const insets = useSafeAreaInsets();
 
   // Form state
   const [selectedSchedule, setSelectedSchedule] = useState(null);
@@ -25,6 +28,15 @@ export default function RiderBookingScreen({ navigation }) {
   const [paymentMethod, setPaymentMethod] = useState(''); // 'ozow' | 'wallet' | 'cash' | 'card'
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Pickup request state
+  const [requestPickup, setRequestPickup] = useState(false);
+  const [pickupAddress, setPickupAddress] = useState('');
+  const [pickupDistance, setPickupDistance] = useState(null);
+  const [validatingPickup, setValidatingPickup] = useState(false);
+
+  // Configurable maximum pickup distance in kilometers (default 10km)
+  const MAX_PICKUP_DISTANCE_KM = 10;
 
   // Cart state
   const [passengerCart, setPassengerCart] = useState([]);
@@ -138,6 +150,118 @@ export default function RiderBookingScreen({ navigation }) {
   };
 
   const getCartSize = () => passengerCart.length;
+
+  // Check if all seats are booked (assuming standard taxi capacity of 15)
+  const isAllSeatsBooked = () => {
+    const vehicleCapacity = selectedSchedule?.vehicleCapacity || 15; // Default to 15 if not specified
+    return getCartSize() >= vehicleCapacity;
+  };
+
+  // ===== PICKUP LOCATION VALIDATION =====
+  // Get coordinates from address using Google Maps Geocoding API
+  const getCoordinatesFromAddress = async (address) => {
+    try {
+      const apiKey = Constants.expoConfig?.extra?.googleMapsApiKey || Constants.manifest?.extra?.googleMapsApiKey;
+      if (!apiKey) {
+        console.warn('Google Maps API key not found');
+        return null;
+      }
+
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
+      );
+      const data = await response.json();
+
+      if (data.status === 'OK' && data.results && data.results.length > 0) {
+        const { lat, lng } = data.results[0].geometry.location;
+        return { lat, lng };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      return null;
+    }
+  };
+
+  // Calculate distance between two coordinates using Haversine formula (returns km)
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const toRad = (value) => {
+    return (value * Math.PI) / 180;
+  };
+
+  // Validate pickup address distance from taxi rank
+  const validatePickupDistance = async (address) => {
+    if (!address || !address.trim()) {
+      setPickupDistance(null);
+      return null;
+    }
+
+    setValidatingPickup(true);
+    try {
+      // Get taxi rank coordinates (use the taxi rank from the selected schedule)
+      const taxiRank = taxiRanks.find(r => r.id === selectedSchedule?.taxiRankId);
+      if (!taxiRank || !taxiRank.name) {
+        setPickupDistance(null);
+        return null;
+      }
+
+      // Get coordinates for taxi rank
+      const rankCoords = await getCoordinatesFromAddress(taxiRank.name);
+      if (!rankCoords) {
+        setPickupDistance(null);
+        return null;
+      }
+
+      // Get coordinates for pickup address
+      const pickupCoords = await getCoordinatesFromAddress(address);
+      if (!pickupCoords) {
+        setPickupDistance(null);
+        return null;
+      }
+
+      // Calculate distance
+      const distance = calculateDistance(
+        rankCoords.lat,
+        rankCoords.lng,
+        pickupCoords.lat,
+        pickupCoords.lng
+      );
+
+      setPickupDistance(distance);
+      return distance;
+    } catch (error) {
+      console.error('Distance validation error:', error);
+      setPickupDistance(null);
+      return null;
+    } finally {
+      setValidatingPickup(false);
+    }
+  };
+
+  // Debounced pickup address validation
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (requestPickup && pickupAddress.trim()) {
+        validatePickupDistance(pickupAddress);
+      } else {
+        setPickupDistance(null);
+      }
+    }, 1000); // 1 second debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [pickupAddress, requestPickup, selectedSchedule, taxiRanks]);
 
   // ===== ROUTE STOPS & DESTINATIONS =====
   const getRouteStopsAndDestinations = () => {
@@ -294,8 +418,20 @@ export default function RiderBookingScreen({ navigation }) {
 
   function validateForm() {
     if (!selectedSchedule) return 'Please select a scheduled trip';
+    if (!selectedDate) return 'Please select a travel date';
     if (!paymentMethod) return 'Please select a payment method';
     if (passengerCart.length === 0) return 'Please add passengers to cart';
+
+    // Validate pickup request if all seats are booked
+    if (isAllSeatsBooked() && requestPickup) {
+      if (!pickupAddress.trim()) {
+        return 'Please provide a pickup address for your pickup request';
+      }
+      // Validate pickup distance
+      if (pickupDistance !== null && pickupDistance > MAX_PICKUP_DISTANCE_KM) {
+        return `Pickup location is too far from the taxi rank. Maximum distance is ${MAX_PICKUP_DISTANCE_KM}km (current: ${pickupDistance.toFixed(1)}km).`;
+      }
+    }
 
     // Check minimum booking lead time (must be at least 1 hour before departure)
     const MIN_BOOKING_LEAD_MINUTES = 60;
@@ -331,8 +467,22 @@ export default function RiderBookingScreen({ navigation }) {
           email: p.email || null,
           idNumber: p.idNumber || null,
           address: p.address || null,
-        nextOfKinName: p.nextOfKinName || null,
-        nextOfKinContact: p.nextOfKinContact || null,
+          nextOfKinName: p.nextOfKinName || null,
+          nextOfKinContact: p.nextOfKinContact || null,
+          destination: p.destination || selectedSchedule?.destinationStation,
+        })),
+        // Include pickup request if all seats are booked
+        ...(isAllSeatsBooked() && requestPickup && {
+          requestPickup: true,
+          pickupAddress: pickupAddress.trim(),
+          pickupDistance: pickupDistance,
+        }),
+      };
+
+      const resp = await client.post('/ScheduledTripBookings', bookingData);
+
+      Alert.alert('Booking Successful', 'Your seats have been reserved. You will receive a confirmation shortly.');
+      setPassengerCart([]);
       setCurrentPassenger({
         name: '',
         contactNumber: '',
@@ -343,6 +493,9 @@ export default function RiderBookingScreen({ navigation }) {
       });
       setPaymentMethod('');
       setNotes('');
+      setRequestPickup(false);
+      setPickupAddress('');
+      setPickupDistance(null);
       setStep('add');
     } catch (err) {
       Alert.alert('Booking Failed', err?.response?.data?.message || err?.message || 'Failed to create booking');
@@ -575,7 +728,7 @@ export default function RiderBookingScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 20 }]} keyboardShouldPersistTaps="handled">
         {/* Schedule Selection */}
         <Text style={[styles.sectionTitle, { color: c.text }]}>Select Scheduled Trip *</Text>
         <TouchableOpacity 
@@ -638,21 +791,23 @@ export default function RiderBookingScreen({ navigation }) {
             
             {/* Payment Method */}
             <Text style={[styles.sectionTitle, { color: c.text, marginTop: 16 }]}>Payment Method *</Text>
-            <TouchableOpacity 
-              style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]} 
+            <TouchableOpacity
+              style={[styles.pickerBtn, { backgroundColor: c.surface, borderColor: c.border }]}
               onPress={() => setPaymentModalVisible(true)}
             >
               <Ionicons name="card-outline" size={18} color={GOLD} />
               <Text style={[styles.pickerText, { color: paymentMethod ? c.text : c.textMuted }]}>
                 {paymentMethod === 'ozow' ? 'Ozow (EFT)' : paymentMethod === 'wallet' ? 'Mzansi Wallet' : paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'card' ? 'Card (tap/insert)' : 'Select payment method'}
               </Text>
+              <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+            </TouchableOpacity>
 
-              {paymentMethod === 'card' && (
-                <View style={[styles.cardPrompt, { backgroundColor: GOLD_LIGHT, borderColor: GOLD, padding: 10, borderRadius: 10, marginTop: 12 }]}> 
-                  <Ionicons name="card-outline" size={18} color={GOLD} style={{ marginRight: 8 }} />
-                  <Text style={[styles.cardPromptText, { color: GOLD }]}>Tap or insert your card into the payment device to proceed.</Text>
-                </View>
-              )}
+            {paymentMethod === 'card' && (
+              <View style={[styles.cardPrompt, { backgroundColor: GOLD_LIGHT, borderColor: GOLD, padding: 10, borderRadius: 10, marginTop: 12 }]}>
+                <Ionicons name="card-outline" size={18} color={GOLD} style={{ marginRight: 8 }} />
+                <Text style={[styles.cardPromptText, { color: GOLD }]}>Tap or insert your card into the payment device to proceed.</Text>
+              </View>
+            )}
 
             <TextInput
               style={[styles.textArea, { backgroundColor: c.surface, borderColor: c.border, color: c.text }]}
@@ -664,6 +819,84 @@ export default function RiderBookingScreen({ navigation }) {
               numberOfLines={3}
             />
 
+            {/* Pickup Request - Only show when all seats are booked */}
+            {isAllSeatsBooked() && (
+              <View style={[styles.pickupRequestCard, { backgroundColor: GOLD_LIGHT, borderColor: GOLD, borderWidth: 1, borderRadius: 8, padding: 16, marginTop: 16 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <Ionicons name="car-outline" size={20} color={GOLD} style={{ marginRight: 8 }} />
+                  <Text style={[styles.pickupRequestTitle, { color: GOLD, fontWeight: '700', fontSize: 16 }]}>
+                    Request Pickup
+                  </Text>
+                </View>
+                <Text style={[styles.pickupRequestDesc, { color: c.text, fontSize: 13, marginBottom: 12 }]}>
+                  Since you've booked all seats, you can request the driver to pick you up at your location. Maximum pickup distance: {MAX_PICKUP_DISTANCE_KM}km from taxi rank.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.pickupToggle, { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: c.surface, borderRadius: 8, borderWidth: 1, borderColor: requestPickup ? GOLD : c.border }]}
+                  onPress={() => {
+                    setRequestPickup(!requestPickup);
+                    if (requestPickup) {
+                      setPickupDistance(null);
+                    }
+                  }}
+                >
+                  <View style={[styles.pickupToggleDot, { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: requestPickup ? GOLD : c.border, marginRight: 12, backgroundColor: requestPickup ? GOLD : 'transparent' }]} />
+                  <Text style={[styles.pickupToggleText, { color: c.text, fontSize: 14 }]}>
+                    Yes, I need a pickup
+                  </Text>
+                </TouchableOpacity>
+                {requestPickup && (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={[styles.label, { color: c.textMuted }]}>Pickup Address *</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: c.background, borderColor: c.border, color: c.text }]}
+                      placeholder="Enter your pickup address"
+                      placeholderTextColor={c.textMuted}
+                      value={pickupAddress}
+                      onChangeText={setPickupAddress}
+                    />
+                    {/* Distance validation indicator */}
+                    {validatingPickup && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
+                        <ActivityIndicator size="small" color={GOLD} />
+                        <Text style={[styles.pickupNote, { color: c.textMuted, fontSize: 11, marginLeft: 8 }]}>
+                          Validating pickup location...
+                        </Text>
+                      </View>
+                    )}
+                    {pickupDistance !== null && !validatingPickup && (
+                      <View style={[
+                        styles.distanceIndicator,
+                        {
+                          backgroundColor: pickupDistance <= MAX_PICKUP_DISTANCE_KM ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                          borderColor: pickupDistance <= MAX_PICKUP_DISTANCE_KM ? '#22c55e' : '#ef4444',
+                          marginTop: 6
+                        }
+                      ]}>
+                        <Ionicons
+                          name={pickupDistance <= MAX_PICKUP_DISTANCE_KM ? 'checkmark-circle' : 'alert-circle'}
+                          size={14}
+                          color={pickupDistance <= MAX_PICKUP_DISTANCE_KM ? '#22c55e' : '#ef4444'}
+                        />
+                        <Text style={[
+                          styles.distanceText,
+                          { color: pickupDistance <= MAX_PICKUP_DISTANCE_KM ? '#22c55e' : '#ef4444' }
+                        ]}>
+                          {pickupDistance <= MAX_PICKUP_DISTANCE_KM
+                            ? `Valid pickup location (${pickupDistance.toFixed(1)}km from taxi rank)`
+                            : `Too far from taxi rank (${pickupDistance.toFixed(1)}km, max ${MAX_PICKUP_DISTANCE_KM}km)`
+                          }
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={[styles.pickupNote, { color: c.textMuted, fontSize: 11, marginTop: 6 }]}>
+                      The driver will dispatch and start the trip upon arriving at your pickup location.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Action Buttons */}
             <View style={styles.paymentActions}>
               <TouchableOpacity 
@@ -674,10 +907,10 @@ export default function RiderBookingScreen({ navigation }) {
                 <Text style={[styles.backBtnText, { color: c.text }]}>Back to Cart</Text>
               </TouchableOpacity>
               
-              <TouchableOpacity 
-                style={[styles.checkoutBtn, { backgroundColor: GOLD }]} 
-                onPress={handleSubmit} 
-                disabled={submitting || !paymentMethod}
+              <TouchableOpacity
+                style={[styles.checkoutBtn, { backgroundColor: GOLD }]}
+                onPress={handleSubmit}
+                disabled={submitting || !paymentMethod || (isAllSeatsBooked() && requestPickup && pickupDistance !== null && pickupDistance > MAX_PICKUP_DISTANCE_KM)}
                 activeOpacity={0.85}
               >
                 {submitting ? (
@@ -1048,6 +1281,17 @@ const styles = StyleSheet.create({
   paymentOption: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 8, borderWidth: 1, marginBottom: 12 },
   paymentTitle: { fontSize: 16, fontWeight: '600' },
   paymentSub: { fontSize: 14, marginTop: 2 },
+  cardPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  cardPromptText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
 
   // Destination Picker Styles
   destinationPickerContent: {
@@ -1090,6 +1334,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
+  },
+
+  // Pickup Request Styles
+  pickupRequestCard: {
+    marginTop: 16,
+  },
+  pickupRequestTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  pickupRequestDesc: {
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  pickupToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  pickupToggleDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    marginRight: 12,
+  },
+  pickupToggleText: {
+    fontSize: 14,
+  },
+  pickupNote: {
+    fontSize: 11,
+    marginTop: 6,
+  },
+  distanceIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  distanceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 6,
   },
 
   // Picker Button Styles

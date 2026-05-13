@@ -10,25 +10,45 @@ namespace MzansiFleet.Application.Handlers
     public class CreateTripRequestCommandHandler : IRequestHandler<CreateTripRequestCommand, TripRequest>
     {
         private readonly ITripRequestRepository _repository;
-        public CreateTripRequestCommandHandler(ITripRequestRepository repository)
+        private readonly IRouteRepository _routeRepository;
+
+        public CreateTripRequestCommandHandler(ITripRequestRepository repository, IRouteRepository routeRepository)
         {
             _repository = repository;
+            _routeRepository = routeRepository;
         }
-        public Task<TripRequest> Handle(CreateTripRequestCommand request, CancellationToken cancellationToken)
+
+        public async Task<TripRequest> Handle(CreateTripRequestCommand request, CancellationToken cancellationToken)
         {
+            decimal standardFare = 0;
+
+            if (request.RouteId.HasValue)
+            {
+                var route = await _routeRepository.GetByIdAsync(request.RouteId.Value);
+                if (route != null)
+                    standardFare = route.StandardFare;
+            }
+
+            int pax = request.Passengers > 0 ? request.Passengers : 1;
+            decimal totalPrice = standardFare > 0 ? standardFare * pax : 0;
+
             var entity = new TripRequest
             {
                 Id = System.Guid.NewGuid(),
                 PassengerId = request.PassengerId,
+                TaxiRankId = request.TaxiRankId,
+                RouteId = request.RouteId,
                 PickupLocation = request.PickupLocation,
                 DropoffLocation = request.DropoffLocation,
-                RequestedTime = request.PickupTime, // Map PickupTime to RequestedTime
-                PassengerCount = request.Passengers, // Map Passengers to PassengerCount
-                State = request.Status, // Map Status to State
-                Notes = request.Notes
+                RequestedTime = request.PickupTime,
+                PassengerCount = pax,
+                State = request.Status,
+                Notes = request.Notes,
+                RatePerKm = standardFare,
+                TotalPrice = totalPrice,
             };
             _repository.Add(entity);
-            return Task.FromResult(entity);
+            return entity;
         }
     }
 }

@@ -26,6 +26,7 @@ namespace MzansiFleet.Domain.Entities
         public int? Capacity { get; set; } // Number of vehicles the rank can accommodate
         public string? OperatingHours { get; set; } // e.g., "24/7" or "05:00-22:00"
         public string Status { get; set; } = "Active"; // Active, Inactive, UnderMaintenance
+        public decimal RatePerKm { get; set; } = 0; // Fare charged per kilometre for on-demand trips
         
         // Metadata
         public string? Notes { get; set; }
@@ -122,6 +123,7 @@ namespace MzansiFleet.Domain.Entities
         
         // Pricing
         public decimal StandardFare { get; set; }
+        public decimal DistanceKm { get; set; } = 0; // Expected route distance in kilometres
         public int? ExpectedDurationMinutes { get; set; }
         public int? MaxPassengers { get; set; }
         
@@ -331,6 +333,7 @@ namespace MzansiFleet.Domain.Entities
         public DateTime? DepartedAt { get; set; } // When the vehicle was dispatched
         public Guid? DispatchedByUserId { get; set; } // Marshal/Admin who dispatched
         public int PassengerCount { get; set; } // Number of passengers when dispatched
+        public decimal? FareAmount { get; set; } // Total fare captured at dispatch
         
         // Metadata
         public string? Notes { get; set; }

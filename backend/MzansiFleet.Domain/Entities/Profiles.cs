@@ -36,6 +36,13 @@ namespace MzansiFleet.Domain.Entities
         public bool IsActive { get; set; }
         public bool IsAvailable { get; set; }
         public Guid? AssignedVehicleId { get; set; }
+        
+        // Rating & Review Stats
+        public double? AverageRating { get; set; }
+        public int? TotalReviews { get; set; }
+        public int? TotalTrips { get; set; }
+        public DateTime? LastRatingUpdate { get; set; }
+        
         public User? User { get; set; }
     }
 
