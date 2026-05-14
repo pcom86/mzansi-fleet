@@ -333,25 +333,61 @@ export default function TripManagementScreen({ navigation, route }) {
       const isToday = selectedDate === new Date().toISOString().split('T')[0];
       const dateParam = isToday ? undefined : selectedDate;
       
-      // Sequential vehicle loading with fallback
-      const loadVehiclesWithFallback = async () => {
+      // Load vehicles from multiple sources and combine results
+      const loadVehiclesFromAllSources = async () => {
+        const allVehicles = new Map(); // Use Map to deduplicate by ID
+
+        // Try loading by tenant ID
         if (user?.tenantId) {
-          const v = await getVehiclesByTenantId(user.tenantId).catch(() => []);
-          const arr = Array.isArray(v) ? v : (v?.data || []);
-          if (arr.length > 0) return arr;
+          try {
+            const v = await getVehiclesByTenantId(user.tenantId);
+            const arr = Array.isArray(v) ? v : (v?.data || []);
+            arr.forEach(vehicle => {
+              if (vehicle?.id || vehicle?.Id) {
+                allVehicles.set(vehicle.id || vehicle.Id, vehicle);
+              }
+            });
+          } catch (e) {
+            console.warn('Failed to load vehicles by tenant ID:', e);
+          }
         }
-        const rankV = await fetchVehiclesByRankId(rank.id).catch(() => ({ data: [] }));
-        const rankArr = Array.isArray(rankV) ? rankV : (rankV?.data || []);
-        if (rankArr.length > 0) return rankArr;
-        const allV = await client.get('/Vehicles').catch(() => ({ data: [] }));
-        return Array.isArray(allV) ? allV : (allV?.data || []);
+
+        // Try loading by rank ID
+        try {
+          const rankV = await fetchVehiclesByRankId(rank.id);
+          const rankArr = Array.isArray(rankV) ? rankV : (rankV?.data || []);
+          rankArr.forEach(vehicle => {
+            if (vehicle?.id || vehicle?.Id) {
+              allVehicles.set(vehicle.id || vehicle.Id, vehicle);
+            }
+          });
+        } catch (e) {
+          console.warn('Failed to load vehicles by rank ID:', e);
+        }
+
+        // If still no vehicles, try loading all vehicles as fallback
+        if (allVehicles.size === 0) {
+          try {
+            const allV = await client.get('/Vehicles');
+            const allArr = Array.isArray(allV) ? allV : (allV?.data || []);
+            allArr.forEach(vehicle => {
+              if (vehicle?.id || vehicle?.Id) {
+                allVehicles.set(vehicle.id || vehicle.Id, vehicle);
+              }
+            });
+          } catch (e) {
+            console.warn('Failed to load all vehicles:', e);
+          }
+        }
+
+        return Array.from(allVehicles.values());
       };
 
       const [queueResp, statsResp, routesResp, vehiclesData, driversResp] = await Promise.all([
         getQueueByRank(rank.id, dateParam).catch(() => []),
         getQueueStats(rank.id, dateParam).catch(() => null),
         client.get(`/Routes?taxiRankId=${rank.id}`).catch(() => ({ data: [] })),
-        loadVehiclesWithFallback(),
+        loadVehiclesFromAllSources(),
         client.get(`/Drivers?tenantId=${user?.tenantId}`).catch(() => ({ data: [] }))
       ]);
       

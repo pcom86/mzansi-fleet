@@ -36,6 +36,7 @@ export default function TaxiRankDashboardScreen({ navigation }) {
   const [rankSearchQuery, setRankSearchQuery] = useState('');
   const [loadingAllRanks, setLoadingAllRanks] = useState(false);
   const [linking, setLinking] = useState(false);
+  const [activeTripsModalVisible, setActiveTripsModalVisible] = useState(false);
 
   const loadData = useCallback(async (silent = false) => {
     if (!user || !hasTenant) return;
@@ -244,7 +245,7 @@ export default function TaxiRankDashboardScreen({ navigation }) {
 
           {/* Quick action pills */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickRow} contentContainerStyle={{ gap: 8 }}>
-            <QuickPill icon="car-sport-outline" label="Active Trips" badge={activeTrips.length} onPress={() => {}} />
+            <QuickPill icon="car-sport-outline" label="Active Trips" badge={activeTrips.length} onPress={() => setActiveTripsModalVisible(true)} />
             <QuickPill icon="people-outline" label="Queue" badge={totalPassengers} onPress={() => {}} />
             <QuickPill icon="warning-outline" label="Incidents" badge={0} onPress={() => {}} />
           </ScrollView>
@@ -503,6 +504,59 @@ export default function TaxiRankDashboardScreen({ navigation }) {
                 <Text style={{ color: '#fff', marginTop: 8, fontWeight: '700' }}>Linking...</Text>
               </View>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ====== ACTIVE TRIPS MODAL ====== */}
+      <Modal visible={activeTripsModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: c.background }]}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Active Trips</Text>
+              <TouchableOpacity onPress={() => setActiveTripsModalVisible(false)}>
+                <Ionicons name="close" size={24} color={c.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modalSubtitle, { color: c.textMuted }]}>
+              Currently active trips for your taxi rank
+            </Text>
+
+            {/* Active Trips List */}
+            <ScrollView style={styles.modalList} contentContainerStyle={{ paddingBottom: 16 }}>
+              {activeTrips.length === 0 ? (
+                <View style={styles.modalCenter}>
+                  <Ionicons name="car-outline" size={40} color={c.textMuted} />
+                  <Text style={[{ color: c.textMuted, marginTop: 8, fontSize: 13, textAlign: 'center' }]}>
+                    No active trips at the moment
+                  </Text>
+                </View>
+              ) : (
+                activeTrips.map((trip, index) => (
+                  <View key={trip.id || index} style={[styles.rankLinkItem, { backgroundColor: c.surface, borderColor: c.border }]}>
+                    <View style={[styles.rankLinkIcon, { backgroundColor: GOLD_LIGHT }]}>
+                      <Ionicons name="car" size={20} color={GOLD} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.rankLinkName, { color: c.text }]}>
+                        {trip.vehicleRegistration || trip.vehicle?.registration || `Trip ${index + 1}`}
+                      </Text>
+                      <Text style={[styles.rankLinkMeta, { color: c.textMuted }]}>
+                        Status: {trip.status || 'Unknown'} · 
+                        {trip.passengerCount || trip.passengers ? ` ${trip.passengerCount || trip.passengers} passengers` : ''}
+                      </Text>
+                      {trip.departureTime && (
+                        <Text style={[styles.rankLinkMeta, { color: c.textMuted }]}>
+                          Departed: {new Date(trip.departureTime).toLocaleTimeString()}
+                        </Text>
+                      )}
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
+                  </View>
+                ))
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
