@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using MzansiFleet.Api.Hubs;
+using Scalar.AspNetCore;
 
 namespace MzansiFleet.Api
 {
@@ -40,6 +41,8 @@ namespace MzansiFleet.Api
         public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
 
             // Configure logging
 builder.Logging.ClearProviders();
@@ -93,12 +96,30 @@ builder.Services.AddControllers()
     });
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    {
+        Title = "MzansiFleet API",
+        Version = "v1",
+        Description = "MzansiFleet Taxi Management System API - .NET 10.0"
+    });
+    options.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
+});
 
 // Register DbContext
-builder.Services.AddDbContext<MzansiFleetDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
-           .ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
+if (builder.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("SkipDatabase", false))
+{
+    // Use in-memory database for Scalar UI testing
+    builder.Services.AddDbContext<MzansiFleetDbContext>(options =>
+        options.UseInMemoryDatabase("ScalarTest"));
+}
+else
+{
+    builder.Services.AddDbContext<MzansiFleetDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
+               .ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
+}
 
 // Register repositories
 builder.Services.AddScoped<VehicleRepository>();
@@ -134,6 +155,8 @@ builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ISchedule
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITripRequestRepository, MzansiFleet.Repository.Repositories.TripRequestRepository>();
 builder.Services.AddScoped<MzansiFleet.Domain.Interfaces.IRepositories.ITripOfferRepository, MzansiFleet.Repository.Repositories.TripOfferRepository>();
 builder.Services.AddScoped<MzansiFleet.Application.Handlers.CreateTripRequestCommandHandler>();
+
+builder.Services.AddHttpClient();
 
 // Register AI Services
 builder.Services.AddScoped<MzansiFleet.Api.Services.AI.RouteOptimizationService>();
@@ -202,22 +225,25 @@ var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("Application starting up...");
 
-// Test database connection
-try
+// Test database connection and apply migrations on startup
+if (!builder.Configuration.GetValue<bool>("SkipDatabase", false))
 {
-    using var scope = app.Services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<MzansiFleetDbContext>();
-    await dbContext.Database.CanConnectAsync();
-    logger.LogInformation("Database connection successful");
-}
-catch (Exception ex)
-{
-    logger.LogWarning(ex, "Database connection failed, but continuing startup");
-}
+    // Test database connection
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<MzansiFleetDbContext>();
+        await dbContext.Database.CanConnectAsync();
+        logger.LogInformation("Database connection successful");
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Database connection failed, but continuing startup");
+    }
 
-// Apply migrations on startup
-try
-{
+    // Apply migrations on startup
+    try
+    {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<MzansiFleetDbContext>();
     await dbContext.Database.MigrateAsync();
@@ -445,8 +471,10 @@ catch (Exception ex)
 }
 
 // Create taxi rank tables manually AFTER EF migrations
-try
+if (!builder.Configuration.GetValue<bool>("SkipDatabase", false))
 {
+    try
+    {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
     
     // Remove conflicting Routes table if it exists
@@ -880,11 +908,16 @@ catch (Exception ex)
 {
     logger.LogWarning(ex, "Failed to create taxi rank tables");
 }
+    }
+}
 
-app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwagger(c => c.RouteTemplate = "openapi/{documentName}.json");
 
 app.UseRouting();
+
+app.MapDefaultEndpoints();
+
+app.MapScalarApiReference();
 
 // Add request logging middleware
 app.Use(async (context, next) =>
