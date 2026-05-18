@@ -3,7 +3,7 @@ import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import { AppState } from 'react-native';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
-  Modal, TextInput, RefreshControl, ActivityIndicator, Platform, Image, Switch, Linking,
+  Modal, TextInput, RefreshControl, ActivityIndicator, Platform, Image, Switch, Linking, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -1526,6 +1526,123 @@ function RequestDetailRow({ label, value, multiline, c }) {
   );
 }
 
+// ── Active Trip Card ─────────────────────────────────────────────────────────
+function ActiveTripCard({ activeTrip, onViewTripDetails, onCompleteTrip, s, c }) {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.25, duration: 900, useNativeDriver: false }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: false }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  const isRankTrip = activeTrip.tripType === 'TaxiRankTrip';
+  const ACCENT = isRankTrip ? '#D4AF37' : '#3b82f6';
+  const from = activeTrip.origin || activeTrip.pickupLocation || activeTrip.PickupLocation || activeTrip.departureStation || '—';
+  const to = activeTrip.destination || activeTrip.dropoffLocation || activeTrip.DropoffLocation || activeTrip.destinationStation || '—';
+  const vehicleReg = activeTrip.vehicle?.registration || activeTrip.vehicleRegistration;
+  const fare = activeTrip.totalAmount || activeTrip.fareAmount || 0;
+  const pax = activeTrip.passengerCount || 0;
+  const routeName = activeTrip.route?.routeName || activeTrip.routeName;
+  const dispatchedAt = activeTrip.departureTime || activeTrip.departedAt || activeTrip.startedAt;
+  const statusLabel = isRankTrip
+    ? (activeTrip.status === 'Departed' || activeTrip.status === 'Dispatched' ? 'EN ROUTE' : (activeTrip.status || 'ACTIVE').toUpperCase())
+    : (activeTrip.status || 'ACTIVE').toUpperCase();
+
+  return (
+    <View style={[s.atCard, { borderColor: ACCENT + '60' }]}>
+      {/* Left accent stripe */}
+      <View style={[s.atStripe, { backgroundColor: ACCENT }]} />
+
+      <View style={{ flex: 1 }}>
+        {/* Header row */}
+        <View style={s.atHeader}>
+          <View style={s.atLiveRow}>
+            <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
+              <Animated.View style={[s.atPulseRing, { backgroundColor: ACCENT, opacity: pulseAnim }]} />
+              <View style={[s.atLiveDot, { backgroundColor: ACCENT }]} />
+            </View>
+            <Text style={[s.atLiveLabel, { color: ACCENT }]}>
+              LIVE · {isRankTrip ? 'RANK TRIP' : 'TRIP REQUEST'}
+            </Text>
+          </View>
+          <View style={[s.atStatusBadge, { backgroundColor: ACCENT + '22', borderColor: ACCENT + '55' }]}>
+            <Text style={[s.atStatusTxt, { color: ACCENT }]}>{statusLabel}</Text>
+          </View>
+        </View>
+
+        {/* Route visualiser */}
+        <View style={s.atRouteBlock}>
+          <View style={s.atRouteLeft}>
+            <View style={[s.atRouteDot, { backgroundColor: '#22c55e' }]} />
+            <View style={[s.atRouteLine, { backgroundColor: ACCENT + '40' }]} />
+            <View style={[s.atRouteSquare, { backgroundColor: '#ef4444' }]} />
+          </View>
+          <View style={s.atRouteRight}>
+            <Text style={s.atStationLabel}>{isRankTrip ? 'DEPARTED FROM' : 'PICKUP'}</Text>
+            <Text style={s.atStation} numberOfLines={1}>{from}</Text>
+            <Text style={[s.atStationLabel, { marginTop: 12 }]}>{isRankTrip ? 'HEADING TO' : 'DESTINATION'}</Text>
+            <Text style={s.atStation} numberOfLines={1}>{to}</Text>
+          </View>
+        </View>
+
+        {/* Stats pills */}
+        <View style={s.atPillRow}>
+          {vehicleReg && (
+            <View style={s.atPill}>
+              <Ionicons name="car-outline" size={11} color={ACCENT} />
+              <Text style={[s.atPillTxt, { color: ACCENT }]}>{vehicleReg}</Text>
+            </View>
+          )}
+          {pax > 0 && (
+            <View style={s.atPill}>
+              <Ionicons name="people-outline" size={11} color="#94a3b8" />
+              <Text style={s.atPillTxt}>{pax} pax</Text>
+            </View>
+          )}
+          {fare > 0 && (
+            <View style={s.atPill}>
+              <Ionicons name="cash-outline" size={11} color="#22c55e" />
+              <Text style={[s.atPillTxt, { color: '#22c55e' }]}>R{Number(fare).toFixed(2)}</Text>
+            </View>
+          )}
+          {dispatchedAt && (
+            <View style={s.atPill}>
+              <Ionicons name="time-outline" size={11} color="#94a3b8" />
+              <Text style={s.atPillTxt}>{new Date(dispatchedAt).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Action buttons */}
+        <View style={s.atBtnRow}>
+          <TouchableOpacity
+            style={[s.atBtnSecondary, { borderColor: ACCENT + '60' }]}
+            onPress={() => onViewTripDetails(activeTrip)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="navigate-outline" size={16} color={ACCENT} />
+            <Text style={[s.atBtnSecondaryTxt, { color: ACCENT }]}>View Progress</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.atBtnComplete}
+            onPress={() => onCompleteTrip(activeTrip)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="checkmark-circle" size={16} color="#fff" />
+            <Text style={s.atBtnCompleteTxt}>Complete Trip</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // ── Tab screens ──────────────────────────────────────────────────────────────
 function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onToggle, onAddEarning, onAddExpense, onOpenTrips, onOpenBehavior, onOpenRequests, refreshing, onRefresh, monitorActive, monitorSpeed, recentBehaviorEvents, activeTrip, onViewTripDetails, onCompleteTrip, driverId, c, s }) {
   const [acceptSignal, setAcceptSignal] = useState(0);
@@ -1594,95 +1711,8 @@ function OverviewTab({ profile, vehicle, earnings, expenses, maintenance, onTogg
         </View>
       )}
 
-      {/* Active Trip Card */}
-      {activeTrip && (
-        <View style={s.activeTripCard}>
-          <View style={s.activeTripHeader}>
-            <View style={s.activeTripDot} />
-            <View style={{ flex: 1 }}>
-              <Text style={s.activeTripTitle}>Active Trip</Text>
-              <Text style={s.activeTripSub}>
-                {activeTrip.departureStation && activeTrip.destinationStation
-                  ? `${activeTrip.departureStation} → ${activeTrip.destinationStation}`
-                  : activeTrip.departureStation || 'In progress'}
-              </Text>
-            </View>
-            <View style={[s.activeTripBadge, activeTrip.status === 'InProgress' && { backgroundColor: c.info }]}>
-              <Text style={s.activeTripBadgeTxt}>
-                {activeTrip.tripType === 'TaxiRankTrip'
-                  ? (activeTrip.status === 'Departed' || activeTrip.status === 'Dispatched' ? 'EN ROUTE' : (activeTrip.status || 'ACTIVE').toUpperCase())
-                  : (activeTrip.status || 'ACTIVE').toUpperCase()}
-              </Text>
-            </View>
-          </View>
-
-          {/* Compact Route & Stats */}
-          <View style={s.activeTripCompact}>
-            <View style={s.activeTripCompactRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.activeTripCompactLabel}>From</Text>
-                <Text style={s.activeTripCompactValue} numberOfLines={1}>
-                  {activeTrip.origin || activeTrip.pickupLocation || activeTrip.PickupLocation || activeTrip.departureStation || '—'}
-                </Text>
-              </View>
-              <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.activeTripCompactLabel}>To</Text>
-                <Text style={s.activeTripCompactValue} numberOfLines={1}>
-                  {activeTrip.destination || activeTrip.dropoffLocation || activeTrip.DropoffLocation || activeTrip.destinationStation || '—'}
-                </Text>
-              </View>
-            </View>
-            <View style={s.activeTripCompactRow}>
-              <View style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={s.activeTripCompactLabel}>Distance</Text>
-                <Text style={s.activeTripCompactValue}>
-                  {activeTrip.distance ? `${activeTrip.distance} km` : activeTrip.route?.distance ? `${activeTrip.route.distance} km` : '—'}
-                </Text>
-              </View>
-              <View style={{ width: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
-              <View style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={s.activeTripCompactLabel}>ETA</Text>
-                <Text style={s.activeTripCompactValue}>
-                  {activeTrip.eta || activeTrip.route?.estimatedTime || '—'}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={s.activeTripMeta}>
-            <View style={s.activeTripMetaItem}>
-              <Ionicons name="car-outline" size={14} color="rgba(255,255,255,0.7)" />
-              <Text style={s.activeTripMetaTxt}>
-                {activeTrip.vehicle?.registration || '—'}
-              </Text>
-            </View>
-            {activeTrip.passengerCount > 0 && (
-              <View style={s.activeTripMetaItem}>
-                <Ionicons name="people-outline" size={14} color="rgba(255,255,255,0.7)" />
-                <Text style={s.activeTripMetaTxt}>{activeTrip.passengerCount} pax</Text>
-              </View>
-            )}
-            {activeTrip.totalAmount > 0 && (
-              <View style={s.activeTripMetaItem}>
-                <Ionicons name="cash-outline" size={14} color="rgba(255,255,255,0.7)" />
-                <Text style={s.activeTripMetaTxt}>R{activeTrip.totalAmount}</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={s.activeTripActions}>
-            <TouchableOpacity style={s.activeTripBtn} onPress={() => onViewTripDetails(activeTrip)}>
-              <Ionicons name="eye-outline" size={16} color="#fff" />
-              <Text style={s.activeTripBtnTxt}>View Details</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.activeTripBtn, s.activeTripBtnGreen]} onPress={() => onCompleteTrip(activeTrip)}>
-              <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
-              <Text style={s.activeTripBtnTxt}>Complete Trip</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      {/* ── Active Trip Card ── */}
+      {activeTrip && <ActiveTripCard activeTrip={activeTrip} onViewTripDetails={onViewTripDetails} onCompleteTrip={onCompleteTrip} s={s} c={c} />}
 
       {/* Vehicle Details */}
       <VehicleDetailsCard vehicle={vehicle} c={c} s={s} />
@@ -2243,6 +2273,19 @@ function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
   // ── Active trip navigator ──
   const [navTripReq, setNavTripReq] = useState(null);
 
+  // ── Pulse animation for live dot ──
+  const tripsPulseAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(tripsPulseAnim, { toValue: 0.2, duration: 900, useNativeDriver: false }),
+        Animated.timing(tripsPulseAnim, { toValue: 1, duration: 900, useNativeDriver: false }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
   const loadDriverRoute = useCallback(async (routeId) => {
     if (!routeId) {
       setDriverRoute(null);
@@ -2588,7 +2631,12 @@ function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
     setCompleting(true);
     try {
       const fareAmount = completionFare ? parseFloat(completionFare) : 0;
-      await completeTrip(myDispatchedQueueEntryId, 'Completed by driver', driverId, null, fareAmount);
+      await completeQueueTrip(myDispatchedQueueEntryId, {
+        notes: 'Completed by driver',
+        completedByDriverId: driverId,
+        completedAt: new Date().toISOString(),
+        totalAmount: fareAmount || undefined,
+      });
       setCompletionModalVisible(false);
       setCompletionFare('');
       // Refresh active trip data
@@ -2602,9 +2650,11 @@ function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={QUEUE_GOLD} />
-        <Text style={{ marginTop: 10, color: c.textMuted, fontSize: 13 }}>Loading queue…</Text>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0a0f1e' }}>
+        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#1e293b', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+          <ActivityIndicator size="large" color={QUEUE_GOLD} />
+        </View>
+        <Text style={{ color: '#94a3b8', fontSize: 13, fontWeight: '600' }}>Loading queue…</Text>
       </View>
     );
   }
@@ -2616,134 +2666,159 @@ function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: c.background }}>
-      {/* Inner tab selector */}
-      <View style={{ flexDirection: 'row', backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border, paddingHorizontal: 12, paddingVertical: 6, gap: 8 }}>
-        <TouchableOpacity
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 10, gap: 6, backgroundColor: innerTab === 'queue' ? c.primary : c.card }}
-          onPress={() => setInnerTab('queue')}>
-          <Ionicons name={innerTab === 'queue' ? 'list' : 'list-outline'} size={15} color={innerTab === 'queue' ? '#fff' : c.textMuted} />
-          <Text style={{ fontSize: 12, fontWeight: '700', color: innerTab === 'queue' ? '#fff' : c.textMuted }}>Queue ({queue.length})</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 10, gap: 6, backgroundColor: innerTab === 'trips' ? c.primary : c.card }}
-          onPress={() => setInnerTab('trips')}>
-          <Ionicons name={innerTab === 'trips' ? 'car' : 'car-outline'} size={15} color={innerTab === 'trips' ? '#fff' : c.textMuted} />
-          <Text style={{ fontSize: 12, fontWeight: '700', color: innerTab === 'trips' ? '#fff' : c.textMuted }}>Trips ({dispatchedTrips.length})</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, borderRadius: 10, gap: 6, backgroundColor: innerTab === 'requests' ? '#D4AF37' : c.card }}
-          onPress={() => setInnerTab('requests')}>
-          <Ionicons name={innerTab === 'requests' ? 'navigate' : 'navigate-outline'} size={15} color={innerTab === 'requests' ? '#000' : c.textMuted} />
-          <Text style={{ fontSize: 12, fontWeight: '700', color: innerTab === 'requests' ? '#000' : c.textMuted }}>Requests{tripRequests.length > 0 ? ` (${tripRequests.length})` : ''}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Header: rank name + date nav */}
-      <View style={{ backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border, paddingHorizontal: 12, paddingVertical: 6 }}>
-        <Text style={{ fontSize: 14, fontWeight: '800', color: c.text, marginBottom: 4 }}>
-          {data?.rankName || 'Rank Queue'}
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <TouchableOpacity onPress={() => changeDate(-1)} style={{ padding: 6 }}>
-            <Ionicons name="chevron-back" size={18} color={c.textMuted} />
-          </TouchableOpacity>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: c.text, marginHorizontal: 12 }}>{fmtDateLabel(date)}</Text>
-          <TouchableOpacity onPress={() => changeDate(1)} style={{ padding: 6 }}>
-            <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Active trip banner */}
-      {!!myDispatchedQueueEntryId && (
-        <View style={{ marginHorizontal: 12, marginTop: 10, backgroundColor: '#1a1a2e', borderRadius: 14, padding: 14, borderWidth: 1.5, borderColor: '#22c55e' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Active Trip</Text>
-              <Text style={{ color: '#ffffffaa', fontSize: 12, marginTop: 1 }}>
-                {myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration} · {myDispatchedTrip?.routeName || data?.routeName || 'En route'}
-              </Text>
-            </View>
-            <View style={{ backgroundColor: '#22c55e', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 }}>
-              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>Dispatched</Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            {myDispatchedTrip?.id && (
-              <TouchableOpacity
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingVertical: 9, gap: 6 }}
-                onPress={() => navigation.navigate('DriverTripDetails', { queueEntryId: myDispatchedTrip.id })}
-              >
-                <Ionicons name="eye-outline" size={15} color="#fff" />
-                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Details</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#22c55e', borderRadius: 8, paddingVertical: 9, gap: 6 }}
-              onPress={handleCompleteTrip}
-            >
-              <Ionicons name="checkmark-circle" size={15} color="#fff" />
-              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Complete</Text>
+    <View style={{ flex: 1, backgroundColor: '#0a0f1e' }}>
+      {/* ── Inner tab bar ── */}
+      <View style={{ flexDirection: 'row', backgroundColor: '#0f172a', paddingHorizontal: 14, paddingTop: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#1e293b', gap: 8 }}>
+        {[
+          { key: 'queue', icon: 'list-outline', label: 'Queue', cnt: queue.length, activeColor: QUEUE_GOLD, textColor: '#000' },
+          { key: 'trips', icon: 'car-sport-outline', label: 'Trips', cnt: dispatchedTrips.length, activeColor: '#22c55e', textColor: '#fff' },
+          { key: 'requests', icon: 'navigate-outline', label: 'Requests', cnt: tripRequests.length + newRequestCount, activeColor: '#D4AF37', textColor: '#000' },
+        ].map(t => {
+          const on = innerTab === t.key;
+          return (
+            <TouchableOpacity key={t.key}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7, borderRadius: 22, backgroundColor: on ? t.activeColor : '#1e293b', borderWidth: 1, borderColor: on ? t.activeColor : '#334155' }}
+              onPress={() => setInnerTab(t.key)}>
+              <Ionicons name={t.icon} size={14} color={on ? t.textColor : '#94a3b8'} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: on ? t.textColor : '#94a3b8' }}>{t.label}</Text>
+              {t.cnt > 0 && (
+                <View style={{ backgroundColor: on ? 'rgba(0,0,0,0.2)' : '#334155', borderRadius: 10, paddingHorizontal: 5, paddingVertical: 1 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: on ? t.textColor : '#94a3b8' }}>{t.cnt}</Text>
+                </View>
+              )}
             </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* ── Rank header + date nav ── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0f172a', borderBottomWidth: 1, borderBottomColor: '#1e293b', paddingHorizontal: 14, paddingVertical: 7, gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: QUEUE_GOLD }} />
+          <Text style={{ fontSize: 13, fontWeight: '900', color: '#f1f5f9' }} numberOfLines={1}>{data?.rankName || 'Rank Queue'}</Text>
+        </View>
+        <TouchableOpacity onPress={() => changeDate(-1)} style={{ padding: 6 }}>
+          <Ionicons name="chevron-back" size={16} color="#94a3b8" />
+        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: '#334155' }}>
+          <Ionicons name="calendar-outline" size={12} color={QUEUE_GOLD} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#f1f5f9' }}>{fmtDateLabel(date)}</Text>
+          {date === isoDate(new Date()) && <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#22c55e' }} />}
+        </View>
+        <TouchableOpacity onPress={() => changeDate(1)} style={{ padding: 6 }}>
+          <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Active trip live banner ── */}
+      {!!myDispatchedQueueEntryId && (
+        <View style={{ flexDirection: 'row', backgroundColor: '#0f172a', borderBottomWidth: 1, borderBottomColor: '#22c55e40', overflow: 'hidden' }}>
+          <View style={{ width: 4, backgroundColor: '#22c55e' }} />
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 6 }}>
+              <View style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}>
+                <Animated.View style={{ position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#22c55e', opacity: tripsPulseAnim }} />
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#22c55e', zIndex: 1 }} />
+              </View>
+              <Text style={{ fontSize: 10, fontWeight: '900', color: '#22c55e', letterSpacing: 0.8 }}>LIVE · EN ROUTE</Text>
+              <View style={{ width: 1, height: 12, backgroundColor: '#22c55e44', marginHorizontal: 2 }} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="car-outline" size={11} color={QUEUE_GOLD} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#94a3b8' }}>{myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration || '—'}</Text>
+              </View>
+              {(myDispatchedTrip?.routeName || data?.routeName) && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Ionicons name="navigate-outline" size={11} color="#475569" />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#94a3b8' }} numberOfLines={1}>{myDispatchedTrip?.routeName || data?.routeName}</Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }} />
+              <View style={{ backgroundColor: '#22c55e22', borderRadius: 12, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: '#22c55e55' }}>
+                <Text style={{ fontSize: 9, fontWeight: '900', color: '#22c55e' }}>ACTIVE</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 9 }}>
+              {myDispatchedTrip?.id && (
+                <TouchableOpacity
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: QUEUE_GOLD + '60', backgroundColor: '#1e293b' }}
+                  onPress={() => navigation.navigate('DriverTripDetails', { queueEntryId: myDispatchedTrip.id })}>
+                  <Ionicons name="document-text-outline" size={14} color={QUEUE_GOLD} />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: QUEUE_GOLD }}>View Details</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 7, borderRadius: 10, backgroundColor: '#16a34a' }}
+                onPress={handleCompleteTrip}>
+                <Ionicons name="checkmark-circle" size={14} color="#fff" />
+                <Text style={{ fontSize: 12, fontWeight: '900', color: '#fff' }}>Complete Trip</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
 
       {/* ── DISPATCHED TRIPS ── */}
       {innerTab === 'trips' && (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 12, paddingBottom: 28 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={QUEUE_GOLD} />}
-        >
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10, paddingBottom: 24 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={QUEUE_GOLD} />}>
           {dispatchedTrips.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingTop: 48 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                <Ionicons name="document-text-outline" size={30} color={c.textMuted} />
+            <View style={{ alignItems: 'center', paddingTop: 60 }}>
+              <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#1e293b', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                <Ionicons name="car-sport-outline" size={28} color="#475569" />
               </View>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>No trips yet</Text>
-              <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>Dispatched trips will appear here</Text>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#f1f5f9', marginBottom: 6 }}>No trips yet</Text>
+              <Text style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', lineHeight: 18, paddingHorizontal: 32 }}>Dispatched trips for {fmtDateLabel(date).toLowerCase()} will appear here</Text>
             </View>
           ) : (
             dispatchedTrips.map((trip, idx) => {
               const sc = queueStatusColor(trip.status || 'Dispatched');
               const isActive = trip.status !== 'Completed' && trip.status !== 'Cancelled';
+              const displayStatus = (trip.status === 'Dispatched' || trip.status === 'Departed') ? 'EN ROUTE' : (trip.status || 'Active');
+              const fare = trip.fareAmount || trip.totalAmount || 0;
               return (
                 <TouchableOpacity key={trip.id || idx}
-                  style={{ backgroundColor: c.surface, borderRadius: 14, marginBottom: 10, flexDirection: 'row', overflow: 'hidden',
-                    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 }}
-                  activeOpacity={0.75}
+                  style={{ flexDirection: 'row', backgroundColor: '#0f172a', borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: '#1e293b', overflow: 'hidden' }}
+                  activeOpacity={0.8}
                   onPress={() => navigation.navigate('DriverTripDetails', { tripId: trip.id, driverProfileId: driverId })}>
                   <View style={{ width: 4, backgroundColor: sc }} />
-                  <View style={{ flex: 1, padding: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: c.text, flex: 1 }} numberOfLines={1}>
-                        {trip.departureStation || '—'} → {trip.destinationStation || '—'}
-                      </Text>
-                      <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: sc }}>
-                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{trip.status || 'Active'}</Text>
+                  <View style={{ flex: 1, padding: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '900', color: '#f1f5f9', marginBottom: 2 }} numberOfLines={1}>
+                          {trip.departureStation || '—'} → {trip.destinationStation || '—'}
+                        </Text>
+                        {(trip.vehicle?.registration || trip.vehicleRegistration) && (
+                          <Text style={{ fontSize: 12, color: '#94a3b8' }}>{trip.vehicle?.registration || trip.vehicleRegistration}</Text>
+                        )}
+                      </View>
+                      <View style={{ backgroundColor: sc + '22', borderWidth: 1, borderColor: sc + '55', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, marginTop: 2 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '900', color: sc, letterSpacing: 0.4 }}>{displayStatus}</Text>
                       </View>
                     </View>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Ionicons name="car-outline" size={12} color={c.textMuted} />
-                        <Text style={{ fontSize: 11, color: c.textMuted }}>{trip.vehicle?.registration || trip.vehicleRegistration || '—'}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Ionicons name="people-outline" size={12} color={c.textMuted} />
-                        <Text style={{ fontSize: 11, color: c.textMuted }}>{trip.passengerCount ?? 0} pax</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Ionicons name="time-outline" size={12} color={c.textMuted} />
-                        <Text style={{ fontSize: 11, color: c.textMuted }}>{fmtTime(trip.departureTime)}</Text>
-                      </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {(trip.passengerCount ?? 0) > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#334155' }}>
+                          <Ionicons name="people-outline" size={11} color="#475569" />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#94a3b8' }}>{trip.passengerCount} pax</Text>
+                        </View>
+                      )}
+                      {fare > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#334155' }}>
+                          <Ionicons name="cash-outline" size={11} color="#22c55e" />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#22c55e' }}>R{Number(fare).toFixed(2)}</Text>
+                        </View>
+                      )}
+                      {trip.departureTime && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#334155' }}>
+                          <Ionicons name="time-outline" size={11} color="#475569" />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#94a3b8' }}>{fmtTime(trip.departureTime)}</Text>
+                        </View>
+                      )}
                     </View>
                     {isActive && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
-                        <Ionicons name="checkmark-circle-outline" size={12} color="#22c55e" />
-                        <Text style={{ fontSize: 11, color: '#22c55e' }}>Tap to view &amp; complete</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
+                        <Ionicons name="open-outline" size={12} color={QUEUE_GOLD} />
+                        <Text style={{ fontSize: 11, color: QUEUE_GOLD, fontWeight: '600' }}>Tap to view details</Text>
                       </View>
                     )}
                   </View>
@@ -2762,15 +2837,20 @@ function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
           refreshControl={<RefreshControl refreshing={requestsLoading} onRefresh={loadTripRequests} tintColor="#D4AF37" />}
         >
           {newRequestCount > 0 && (
-            <View style={{ backgroundColor: '#fde68a', borderRadius: 14, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#f59e0b' }}>
-              <Text style={{ color: '#92400e', fontSize: 13, fontWeight: '700' }}>{newRequestCount} new matching request{newRequestCount > 1 ? 's' : ''} available</Text>
-              <Text style={{ color: '#7c2d12', fontSize: 12, marginTop: 4 }}>Pull down to refresh or stay on this tab for automatic updates.</Text>
+            <View style={{ backgroundColor: '#D4AF3722', borderRadius: 14, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#D4AF3766' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Ionicons name="notifications" size={15} color={QUEUE_GOLD} />
+                <Text style={{ color: QUEUE_GOLD, fontSize: 13, fontWeight: '800' }}>{newRequestCount} new request{newRequestCount > 1 ? 's' : ''} available</Text>
+              </View>
+              <Text style={{ color: '#94a3b8', fontSize: 12 }}>Pull down to refresh or stay on this tab for live updates.</Text>
             </View>
           )}
           {requestsLoading && tripRequests.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingTop: 40 }}>
-              <ActivityIndicator size="large" color="#D4AF37" />
-              <Text style={{ color: c.textMuted, marginTop: 10, fontSize: 13 }}>Loading trip requests…</Text>
+            <View style={{ alignItems: 'center', paddingTop: 60 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#1e293b', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <ActivityIndicator size="large" color="#D4AF37" />
+              </View>
+              <Text style={{ color: '#94a3b8', fontSize: 13, fontWeight: '600' }}>Loading trip requests…</Text>
             </View>
           ) : (
             <>
@@ -2932,20 +3012,20 @@ function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
                 </View>
               )}
               {tripRequests.length === 0 && acceptedTripRequests.length === 0 && inProgressTripRequests.length === 0 ? (
-                <View style={{ alignItems: 'center', paddingTop: 48 }}>
-                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                    <Ionicons name="navigate-outline" size={30} color={c.textMuted} />
+                <View style={{ alignItems: 'center', paddingTop: 60 }}>
+                  <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#1e293b', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                    <Ionicons name="navigate-outline" size={28} color="#475569" />
                   </View>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>No pending requests</Text>
-                  <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#f1f5f9', marginBottom: 6 }}>No pending requests</Text>
+                  <Text style={{ fontSize: 13, color: '#94a3b8', marginTop: 0, textAlign: 'center', paddingHorizontal: 32, lineHeight: 18 }}>
                     {!data?.rankId
                       ? 'No taxi rank linked to your vehicle yet. Connect your car to a rank to receive trip requests.'
                       : `No requests for ${data.rankName || 'your rank'}${data.routeName ? ` · ${data.routeName}` : ''} right now. Pull down to refresh.`}
                   </Text>
                   {!!data?.rankId && (
-                    <View style={{ marginTop: 10, paddingHorizontal: 20, alignItems: 'center' }}>
-                      <Text style={{ fontSize: 10, color: c.textMuted }}>
-                        Rank: {data.rankName || data.rankId} {data.routeName ? `· Route: ${data.routeName}` : '(no route assigned)'}
+                    <View style={{ marginTop: 10, backgroundColor: '#1e293b', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#334155' }}>
+                      <Text style={{ fontSize: 11, color: '#94a3b8', fontWeight: '600' }}>
+                        {data.rankName || data.rankId}{data.routeName ? ` · ${data.routeName}` : ' · No route assigned'}
                       </Text>
                     </View>
                   )}
@@ -3028,85 +3108,79 @@ function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
       {/* ── QUEUE ── */}
       {innerTab === 'queue' && <>
 
-      {/* Route selector tabs */}
-      {routes.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          style={{ backgroundColor: c.background, borderBottomWidth: 1, borderBottomColor: c.border }}
-          contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 6, gap: 6, flexDirection: 'row' }}>
-          {routes.map(r => {
-            const isActive = selectedRoute === r.id;
-            const routeItems = queue.filter(i => (i.routeId || i.routeName || 'unassigned') === r.id);
-            return (
-              <TouchableOpacity key={r.id}
-                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10,
-                  backgroundColor: isActive ? QUEUE_GOLD : c.card, borderWidth: 1, borderColor: isActive ? QUEUE_GOLD : c.border }}
-                onPress={() => setSelectedRoute(r.id)}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: isActive ? '#000' : c.textMuted }}>
-                  {r.name}
-                </Text>
-                <Text style={{ fontSize: 10, color: isActive ? 'rgba(255,255,255,0.7)' : c.textMuted }}>
-                  ({routeItems.length})
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-
-      {/* Status filter chips */}
+      {/* ── Route + Status filters (single compact row) ── */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={{ backgroundColor: c.background, borderBottomWidth: 1, borderBottomColor: c.border }}
-        contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 5, gap: 6, flexDirection: 'row' }}>
+        style={{ backgroundColor: '#0f172a', borderBottomWidth: 1, borderBottomColor: '#1e293b' }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 6, gap: 6, flexDirection: 'row', alignItems: 'center' }}>
+        {routes.length > 1 && routes.map(r => {
+          const on = selectedRoute === r.id;
+          const routeCnt = r.id === 'all' ? queue.length : queue.filter(i => (i.routeId || i.routeName || 'unassigned') === r.id).length;
+          return (
+            <TouchableOpacity key={r.id}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16,
+                backgroundColor: on ? QUEUE_GOLD : '#1e293b', borderWidth: 1, borderColor: on ? QUEUE_GOLD : '#334155' }}
+              onPress={() => setSelectedRoute(r.id)}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: on ? '#000' : '#94a3b8' }}>{r.name}</Text>
+              <View style={{ backgroundColor: on ? 'rgba(0,0,0,0.2)' : '#334155', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 1 }}>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: on ? '#000' : '#94a3b8' }}>{routeCnt}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+        {routes.length > 1 && <View style={{ width: 1, height: 18, backgroundColor: '#334155', marginHorizontal: 2 }} />}
         {[
-          { key: 'all', label: 'All', cnt: routeQueue.length },
-          { key: 'waiting', label: 'Waiting', cnt: waitingCnt },
-          { key: 'dispatched', label: 'Dispatched', cnt: dispatchedCnt },
-          { key: 'completed', label: 'Completed', cnt: completedCnt },
-        ].map(f => (
-          <TouchableOpacity key={f.key}
-            style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
-              backgroundColor: filter === f.key ? QUEUE_GOLD : c.card }}
-            onPress={() => setFilter(f.key)}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: filter === f.key ? '#000' : c.textMuted }}>
-              {f.label} {f.cnt}
-            </Text>
-          </TouchableOpacity>
-        ))}
+          { key: 'all', label: 'All', cnt: routeQueue.length, color: QUEUE_GOLD },
+          { key: 'waiting', label: 'Waiting', cnt: waitingCnt, color: '#f59e0b' },
+          { key: 'dispatched', label: 'En Route', cnt: dispatchedCnt, color: '#22c55e' },
+          { key: 'completed', label: 'Done', cnt: completedCnt, color: '#94a3b8' },
+        ].map(f => {
+          const on = filter === f.key;
+          return (
+            <TouchableOpacity key={f.key}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 16,
+                backgroundColor: on ? f.color : '#1e293b', borderWidth: 1, borderColor: on ? f.color : '#334155' }}
+              onPress={() => setFilter(f.key)}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: on ? '#000' : '#94a3b8' }}>{f.label}</Text>
+              <View style={{ backgroundColor: on ? 'rgba(0,0,0,0.2)' : '#334155', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 1 }}>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: on ? '#000' : '#94a3b8' }}>{f.cnt}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
       {/* Queue list */}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 12, paddingBottom: 28 }}
+        contentContainerStyle={{ padding: 10, paddingBottom: 20 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={QUEUE_GOLD} />}
       >
-        {/* My vehicle summary — only when viewing its route or all */}
+        {/* ── My vehicle summary ── */}
         {myEntry && (selectedRoute === 'all' || (myEntry.routeId || myEntry.routeName || 'unassigned') === selectedRoute) && (
-          <View style={{ backgroundColor: 'rgba(212,175,55,0.12)', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1.5, borderColor: QUEUE_GOLD }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: QUEUE_GOLD, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#000', fontSize: 13, fontWeight: '800' }}>#{data?.myPosition || myEntry.queuePosition}</Text>
+          <View style={{ flexDirection: 'row', backgroundColor: '#0f172a', borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: QUEUE_GOLD + '80', overflow: 'hidden' }}>
+            <View style={{ width: 4, backgroundColor: QUEUE_GOLD }} />
+            <View style={{ width: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: QUEUE_GOLD + '18', paddingVertical: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '900', color: QUEUE_GOLD }}>#{data?.myPosition || myEntry.queuePosition}</Text>
+            </View>
+            <View style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                <Text style={{ fontSize: 15, fontWeight: '900', color: '#f1f5f9' }}>{data?.vehicleRegistration || myEntry.vehicleRegistration}</Text>
+                <View style={{ backgroundColor: QUEUE_GOLD, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#000', letterSpacing: 0.5 }}>YOU</Text>
+                </View>
               </View>
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: c.text }}>{data?.vehicleRegistration || myEntry.vehicleRegistration}</Text>
-                <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 1 }}>
-                  {data?.myStatus || myEntry.status} · {myEntry.routeName || data?.routeName || '—'}
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ fontSize: 10, color: c.textMuted }}>Your position</Text>
-              </View>
+              <Text style={{ fontSize: 12, color: '#94a3b8' }}>{data?.myStatus || myEntry.status} · {myEntry.routeName || data?.routeName || '—'}</Text>
             </View>
           </View>
         )}
 
         {filtered.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingTop: 40 }}>
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-              <Ionicons name="car-outline" size={30} color={c.textMuted} />
+          <View style={{ alignItems: 'center', paddingTop: 60 }}>
+            <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#1e293b', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <Ionicons name="car-outline" size={28} color="#475569" />
             </View>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: c.text }}>No vehicles in queue</Text>
-            <Text style={{ fontSize: 12, color: c.textMuted, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#f1f5f9', marginBottom: 6 }}>No vehicles in queue</Text>
+            <Text style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', lineHeight: 18, paddingHorizontal: 32 }}>
               {data?.message || 'No vehicles for this route today'}
             </Text>
           </View>
@@ -3114,41 +3188,47 @@ function TripsTab({ driverId, vehicleId, navigation, defaultInnerTab, c, s }) {
           filtered.map((item, idx) => {
             const sc = queueStatusColor(item.status);
             const isMine = item.isMine;
+            const isEnRoute = normQueueStatus(item.status) === 'dispatched';
             return (
               <View key={item.id || idx}
-                style={{ backgroundColor: c.surface, borderRadius: 14, marginBottom: 10, flexDirection: 'row', overflow: 'hidden',
-                  borderWidth: isMine ? 1.5 : 0, borderColor: QUEUE_GOLD,
-                  shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 }}>
-                <View style={{ width: 4, backgroundColor: sc }} />
-                <View style={{ flex: 1, padding: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                      <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: isMine ? QUEUE_GOLD : sc + '18' }}>
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: isMine ? '#000' : sc }}>#{item.queuePosition}</Text>
+                style={{ flexDirection: 'row', alignItems: 'stretch', backgroundColor: '#0f172a', borderRadius: 14, marginBottom: 8,
+                  borderWidth: 1, borderColor: isMine ? QUEUE_GOLD + '80' : '#1e293b', overflow: 'hidden' }}>
+                <View style={{ width: 4, backgroundColor: isMine ? QUEUE_GOLD : sc }} />
+                <View style={{ width: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: isMine ? QUEUE_GOLD + '18' : '#1e293b', paddingVertical: 16 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: isMine ? QUEUE_GOLD : sc }}>#{item.queuePosition}</Text>
+                </View>
+                <View style={{ flex: 1, paddingVertical: 12, paddingRight: 12, paddingLeft: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '900', color: '#f1f5f9' }}>{item.vehicleRegistration || '—'}</Text>
+                        {isMine && <View style={{ backgroundColor: QUEUE_GOLD, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 }}><Text style={{ fontSize: 9, fontWeight: '900', color: '#000' }}>YOU</Text></View>}
                       </View>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: c.text, flex: 1 }} numberOfLines={1}>
-                        {item.vehicleRegistration || '—'}{isMine ? '  (You)' : ''}
-                      </Text>
+                      <Text style={{ fontSize: 12, color: '#94a3b8' }} numberOfLines={1}>{item.driverName || 'No driver'}</Text>
                     </View>
-                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: sc }}>
-                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{item.status}</Text>
+                    <View style={{ backgroundColor: sc + '22', borderWidth: 1, borderColor: sc + '55', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, marginTop: 2 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '900', color: sc, letterSpacing: 0.4 }}>{isEnRoute ? 'EN ROUTE' : (item.status || '—').toUpperCase()}</Text>
                     </View>
                   </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons name="person-outline" size={12} color={c.textMuted} />
-                      <Text style={{ fontSize: 11, color: c.textMuted }}>{item.driverName || 'No Driver'}</Text>
-                    </View>
-                    {selectedRoute === 'all' && item.routeName ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Ionicons name="navigate-outline" size={12} color={c.textMuted} />
-                        <Text style={{ fontSize: 11, color: c.textMuted }}>{item.routeName}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                    {selectedRoute === 'all' && item.routeName && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#334155' }}>
+                        <Ionicons name="navigate-outline" size={10} color="#475569" />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#94a3b8' }} numberOfLines={1}>{item.routeName}</Text>
                       </View>
-                    ) : null}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons name="time-outline" size={12} color={c.textMuted} />
-                      <Text style={{ fontSize: 11, color: c.textMuted }}>{item.joinedAt || '—'}</Text>
-                    </View>
+                    )}
+                    {item.fareAmount > 0 && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#334155' }}>
+                        <Ionicons name="cash-outline" size={10} color="#22c55e" />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#22c55e' }}>R{Number(item.fareAmount).toFixed(2)}</Text>
+                      </View>
+                    )}
+                    {item.joinedAt && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#334155' }}>
+                        <Ionicons name="time-outline" size={10} color="#475569" />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#94a3b8' }}>{item.joinedAt}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               </View>
@@ -4120,40 +4200,89 @@ export default function DriverDashboardScreen({ navigation }) {
         c={c}
       />
 
-      {/* Complete Trip Modal */}
-      <Modal visible={completeModalVisible} transparent animationType="fade" onRequestClose={() => setCompleteModalVisible(false)}>
+      {/* Complete Trip Bottom Sheet */}
+      <Modal visible={completeModalVisible} transparent animationType="slide" onRequestClose={() => setCompleteModalVisible(false)}>
         <View style={s.ctOverlay}>
-          <View style={s.ctContent}>
-            <Text style={s.ctTitle}>Complete Trip</Text>
-            <Text style={s.ctSubtitle}>Are you sure you want to complete this trip? This action cannot be undone.</Text>
-            <View style={s.ctFareRow}>
-              <Text style={s.ctFareLabel}>Total Fare (R)</Text>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { if (!completing) setCompleteModalVisible(false); }} />
+          <View style={s.ctSheet}>
+            {/* Handle */}
+            <View style={s.ctHandle} />
+
+            {/* Title row */}
+            <View style={s.ctTitleRow}>
+              <View style={s.ctTitleIcon}>
+                <Ionicons name="checkmark-circle" size={26} color="#22c55e" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.ctTitle}>Complete Trip</Text>
+                {activeTrip && (
+                  <Text style={s.ctRouteSub} numberOfLines={1}>
+                    {activeTrip.departureStation || activeTrip.origin || '—'} → {activeTrip.destinationStation || activeTrip.destination || '—'}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* Trip summary pills */}
+            {activeTrip && (
+              <View style={s.ctSummaryRow}>
+                {(activeTrip.vehicle?.registration || activeTrip.vehicleRegistration) && (
+                  <View style={s.ctSummaryPill}>
+                    <Ionicons name="car-outline" size={12} color="#94a3b8" />
+                    <Text style={s.ctSummaryTxt}>{activeTrip.vehicle?.registration || activeTrip.vehicleRegistration}</Text>
+                  </View>
+                )}
+                {(activeTrip.passengerCount || 0) > 0 && (
+                  <View style={s.ctSummaryPill}>
+                    <Ionicons name="people-outline" size={12} color="#94a3b8" />
+                    <Text style={s.ctSummaryTxt}>{activeTrip.passengerCount} pax</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Fare input */}
+            <Text style={s.ctFieldLabel}>Total Fare Collected</Text>
+            <View style={s.ctFareInputRow}>
+              <View style={s.ctFareCurrencyBox}>
+                <Text style={s.ctFareCurrency}>R</Text>
+              </View>
               <TextInput
                 style={s.ctFareInput}
                 placeholder="0.00"
-                placeholderTextColor={c.textMuted}
+                placeholderTextColor="#475569"
                 value={completionFare}
                 onChangeText={setCompletionFare}
                 keyboardType="decimal-pad"
+                autoFocus={false}
               />
             </View>
+
+            {/* Notes input */}
+            <Text style={[s.ctFieldLabel, { marginTop: 14 }]}>Notes <Text style={{ color: '#475569', fontWeight: '400' }}>(optional)</Text></Text>
             <TextInput
               style={s.ctNotesInput}
-              placeholder="Add completion notes (optional)"
-              placeholderTextColor={c.textMuted}
+              placeholder="Add completion notes..."
+              placeholderTextColor="#475569"
               value={completionNotes}
               onChangeText={setCompletionNotes}
               multiline
-              numberOfLines={3}
+              numberOfLines={2}
             />
-            <View style={s.ctButtons}>
+
+            {/* Action buttons */}
+            <View style={s.ctBtnRow}>
               <TouchableOpacity style={s.ctCancelBtn} onPress={() => setCompleteModalVisible(false)} disabled={completing}>
                 <Text style={s.ctCancelTxt}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.ctConfirmBtn} onPress={handleDashboardCompleteTrip} disabled={completing}>
+              <TouchableOpacity style={[s.ctConfirmBtn, completing && { opacity: 0.7 }]} onPress={handleDashboardCompleteTrip} disabled={completing}>
                 {completing
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={s.ctConfirmTxt}>Complete</Text>}
+                  : <>
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                      <Text style={s.ctConfirmTxt}>Complete Trip</Text>
+                    </>
+                }
               </TouchableOpacity>
             </View>
           </View>
@@ -4203,32 +4332,36 @@ function createStyles(c) {
     behaviorAlertPts: { fontSize: 12, fontWeight: '900' },
 
     // ── Active Trip Card ──
-    activeTripCard: {
-      backgroundColor: c.mode === 'dark' ? '#0f172a' : '#1a1a2e', borderRadius: 16, padding: 16, marginBottom: 14,
-      borderWidth: 1.5, borderColor: '#22c55e',
-      shadowColor: '#22c55e', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4,
+    atCard: {
+      flexDirection: 'row', backgroundColor: '#0f172a', borderRadius: 20,
+      borderWidth: 1, borderLeftWidth: 0, marginBottom: 14,
+      overflow: 'hidden',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 6,
     },
-    activeTripHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    activeTripDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 10 },
-    activeTripTitle: { fontSize: 15, fontWeight: '800', color: '#fff' },
-    activeTripSub: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 1 },
-    activeTripBadge: { backgroundColor: '#22c55e', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-    activeTripBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
-    activeTripCompact: { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: 10, marginBottom: 10 },
-    activeTripCompactRow: { flexDirection: 'row', marginBottom: 8 },
-    activeTripCompactLabel: { fontSize: 9, color: 'rgba(255,255,255,0.5)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-    activeTripCompactValue: { fontSize: 12, color: '#fff', fontWeight: '600' },
-    activeTripMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
-    activeTripMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    activeTripMetaTxt: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
-    activeTripActions: { flexDirection: 'row', gap: 10 },
-    activeTripBtn: {
-      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-      backgroundColor: c.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.1)', borderRadius: 10, paddingVertical: 10,
-      borderWidth: 1, borderColor: c.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.15)',
-    },
-    activeTripBtnGreen: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
-    activeTripBtnTxt: { color: '#fff', fontSize: 12, fontWeight: '600' },
+    atStripe: { width: 4, borderRadius: 0 },
+    atHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingTop: 14, paddingHorizontal: 14 },
+    atLiveRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+    atPulseRing: { position: 'absolute', width: 20, height: 20, borderRadius: 10 },
+    atLiveDot: { width: 10, height: 10, borderRadius: 5, zIndex: 1 },
+    atLiveLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+    atStatusBadge: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+    atStatusTxt: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+    atRouteBlock: { flexDirection: 'row', gap: 10, paddingHorizontal: 14, marginBottom: 14 },
+    atRouteLeft: { alignItems: 'center', paddingTop: 3 },
+    atRouteDot: { width: 11, height: 11, borderRadius: 6 },
+    atRouteLine: { width: 2, flex: 1, minHeight: 22, marginVertical: 3 },
+    atRouteSquare: { width: 9, height: 9, borderRadius: 2 },
+    atRouteRight: { flex: 1 },
+    atStationLabel: { fontSize: 9, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 2 },
+    atStation: { fontSize: 15, fontWeight: '800', color: '#f1f5f9' },
+    atPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingHorizontal: 14, marginBottom: 14 },
+    atPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: '#334155' },
+    atPillTxt: { fontSize: 11, fontWeight: '700', color: '#94a3b8' },
+    atBtnRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 14 },
+    atBtnSecondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, borderWidth: 1, backgroundColor: '#1e293b' },
+    atBtnSecondaryTxt: { fontSize: 13, fontWeight: '800' },
+    atBtnComplete: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: '#16a34a' },
+    atBtnCompleteTxt: { fontSize: 13, fontWeight: '900', color: '#fff' },
 
     // ── Hero profit card ──
     heroCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, borderRadius: 20, padding: 20, marginBottom: 14 },
@@ -4399,20 +4532,33 @@ function createStyles(c) {
     behaviorDesc: { fontSize: 11, color: c.textMuted, marginTop: 1 },
     behaviorPoints: { fontSize: 14, fontWeight: '900', color: '#ef4444' },
 
-    // ── Complete Trip Modal ──
-    ctOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 32 },
-    ctContent: { backgroundColor: c.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12 },
-    ctTitle: { fontSize: 20, fontWeight: '800', color: c.text, marginBottom: 8, textAlign: 'center' },
-    ctSubtitle: { fontSize: 14, color: c.textMuted, marginBottom: 20, textAlign: 'center', lineHeight: 20 },
-    ctFareRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-    ctFareLabel: { fontSize: 14, fontWeight: '600', color: c.text, marginRight: 12 },
-    ctFareInput: { flex: 1, backgroundColor: c.background, borderRadius: 10, padding: 12, fontSize: 16, color: c.text, borderWidth: 1, borderColor: c.border, textAlign: 'right', fontWeight: '600' },
-    ctNotesInput: { backgroundColor: c.background, borderRadius: 12, padding: 12, fontSize: 14, color: c.text, borderWidth: 1, borderColor: c.border, marginBottom: 20, minHeight: 80, textAlignVertical: 'top' },
-    ctButtons: { flexDirection: 'row', gap: 12 },
-    ctCancelBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', backgroundColor: c.background, borderWidth: 1, borderColor: c.border },
-    ctCancelTxt: { color: c.text, fontWeight: '700', fontSize: 15 },
-    ctConfirmBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', backgroundColor: '#16a34a' },
-    ctConfirmTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
+    // ── Complete Trip Bottom Sheet ──
+    ctOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+    ctSheet: {
+      backgroundColor: '#0f172a', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+      padding: 20, paddingBottom: 32,
+      borderTopWidth: 1, borderColor: '#1e293b',
+      shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 20,
+    },
+    ctHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#334155', alignSelf: 'center', marginBottom: 20 },
+    ctTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+    ctTitleIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center' },
+    ctTitle: { fontSize: 18, fontWeight: '900', color: '#f1f5f9' },
+    ctRouteSub: { fontSize: 12, color: '#64748b', marginTop: 2, fontWeight: '600' },
+    ctSummaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
+    ctSummaryPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#1e293b', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#334155' },
+    ctSummaryTxt: { fontSize: 11, fontWeight: '700', color: '#94a3b8' },
+    ctFieldLabel: { fontSize: 11, fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
+    ctFareInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e293b', borderRadius: 14, borderWidth: 1, borderColor: '#334155', marginBottom: 4, overflow: 'hidden' },
+    ctFareCurrencyBox: { paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#334155', justifyContent: 'center' },
+    ctFareCurrency: { fontSize: 18, fontWeight: '900', color: '#22c55e' },
+    ctFareInput: { flex: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 22, fontWeight: '900', color: '#f1f5f9' },
+    ctNotesInput: { backgroundColor: '#1e293b', borderRadius: 14, padding: 14, fontSize: 14, color: '#f1f5f9', borderWidth: 1, borderColor: '#334155', marginBottom: 20, minHeight: 64, textAlignVertical: 'top' },
+    ctBtnRow: { flexDirection: 'row', gap: 10 },
+    ctCancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155' },
+    ctCancelTxt: { color: '#94a3b8', fontWeight: '700', fontSize: 15 },
+    ctConfirmBtn: { flex: 2, flexDirection: 'row', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#16a34a' },
+    ctConfirmTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
 
     // ── Category Selector ──
     categorySelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 12, borderWidth: 1, width: '100%', marginHorizontal: 0 },

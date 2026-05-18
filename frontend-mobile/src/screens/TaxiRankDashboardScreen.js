@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
-import { fetchTaxiRanks, fetchMarshals, fetchTrips, fetchTripsByRank, fetchAllTaxiRanks, linkTaxiRankToAssociation } from '../api/taxiRanks';
+import { fetchTaxiRanks, fetchMarshals, fetchTrips, fetchTripsByRank, fetchAllTaxiRanks, linkTaxiRankToAssociation, completeTrip } from '../api/taxiRanks';
 import ThemeToggle from '../components/ThemeToggle';
 
 const GOLD = '#D4AF37';
@@ -37,6 +37,8 @@ export default function TaxiRankDashboardScreen({ navigation }) {
   const [loadingAllRanks, setLoadingAllRanks] = useState(false);
   const [linking, setLinking] = useState(false);
   const [activeTripsModalVisible, setActiveTripsModalVisible] = useState(false);
+  const [endingTripId, setEndingTripId] = useState(null);
+  const [confirmingTripId, setConfirmingTripId] = useState(null);
 
   const loadData = useCallback(async (silent = false) => {
     if (!user || !hasTenant) return;
@@ -89,6 +91,19 @@ export default function TaxiRankDashboardScreen({ navigation }) {
       Alert.alert('Error', 'Failed to load available taxi ranks');
     } finally {
       setLoadingAllRanks(false);
+    }
+  }
+
+  async function handleDoEndTrip(tripId) {
+    setConfirmingTripId(null);
+    setEndingTripId(tripId);
+    try {
+      await completeTrip(tripId, 'Ended by rank manager');
+      loadData(true);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to end trip');
+    } finally {
+      setEndingTripId(null);
     }
   }
 
@@ -543,8 +558,10 @@ export default function TaxiRankDashboardScreen({ navigation }) {
                         {trip.vehicleRegistration || trip.vehicle?.registration || `Trip ${index + 1}`}
                       </Text>
                       <Text style={[styles.rankLinkMeta, { color: c.textMuted }]}>
-                        Status: {trip.status || 'Unknown'} · 
-                        {trip.passengerCount || trip.passengers ? ` ${trip.passengerCount || trip.passengers} passengers` : ''}
+                        {trip.departureStation && trip.destinationStation
+                          ? `${trip.departureStation} → ${trip.destinationStation}`
+                          : `Status: ${trip.status || 'Unknown'}`}
+                        {trip.passengerCount ? ` · ${trip.passengerCount} pax` : ''}
                       </Text>
                       {trip.departureTime && (
                         <Text style={[styles.rankLinkMeta, { color: c.textMuted }]}>
@@ -552,7 +569,27 @@ export default function TaxiRankDashboardScreen({ navigation }) {
                         </Text>
                       )}
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
+                    {endingTripId === trip.id ? (
+                      <ActivityIndicator size="small" color={GOLD} />
+                    ) : confirmingTripId === trip.id ? (
+                      <View style={styles.confirmRow}>
+                        <TouchableOpacity style={styles.confirmYes} onPress={() => handleDoEndTrip(trip.id)}>
+                          <Ionicons name="checkmark" size={14} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.confirmNo} onPress={() => setConfirmingTripId(null)}>
+                          <Ionicons name="close" size={14} color="#fff" />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.endTripPill}
+                        activeOpacity={0.8}
+                        onPress={() => setConfirmingTripId(trip.id)}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={14} color="#fff" />
+                        <Text style={styles.endTripPillTxt}>End</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ))
               )}
@@ -731,4 +768,15 @@ const styles = StyleSheet.create({
   rankLinkName: { fontSize: 14, fontWeight: '700' },
   rankLinkMeta: { fontSize: 11, marginTop: 2 },
   linkingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)', borderTopLeftRadius: 20, borderTopRightRadius: 20, alignItems: 'center', justifyContent: 'center' },
+
+  /* End Trip pill (Active Trips modal) */
+  endTripPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#dc2626', borderRadius: 14,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  endTripPillTxt: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  confirmRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  confirmYes: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#16a34a', alignItems: 'center', justifyContent: 'center' },
+  confirmNo: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#64748b', alignItems: 'center', justifyContent: 'center' },
 });

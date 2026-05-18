@@ -635,6 +635,46 @@ namespace MzansiFleet.Api.Controllers
                         }
                     }
                 }
+                else
+                {
+                    // Plain dispatch — no passengers or fare captured yet. Always create a Departed trip
+                    // so marshals can immediately see the vehicle is on a trip and end it when it returns.
+                    try
+                    {
+                        var trip = new TaxiRankTrip
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = entry.TenantId,
+                            VehicleId = entry.VehicleId,
+                            DriverId = resolvedDriverId,
+                            TaxiRankId = entry.TaxiRankId,
+                            MarshalId = dto?.DispatchedByUserId,
+                            DepartureStation = taxiRank?.Name ?? "Unknown",
+                            DestinationStation = route?.DestinationStation ?? "Unknown",
+                            DepartureTime = DateTime.UtcNow,
+                            TotalAmount = 0,
+                            TotalCosts = 0,
+                            NetAmount = 0,
+                            Status = "Departed",
+                            PassengerCount = entry.PassengerCount,
+                            Notes = "Trip created on dispatch — no fare captured yet",
+                            CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                        };
+
+                        _context.TaxiRankTrips.Add(trip);
+                        await _context.SaveChangesAsync();
+                        _logger.LogInformation($"[Queue] Created plain-dispatch TaxiRankTrip: {trip.Id} for vehicle {entry.VehicleId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"[Queue] Error creating plain-dispatch trip: {ex.Message}");
+                        foreach (var failedEntry in _context.ChangeTracker.Entries()
+                            .Where(e => e.State == EntityState.Added))
+                        {
+                            failedEntry.State = EntityState.Detached;
+                        }
+                    }
+                }
 
                 // Auto-confirm bookings for this queue entry on dispatch
                 try

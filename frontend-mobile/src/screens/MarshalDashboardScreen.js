@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  StyleSheet, Alert, RefreshControl, Dimensions,
+  StyleSheet, Alert, RefreshControl, Dimensions, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
 import {
-  fetchTaxiRanks, fetchTrips, fetchTripSchedules,
+  fetchTaxiRanks, fetchTrips, fetchTripSchedules, fetchTripsByRank, completeTrip,
 } from '../api/taxiRanks';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -29,7 +29,11 @@ export default function MarshalDashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [activeRank, setActiveRank] = useState(null);
   const [trips, setTrips] = useState([]);
+  const [rankTrips, setRankTrips] = useState([]);
   const [schedules, setSchedules] = useState([]);
+  const [activeTripsModalVisible, setActiveTripsModalVisible] = useState(false);
+  const [endingTripId, setEndingTripId] = useState(null);
+  const [confirmingTripId, setConfirmingTripId] = useState(null);
 
   const loadData = useCallback(async (silent = false) => {
     if (!user) return;
@@ -42,14 +46,18 @@ export default function MarshalDashboardScreen({ navigation }) {
         const rank = ranks[0] || null;
         setActiveRank(rank);
 
-        // Load trips and schedules in parallel
-        const [tripsResp, schedResp] = await Promise.all([
+        // Load trips, rank trips and schedules in parallel
+        const [tripsResp, rankTripsResp, schedResp] = await Promise.all([
           rank?.id
             ? fetchTrips(rank.id, user.tenantId).catch(() => ({ data: [] }))
+            : Promise.resolve({ data: [] }),
+          rank?.id
+            ? fetchTripsByRank(rank.id).catch(() => ({ data: [] }))
             : Promise.resolve({ data: [] }),
           fetchTripSchedules(rank?.id, user.tenantId).catch(() => ({ data: [] })),
         ]);
         setTrips(tripsResp.data || tripsResp || []);
+        setRankTrips(rankTripsResp.data || rankTripsResp || []);
         setSchedules(schedResp.data || schedResp || []);
       }
     } catch (err) {
@@ -70,7 +78,8 @@ export default function MarshalDashboardScreen({ navigation }) {
   const todayTrips = trips || [];
   const totalPassengers = todayTrips.reduce((sum, t) => sum + (t.passengerCount || t.passengers || 0), 0);
   const todayRevenue = todayTrips.reduce((sum, t) => sum + (t.totalFare || t.fare || t.revenue || 0), 0);
-  const activeTrips = trips.filter(t => t.status === 'InProgress' || t.status === 'Active');
+  const activeStatuses = new Set(['Departed', 'InTransit', 'Arrived']);
+  const activeTrips = rankTrips.filter(t => activeStatuses.has(t?.status));
   const activeSchedules = schedules.filter(s => s.isActive);
 
   // Card revenue
@@ -78,6 +87,19 @@ export default function MarshalDashboardScreen({ navigation }) {
     if (t.paymentMethod === 'Card') return sum + (t.totalFare || t.fare || 0);
     return sum;
   }, 0);
+
+  async function handleDoEndTrip(tripId) {
+    setConfirmingTripId(null);
+    setEndingTripId(tripId);
+    try {
+      await completeTrip(tripId, 'Ended by marshal');
+      loadData(true);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.message || err?.message || 'Failed to end trip');
+    } finally {
+      setEndingTripId(null);
+    }
+  }
 
   // No tenant guard
   if (!user || !hasTenant) {
@@ -106,7 +128,7 @@ export default function MarshalDashboardScreen({ navigation }) {
     <View style={[styles.root, { backgroundColor: c.background }]}>
       {/* ====== HEADER ====== */}
       <View style={styles.header}>
-        <View style={styles.headerGradient}>
+        <View style={[styles.headerGradient, { paddingTop: insets.top + 12 }]}>
           <View style={styles.headerTop}>
             <View style={{ flex: 1 }}>
               <Text style={styles.headerRank} numberOfLines={1}>
@@ -128,7 +150,7 @@ export default function MarshalDashboardScreen({ navigation }) {
 
           {/* Quick status pills */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickRow} contentContainerStyle={{ gap: 8 }}>
-            <QuickPill icon="car-sport-outline" label="Active Trips" badge={activeTrips.length} />
+            <QuickPill icon="car-sport-outline" label="Active Trips" badge={activeTrips.length} onPress={() => setActiveTripsModalVisible(true)} />
             <QuickPill icon="people-outline" label="Passengers" badge={totalPassengers} />
             <QuickPill icon="calendar-outline" label="Schedules" badge={activeSchedules.length} />
           </ScrollView>
@@ -251,35 +273,127 @@ export default function MarshalDashboardScreen({ navigation }) {
 
         {/* ====== RECENT TRIPS ====== */}
         <SectionHeader icon="navigate-outline" title="Recent Trips" color={c.text} />
-        {todayTrips.length === 0 ? (
+        {rankTrips.length === 0 ? (
           <View style={[styles.emptySection, { backgroundColor: c.surface, borderColor: c.border }]}>
             <Ionicons name="car-outline" size={32} color={c.textMuted} />
             <Text style={[styles.emptySectionText, { color: c.textMuted }]}>No trips recorded today</Text>
           </View>
         ) : (
-          todayTrips.slice(0, 5).map((t, i) => (
+          rankTrips.slice(0, 8).map((t, i) => (
             <View key={t.id || i} style={[styles.tripItem, { backgroundColor: c.surface, borderColor: c.border }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.tripRoute, { color: c.text }]}>
                   {t.departureStation || t.origin || 'Origin'} → {t.destinationStation || t.destination || 'Dest'}
                 </Text>
                 <Text style={[styles.tripMeta, { color: c.textMuted }]}>
-                  {t.passengerCount || 0} passengers · R{t.totalFare || t.fare || 0}
+                  {t.vehicle?.registration || '—'} · {t.passengerCount || 0} pax · R{(t.totalAmount || t.totalFare || 0).toFixed(2)}
                 </Text>
               </View>
-              <View style={[styles.tripStatusBadge, {
-                backgroundColor: t.status === 'Completed' ? 'rgba(25,135,84,0.15)' : t.status === 'Departed' ? 'rgba(37,99,235,0.15)' : GOLD_LIGHT
-              }]}>
-                <Text style={[styles.tripStatusText, {
-                  color: t.status === 'Completed' ? '#22C55E' : t.status === 'Departed' ? '#60A5FA' : GOLD
-                }]}>{t.status || 'Pending'}</Text>
-              </View>
+              {t.status !== 'Completed' && t.status !== 'Cancelled' ? (
+                endingTripId === t.id ? (
+                  <ActivityIndicator size="small" color={GOLD} />
+                ) : confirmingTripId === t.id ? (
+                  <View style={styles.confirmRow}>
+                    <TouchableOpacity style={styles.confirmYes} onPress={() => handleDoEndTrip(t.id)}>
+                      <Ionicons name="checkmark" size={13} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.confirmNo} onPress={() => setConfirmingTripId(null)}>
+                      <Ionicons name="close" size={13} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.endTripPill} onPress={() => setConfirmingTripId(t.id)}>
+                    <Ionicons name="checkmark-circle-outline" size={13} color="#fff" />
+                    <Text style={styles.endTripPillTxt}>End</Text>
+                  </TouchableOpacity>
+                )
+              ) : (
+                <View style={[styles.tripStatusBadge, {
+                  backgroundColor: t.status === 'Completed' ? 'rgba(25,135,84,0.15)' : t.status === 'Departed' ? 'rgba(37,99,235,0.15)' : GOLD_LIGHT
+                }]}>
+                  <Text style={[styles.tripStatusText, {
+                    color: t.status === 'Completed' ? '#22C55E' : t.status === 'Departed' ? '#60A5FA' : GOLD
+                  }]}>{t.status || 'Pending'}</Text>
+                </View>
+              )}
             </View>
           ))
         )}
 
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {/* ====== ACTIVE TRIPS MODAL ====== */}
+      <Modal visible={activeTripsModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: c.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Active Trips ({activeTrips.length})</Text>
+              <TouchableOpacity onPress={() => setActiveTripsModalVisible(false)}>
+                <Ionicons name="close" size={24} color={c.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modalSubtitle, { color: c.textMuted }]}>
+              Tap “End” to mark a trip as completed on behalf of the driver
+            </Text>
+            <ScrollView style={styles.modalList} contentContainerStyle={{ paddingBottom: 16 }}>
+              {activeTrips.length === 0 ? (
+                <View style={styles.modalCenter}>
+                  <Ionicons name="car-outline" size={40} color={c.textMuted} />
+                  <Text style={[{ color: c.textMuted, marginTop: 8, fontSize: 13, textAlign: 'center' }]}>
+                    No active trips at the moment
+                  </Text>
+                </View>
+              ) : (
+                activeTrips.map((trip, index) => (
+                  <View key={trip.id || index} style={[styles.tripModalItem, { backgroundColor: c.surface, borderColor: c.border }]}>
+                    <View style={[styles.tripModalIcon, { backgroundColor: GOLD_LIGHT }]}>
+                      <Ionicons name="car" size={20} color={GOLD} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.tripModalName, { color: c.text }]}>
+                        {trip.vehicleRegistration || trip.vehicle?.registration || `Trip ${index + 1}`}
+                      </Text>
+                      <Text style={[styles.tripModalMeta, { color: c.textMuted }]}>
+                        {trip.departureStation && trip.destinationStation
+                          ? `${trip.departureStation} → ${trip.destinationStation}`
+                          : `Status: ${trip.status || 'Unknown'}`}
+                        {trip.passengerCount ? ` · ${trip.passengerCount} pax` : ''}
+                      </Text>
+                      {trip.departureTime && (
+                        <Text style={[styles.tripModalMeta, { color: c.textMuted }]}>
+                          Departed: {new Date(trip.departureTime).toLocaleTimeString()}
+                        </Text>
+                      )}
+                    </View>
+                    {endingTripId === trip.id ? (
+                      <ActivityIndicator size="small" color={GOLD} />
+                    ) : confirmingTripId === trip.id ? (
+                      <View style={styles.confirmRow}>
+                        <TouchableOpacity style={styles.confirmYes} onPress={() => handleDoEndTrip(trip.id)}>
+                          <Ionicons name="checkmark" size={14} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.confirmNo} onPress={() => setConfirmingTripId(null)}>
+                          <Ionicons name="close" size={14} color="#fff" />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.endTripPill}
+                        activeOpacity={0.8}
+                        onPress={() => setConfirmingTripId(trip.id)}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={14} color="#fff" />
+                        <Text style={styles.endTripPillTxt}>End</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* ====== BOTTOM BAR ====== */}
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
@@ -302,13 +416,14 @@ export default function MarshalDashboardScreen({ navigation }) {
 
 /* ===== Sub-components ===== */
 
-function QuickPill({ icon, label, badge }) {
+function QuickPill({ icon, label, badge, onPress }) {
+  const Wrapper = onPress ? TouchableOpacity : View;
   return (
-    <View style={styles.quickPill}>
+    <Wrapper style={styles.quickPill} onPress={onPress} activeOpacity={0.8}>
       <Ionicons name={icon} size={16} color={GOLD} />
       <Text style={styles.quickLabel}>{label}</Text>
       {badge > 0 && <View style={styles.quickBadge}><Text style={styles.quickBadgeText}>{badge}</Text></View>}
-    </View>
+    </Wrapper>
   );
 }
 
@@ -368,7 +483,7 @@ const styles = StyleSheet.create({
 
   /* Header */
   header: { overflow: 'hidden' },
-  headerGradient: { backgroundColor: '#1a1a2e', paddingTop: 48, paddingHorizontal: 16, paddingBottom: 14 },
+  headerGradient: { backgroundColor: '#1a1a2e', paddingTop: 12, paddingHorizontal: 16, paddingBottom: 14 },
   headerTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   headerRank: { fontSize: 20, fontWeight: '900', color: '#fff' },
   headerRole: { fontSize: 11, color: GOLD, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 2 },
@@ -389,7 +504,7 @@ const styles = StyleSheet.create({
 
   /* Stats */
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, marginBottom: 18 },
-  statCard: { width: CARD_W, borderWidth: 1, borderRadius: 14, padding: 12, alignItems: 'center', gap: 4 },
+  statCard: { width: '48%', flexGrow: 1, borderWidth: 1, borderRadius: 14, padding: 12, alignItems: 'center', gap: 4 },
   statValue: { fontSize: 22, fontWeight: '900' },
   statLabel: { fontSize: 11, fontWeight: '600' },
 
@@ -411,7 +526,7 @@ const styles = StyleSheet.create({
 
   /* Action cards */
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: CARD_GAP, marginBottom: 18 },
-  actionCard: { width: CARD_W, borderWidth: 1, borderRadius: 14, padding: 14, gap: 6 },
+  actionCard: { width: '48%', flexGrow: 1, borderWidth: 1, borderRadius: 14, padding: 14, gap: 6 },
   actionIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   actionTitle: { fontSize: 14, fontWeight: '800' },
   actionDesc: { fontSize: 11, lineHeight: 16 },
@@ -435,6 +550,30 @@ const styles = StyleSheet.create({
   tripMeta: { fontSize: 11, marginTop: 2 },
   tripStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   tripStatusText: { fontSize: 10, fontWeight: '700' },
+
+  /* End Trip pill */
+  endTripPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#dc2626', borderRadius: 14,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  endTripPillTxt: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  confirmRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  confirmYes: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#16a34a', alignItems: 'center', justifyContent: 'center' },
+  confirmNo: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#64748b', alignItems: 'center', justifyContent: 'center' },
+
+  /* Active Trips Modal */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  modalTitle: { fontSize: 18, fontWeight: '900' },
+  modalSubtitle: { fontSize: 13, marginBottom: 12 },
+  modalList: { flex: 1 },
+  modalCenter: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
+  tripModalItem: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 8, gap: 10 },
+  tripModalIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tripModalName: { fontSize: 14, fontWeight: '700' },
+  tripModalMeta: { fontSize: 11, marginTop: 2 },
 
   /* Empty section */
   emptySection: { borderWidth: 1, borderRadius: 14, padding: 24, alignItems: 'center', gap: 8, marginBottom: 18 },

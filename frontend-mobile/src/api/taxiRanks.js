@@ -117,6 +117,11 @@ export function fetchUserBookings(userId) {
   return client.get(`/ScheduledTripBookings/user/${userId}`);
 }
 
+// Get queue bookings for a rider (includes queueStatus for dispatch tracking)
+export function fetchUserQueueBookings(userId) {
+  return client.get(`/QueueBooking/user/${userId}`);
+}
+
 // Update a booking (edit passengers, add more passengers)
 export async function updateTripBooking(bookingId, body) {
   const resp = await client.put(`/ScheduledTripBookings/${bookingId}`, body);

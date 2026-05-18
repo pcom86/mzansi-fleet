@@ -1,16 +1,17 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  StyleSheet, RefreshControl, Image,
+  StyleSheet, RefreshControl, Image, Animated, Share, Alert, Linking, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme';
-import { fetchAllTaxiRanks, fetchUserBookings } from '../api/taxiRanks';
+import { fetchAllTaxiRanks, fetchUserBookings, fetchUserQueueBookings } from '../api/taxiRanks';
 import { getMyTripRequests } from '../api/tripRequests';
 import ThemeToggle from '../components/ThemeToggle';
 import RiderTripProgress from '../components/RiderTripProgress';
+import QueueTripProgress from '../components/QueueTripProgress';
 
 const GOLD = '#D4AF37';
 const GOLD_LIGHT = 'rgba(212,175,55,0.12)';
@@ -30,17 +31,22 @@ export default function RiderDashboardScreen({ navigation }) {
   const [bookings, setBookings] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
   const [trackingOpen, setTrackingOpen] = useState(false);
+  const [activeQueueTrip, setActiveQueueTrip] = useState(null);
+  const [queueTripOpen, setQueueTripOpen] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   const tripPollRef = useRef(null);
+  const queuePollRef = useRef(null);
 
   const userId = user?.userId || user?.id;
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [rankResp, bookingResp, tripResp] = await Promise.all([
+      const [rankResp, bookingResp, tripResp, queueBkResp] = await Promise.all([
         fetchAllTaxiRanks().catch(() => ({ data: [] })),
         userId ? fetchUserBookings(userId).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
         userId ? getMyTripRequests(userId).catch(() => []) : Promise.resolve([]),
+        userId ? fetchUserQueueBookings(userId).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
       ]);
       setTaxiRanks(rankResp.data || rankResp || []);
       setBookings(bookingResp.data || bookingResp || []);
@@ -51,6 +57,10 @@ export default function RiderDashboardScreen({ navigation }) {
         return state === 'InProgress' && state !== 'Completed' && state !== 'Cancelled';
       }) ?? null;
       setActiveTrip(inProgress);
+      // Detect dispatched queue booking — vehicle is currently on a trip
+      const queueBks = Array.isArray(queueBkResp) ? queueBkResp : (queueBkResp?.data || []);
+      const dispatched = queueBks.find(b => b.status === 'Confirmed' && b.queueStatus === 'Dispatched') ?? null;
+      setActiveQueueTrip(dispatched);
     } catch (err) {
       console.warn('RiderDashboard load error:', err?.message);
     } finally {
@@ -80,6 +90,34 @@ export default function RiderDashboardScreen({ navigation }) {
     }
     return () => clearInterval(tripPollRef.current);
   }, [!!activeTrip, userId]);
+
+  // Poll for dispatched queue booking every 30 s
+  useEffect(() => {
+    if (!activeQueueTrip || !userId) { clearInterval(queuePollRef.current); return; }
+    queuePollRef.current = setInterval(async () => {
+      try {
+        const resp = await fetchUserQueueBookings(userId);
+        const bks = Array.isArray(resp) ? resp : (resp?.data || []);
+        const dispatched = bks.find(b => b.status === 'Confirmed' && b.queueStatus === 'Dispatched') ?? null;
+        setActiveQueueTrip(dispatched);
+        if (!dispatched) clearInterval(queuePollRef.current);
+      } catch {}
+    }, 30000);
+    return () => clearInterval(queuePollRef.current);
+  }, [!!activeQueueTrip, userId]);
+
+  // Pulse animation for live indicators
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.35, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    if (activeQueueTrip || activeTrip) pulse.start();
+    else { pulse.stop(); pulseAnim.setValue(1); }
+    return () => pulse.stop();
+  }, [!!activeQueueTrip, !!activeTrip]);
 
   useEffect(() => { loadData(); }, [loadData]);
   const onRefresh = () => { setRefreshing(true); loadData(true); };
@@ -139,32 +177,161 @@ export default function RiderDashboardScreen({ navigation }) {
         contentContainerStyle={styles.bodyContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} colors={[GOLD]} />}
       >
-        {/* ====== ACTIVE TRIP BANNER ====== */}
-        {activeTrip && (
-          <TouchableOpacity
-            style={atStyles.banner}
-            onPress={() => setTrackingOpen(true)}
-            activeOpacity={0.88}
-          >
-            <View style={atStyles.liveDot} />
-            <View style={{ flex: 1 }}>
-              <Text style={atStyles.bannerLabel}>TRIP IN PROGRESS</Text>
-              <Text style={atStyles.bannerRoute} numberOfLines={1}>
-                {activeTrip.pickupLocation ?? activeTrip.PickupLocation ?? 'Pickup'}{' '}
-                {'→'}{' '}
-                {activeTrip.dropoffLocation ?? activeTrip.DropoffLocation ?? 'Destination'}
-              </Text>
-              {(activeTrip.totalPrice ?? activeTrip.TotalPrice ?? 0) > 0 && (
-                <Text style={atStyles.bannerFare}>
-                  R{Number(activeTrip.totalPrice ?? activeTrip.TotalPrice).toFixed(2)}
+        {/* ====== ACTIVE QUEUE TRIP CARD ====== */}
+        {activeQueueTrip && (
+          <View style={atStyles.card}>
+            {/* Header row */}
+            <View style={atStyles.cardHeader}>
+              <View style={atStyles.liveRow}>
+                <Animated.View style={[atStyles.livePulse, { backgroundColor: GOLD, opacity: pulseAnim }]} />
+                <View style={[atStyles.liveDotInner, { backgroundColor: GOLD }]} />
+                <Text style={[atStyles.liveLabel, { color: GOLD }]}>LIVE · TAXI DEPARTED</Text>
+              </View>
+              <View style={[atStyles.modeBadge, { backgroundColor: 'rgba(212,175,55,0.15)', borderColor: 'rgba(212,175,55,0.3)' }]}>
+                <Ionicons name="bus-outline" size={12} color={GOLD} />
+                <Text style={[atStyles.modeBadgeText, { color: GOLD }]}>Rank Taxi</Text>
+              </View>
+            </View>
+
+            {/* Route visualiser */}
+            <View style={atStyles.routeBlock}>
+              <View style={atStyles.routeLeft}>
+                <View style={[atStyles.routeDot, { backgroundColor: GOLD }]} />
+                <View style={[atStyles.routeLine, { backgroundColor: 'rgba(212,175,55,0.3)' }]} />
+                <View style={[atStyles.routeSquare, { backgroundColor: '#ef4444' }]} />
+              </View>
+              <View style={atStyles.routeText}>
+                <Text style={atStyles.routeStationLabel}>DEPARTED FROM</Text>
+                <Text style={atStyles.routeStation} numberOfLines={1}>
+                  {activeQueueTrip.taxiRankName || activeQueueTrip.departureStation || 'Rank'}
                 </Text>
+                <Text style={[atStyles.routeStationLabel, { marginTop: 12 }]}>HEADING TO</Text>
+                <Text style={atStyles.routeStation} numberOfLines={1}>
+                  {activeQueueTrip.destinationStation || 'Destination'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Stats pills */}
+            <View style={atStyles.pillRow}>
+              {activeQueueTrip.vehicleRegistration && (
+                <View style={atStyles.pill}>
+                  <Ionicons name="car-outline" size={12} color={GOLD} />
+                  <Text style={atStyles.pillText}>
+                    {[activeQueueTrip.vehicleRegistration, activeQueueTrip.vehicleMake].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+              )}
+              {(activeQueueTrip.totalFare ?? 0) > 0 && (
+                <View style={atStyles.pill}>
+                  <Ionicons name="cash-outline" size={12} color="#22c55e" />
+                  <Text style={[atStyles.pillText, { color: '#22c55e' }]}>R{Number(activeQueueTrip.totalFare).toFixed(2)}</Text>
+                </View>
+              )}
+              {(activeQueueTrip.seatsBooked ?? 0) > 0 && (
+                <View style={atStyles.pill}>
+                  <Ionicons name="people-outline" size={12} color="#94a3b8" />
+                  <Text style={atStyles.pillText}>{activeQueueTrip.seatsBooked} seat{activeQueueTrip.seatsBooked > 1 ? 's' : ''}</Text>
+                </View>
               )}
             </View>
-            <View style={atStyles.bannerBtn}>
-              <Ionicons name="navigate" size={16} color="#fff" />
-              <Text style={atStyles.bannerBtnText}>Track</Text>
+
+            {/* Action buttons */}
+            <View style={atStyles.btnRow}>
+              <TouchableOpacity style={[atStyles.btnPrimary, { backgroundColor: GOLD }]} onPress={() => setQueueTripOpen(true)} activeOpacity={0.85}>
+                <Ionicons name="navigate" size={16} color="#000" />
+                <Text style={[atStyles.btnPrimaryText, { color: '#000' }]}>Track Trip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={atStyles.btnSecondary} onPress={async () => {
+                const msg = `🚕 I'm on my way!\n\nFrom: ${activeQueueTrip.taxiRankName || activeQueueTrip.departureStation || 'Rank'}\nTo: ${activeQueueTrip.destinationStation || 'Destination'}${(activeQueueTrip.totalFare ?? 0) > 0 ? `\nFare: R${Number(activeQueueTrip.totalFare).toFixed(2)}` : ''}\n\nShared via MzansiFleet 🇿🇦`;
+                try { await Share.share({ message: msg }); } catch {}
+              }} activeOpacity={0.85}>
+                <Ionicons name="share-social-outline" size={16} color="#94a3b8" />
+                <Text style={atStyles.btnSecondaryText}>Share</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[atStyles.btnSecondary, { borderColor: '#25D366' }]} onPress={() => {
+                const msg = encodeURIComponent(`🚕 I'm on my way!\nFrom: ${activeQueueTrip.taxiRankName || 'Rank'} → To: ${activeQueueTrip.destinationStation || 'Destination'}\nShared via MzansiFleet`);
+                const url = `whatsapp://send?text=${msg}`;
+                Linking.canOpenURL(url).then(ok => {
+                  if (ok) Linking.openURL(url);
+                  else { if (Platform.OS === 'web') window.open(`https://wa.me/?text=${msg}`, '_blank'); else Linking.openURL(`https://wa.me/?text=${msg}`); }
+                }).catch(() => {});
+              }} activeOpacity={0.85}>
+                <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ====== ACTIVE TRIP REQUEST CARD ====== */}
+        {activeTrip && (
+          <View style={atStyles.card}>
+            {/* Header row */}
+            <View style={atStyles.cardHeader}>
+              <View style={atStyles.liveRow}>
+                <Animated.View style={[atStyles.livePulse, { backgroundColor: '#3b82f6', opacity: pulseAnim }]} />
+                <View style={[atStyles.liveDotInner, { backgroundColor: '#3b82f6' }]} />
+                <Text style={[atStyles.liveLabel, { color: '#3b82f6' }]}>LIVE · TRIP IN PROGRESS</Text>
+              </View>
+              <View style={[atStyles.modeBadge, { backgroundColor: 'rgba(59,130,246,0.12)', borderColor: 'rgba(59,130,246,0.3)' }]}>
+                <Ionicons name="car-outline" size={12} color="#3b82f6" />
+                <Text style={[atStyles.modeBadgeText, { color: '#3b82f6' }]}>On-Demand</Text>
+              </View>
+            </View>
+
+            {/* Route visualiser */}
+            <View style={atStyles.routeBlock}>
+              <View style={atStyles.routeLeft}>
+                <View style={[atStyles.routeDot, { backgroundColor: '#22c55e' }]} />
+                <View style={[atStyles.routeLine, { backgroundColor: 'rgba(59,130,246,0.3)' }]} />
+                <View style={[atStyles.routeSquare, { backgroundColor: '#ef4444' }]} />
+              </View>
+              <View style={atStyles.routeText}>
+                <Text style={atStyles.routeStationLabel}>PICKUP</Text>
+                <Text style={atStyles.routeStation} numberOfLines={1}>
+                  {activeTrip.pickupLocation ?? activeTrip.PickupLocation ?? 'Pickup'}
+                </Text>
+                <Text style={[atStyles.routeStationLabel, { marginTop: 12 }]}>DESTINATION</Text>
+                <Text style={atStyles.routeStation} numberOfLines={1}>
+                  {activeTrip.dropoffLocation ?? activeTrip.DropoffLocation ?? 'Destination'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Stats pills */}
+            <View style={atStyles.pillRow}>
+              {(activeTrip.totalPrice ?? activeTrip.TotalPrice ?? 0) > 0 && (
+                <View style={atStyles.pill}>
+                  <Ionicons name="cash-outline" size={12} color="#22c55e" />
+                  <Text style={[atStyles.pillText, { color: '#22c55e' }]}>R{Number(activeTrip.totalPrice ?? activeTrip.TotalPrice).toFixed(2)}</Text>
+                </View>
+              )}
+              {activeTrip.driverName && (
+                <View style={atStyles.pill}>
+                  <Ionicons name="person-outline" size={12} color="#94a3b8" />
+                  <Text style={atStyles.pillText}>{activeTrip.driverName}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Action buttons */}
+            <View style={atStyles.btnRow}>
+              <TouchableOpacity style={[atStyles.btnPrimary, { backgroundColor: '#3b82f6' }]} onPress={() => setTrackingOpen(true)} activeOpacity={0.85}>
+                <Ionicons name="navigate" size={16} color="#fff" />
+                <Text style={atStyles.btnPrimaryText}>Track Trip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={atStyles.btnSecondary} onPress={async () => {
+                const pickup = activeTrip.pickupLocation ?? activeTrip.PickupLocation ?? 'Pickup';
+                const dropoff = activeTrip.dropoffLocation ?? activeTrip.DropoffLocation ?? 'Destination';
+                const fare = activeTrip.totalPrice ?? activeTrip.TotalPrice ?? 0;
+                const msg = `🚗 Trip in progress!\n\nPickup: ${pickup}\nDestination: ${dropoff}${fare > 0 ? `\nFare: R${Number(fare).toFixed(2)}` : ''}\n\nShared via MzansiFleet 🇿🇦`;
+                try { await Share.share({ message: msg }); } catch {}
+              }} activeOpacity={0.85}>
+                <Ionicons name="share-social-outline" size={16} color="#94a3b8" />
+                <Text style={atStyles.btnSecondaryText}>Share</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
 
         {/* ====== QUICK ACTIONS ====== */}
@@ -285,6 +452,19 @@ export default function RiderDashboardScreen({ navigation }) {
         <View style={{ height: 32 }} />
       </ScrollView>
 
+      {/* ====== QUEUE TRIP PROGRESS MODAL ====== */}
+      <QueueTripProgress
+        visible={queueTripOpen}
+        booking={activeQueueTrip}
+        userId={userId}
+        onClose={() => setQueueTripOpen(false)}
+        onCompleted={() => {
+          setQueueTripOpen(false);
+          setActiveQueueTrip(null);
+          loadData(true);
+        }}
+      />
+
       {/* ====== RIDER TRIP PROGRESS MODAL ====== */}
       <RiderTripProgress
         visible={trackingOpen}
@@ -293,7 +473,7 @@ export default function RiderDashboardScreen({ navigation }) {
         onCompleted={() => {
           setActiveTrip(null);
           setTrackingOpen(false);
-          loadData(true); // Refresh to ensure completed trip is removed
+          loadData(true);
         }}
       />
 
@@ -398,56 +578,158 @@ function BottomTab({ icon, label, active, onPress, c }) {
 // ===== STYLES =====
 
 const atStyles = StyleSheet.create({
-  banner: {
+  card: {
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 14,
+    overflow: 'hidden',
+  },
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#022c22',
-    borderWidth: 1.5,
-    borderColor: '#22c55e50',
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 12,
-    marginBottom: 4,
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  liveDot: {
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  livePulse: {
+    position: 'absolute',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+  },
+  liveDotInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    zIndex: 1,
+  },
+  liveLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginLeft: 4,
+  },
+  modeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  modeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  routeBlock: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 14,
+    paddingHorizontal: 4,
+  },
+  routeLeft: {
+    alignItems: 'center',
+    paddingTop: 4,
+    gap: 0,
+  },
+  routeDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#22c55e',
   },
-  bannerLabel: {
+  routeLine: {
+    width: 2,
+    flex: 1,
+    minHeight: 24,
+    marginVertical: 3,
+  },
+  routeSquare: {
+    width: 10,
+    height: 10,
+    borderRadius: 3,
+  },
+  routeText: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  routeStationLabel: {
     fontSize: 9,
-    fontWeight: '800',
-    color: '#22c55e',
-    letterSpacing: 1,
+    fontWeight: '700',
+    color: '#475569',
     textTransform: 'uppercase',
+    letterSpacing: 0.6,
     marginBottom: 2,
   },
-  bannerRoute: {
-    fontSize: 13,
+  routeStation: {
+    fontSize: 15,
     fontWeight: '800',
-    color: '#fff',
+    color: '#f1f5f9',
   },
-  bannerFare: {
-    fontSize: 11,
-    color: '#D4AF37',
-    fontWeight: '700',
-    marginTop: 2,
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
   },
-  bannerBtn: {
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#22c55e',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: '#1e293b',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
-  bannerBtnText: {
-    fontSize: 12,
+  pillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94a3b8',
+  },
+  btnRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  btnPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  btnPrimaryText: {
+    fontSize: 14,
     fontWeight: '900',
     color: '#fff',
+  },
+  btnSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+    backgroundColor: '#1e293b',
+  },
+  btnSecondaryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#94a3b8',
   },
 });
 

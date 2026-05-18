@@ -87,6 +87,7 @@ export default function TripManagementScreen({ navigation, route }) {
   const [confirmMessage, setConfirmMessage] = useState('Are you sure?');
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [confirmLabel, setConfirmLabel] = useState('Confirm');
 
   const formatDateLabel = (dateStr) => {
     const d = new Date(`${dateStr}T00:00:00`);
@@ -107,9 +108,10 @@ export default function TripManagementScreen({ navigation, route }) {
     setSelectedDate(d.toISOString().split('T')[0]);
   };
 
-  const openConfirmDialog = ({ title, message, onConfirm }) => {
+  const openConfirmDialog = ({ title, message, onConfirm, label = 'Confirm' }) => {
     setConfirmTitle(title || 'Confirm Action');
     setConfirmMessage(message || 'Are you sure?');
+    setConfirmLabel(label);
     setConfirmAction(() => onConfirm);
     setConfirmVisible(true);
   };
@@ -658,6 +660,7 @@ export default function TripManagementScreen({ navigation, route }) {
       try {
         await completeTrip(tripId, 'Completed from trip management');
         setConfirmVisible(false);
+        setTripModalVisible(false);
         Alert.alert('Success', 'Trip marked as complete');
         await loadTripsData();
       } catch (err) {
@@ -668,8 +671,9 @@ export default function TripManagementScreen({ navigation, route }) {
     };
 
     openConfirmDialog({
-      title: 'Complete Trip',
+      title: 'End Trip',
       message: `Mark trip for ${vehicleReg} as complete?`,
+      label: 'End Trip',
       onConfirm: doComplete,
     });
   };
@@ -1043,6 +1047,18 @@ export default function TripManagementScreen({ navigation, route }) {
                         </Text>
                       </View>
                     </View>
+
+                    {/* End Trip button — only for active trips */}
+                    {trip.status !== 'Completed' && trip.status !== 'Cancelled' && (
+                      <TouchableOpacity
+                        style={s.endTripBtn}
+                        activeOpacity={0.8}
+                        onPress={() => handleCompleteTrip(trip)}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={14} color="#fff" />
+                        <Text style={s.endTripBtnTxt}>End Trip</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </TouchableOpacity>
               );
@@ -1571,7 +1587,7 @@ export default function TripManagementScreen({ navigation, route }) {
                 {confirmBusy ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={[s.addBtnTxt, s.confirmDangerTxt]}>Remove</Text>
+                  <Text style={[s.addBtnTxt, s.confirmDangerTxt]}>{confirmLabel}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1594,6 +1610,7 @@ export default function TripManagementScreen({ navigation, route }) {
                 || selectedTrip.driverName || '—';
               const pax = selectedTrip.passengers || [];
               return (
+                <>
                 <ScrollView style={s.modalBody} showsVerticalScrollIndicator={false}>
                   {[
                     { icon: 'navigate-outline', label: 'Route', value: `${selectedTrip.departureStation || '—'} → ${selectedTrip.destinationStation || '—'}` },
@@ -1639,6 +1656,19 @@ export default function TripManagementScreen({ navigation, route }) {
                     ))
                   )}
                 </ScrollView>
+
+                {/* End Trip action — only for active trips */}
+                {selectedTrip.status !== 'Completed' && selectedTrip.status !== 'Cancelled' && (
+                  <TouchableOpacity
+                    style={s.modalEndTripBtn}
+                    activeOpacity={0.85}
+                    onPress={() => handleCompleteTrip(selectedTrip)}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                    <Text style={s.modalEndTripBtnTxt}>End Trip</Text>
+                  </TouchableOpacity>
+                )}
+                </>
               );
             })()}
           </View>
@@ -1836,6 +1866,23 @@ function createStyles(c, mode) {
   paxAmt: { fontSize: 13, fontWeight: '700', color: '#b45309' },
   paxCardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4, marginLeft: 22 },
   paxMeta: { fontSize: 11, color: c.textMuted },
+
+  // ── End Trip (card inline) ──
+  endTripBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    marginTop: 8, alignSelf: 'flex-end',
+    backgroundColor: '#dc2626', borderRadius: 16,
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  endTripBtnTxt: { fontSize: 12, fontWeight: '700', color: '#fff' },
+
+  // ── End Trip (modal footer) ──
+  modalEndTripBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#dc2626', borderRadius: 12,
+    marginHorizontal: 16, marginTop: 12, marginBottom: 16, paddingVertical: 13,
+  },
+  modalEndTripBtnTxt: { fontSize: 15, fontWeight: '800', color: '#fff' },
 
   // ── FAB ──
   fab: {

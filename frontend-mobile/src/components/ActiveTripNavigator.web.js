@@ -131,27 +131,27 @@ export default function ActiveTripNavigator({ visible, req, driverId, vehicleId,
     if (total <= 0) return Alert.alert('Missing', 'Please enter the fare amount');
     setCompleting(true);
     try {
-      // Determine trip type and call appropriate completion API
-      // Priority: Check explicit tripType first, then check for specific ID fields
-      const isTaxiRankTripType = req?.tripType === 'TaxiRankTrip' || req?.taxiRankTripId;
-      const isQueueTrip = req?.tripType === 'DailyTaxiQueue' || req?.queueEntryId || req?.dailyTaxiQueueId;
-
-      // If no explicit type, try to infer from data structure
-      // TaxiRankTrips have routeId, DailyTaxiQueue has routeId too but different structure
-      // Default to queue trip if it has fareAmount (from dispatch)
-      const inferredType = !isTaxiRankTripType && !isQueueTrip && taxiRankFare > 0 ? 'DailyTaxiQueue' : null;
+      // If the trip came from DailyTaxiQueue dispatch it will have CompleteTripUrl
+      // pointing to /api/DailyTaxiQueue/{id}/complete-trip — use that endpoint.
+      // TaxiRankTrips (from /TaxiRankTrips/driver/.../active) have no CompleteTripUrl.
+      const hasQueueUrl = !!(req?.CompleteTripUrl || req?.completeTripUrl);
+      const isQueueTrip = hasQueueUrl
+        || req?.tripType === 'DailyTaxiQueue'
+        || !!(req?.queueEntryId || req?.dailyTaxiQueueId);
+      const isTaxiRankTripType = !isQueueTrip && (req?.tripType === 'TaxiRankTrip' || req?.taxiRankTripId);
 
       let result;
-      if (isTaxiRankTripType) {
-        // Complete TaxiRankTrip
-        result = await completeTrip(id, 'Trip completed by driver', driverId, null, total);
-      } else if (isQueueTrip || inferredType === 'DailyTaxiQueue') {
-        // Complete DailyTaxiQueue trip
+      if (isQueueTrip) {
+        // Complete DailyTaxiQueue trip via the correct endpoint
         result = await completeQueueTrip(id, {
           notes: 'Trip completed by driver',
           completedByDriverId: driverId,
+          completedAt: new Date().toISOString(),
           totalAmount: total,
         });
+      } else if (isTaxiRankTripType) {
+        // Complete an explicit TaxiRankTrip (id is a TaxiRankTrip.Id)
+        result = await completeTrip(id, 'Trip completed by driver', driverId, null, total);
       } else {
         // Complete TripRequest (default)
         result = await completeTripRequest(id, dist, rate, total);
@@ -329,38 +329,8 @@ export default function ActiveTripNavigator({ visible, req, driverId, vehicleId,
 
           {panel === 'complete' && (
             <View style={{ backgroundColor: '#0f172a', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#1e293b' }}>
-              <Text style={{ fontSize: 16, fontWeight: '900', color: '#fff', marginBottom: 16 }}>Record Earnings</Text>
-
-              <Text style={styles.inputLabel}>Distance (km)</Text>
-              <TextInput
-                value={distInput}
-                onChangeText={v => {
-                  setDistInput(v);
-                  const d = parseFloat(v) || 0;
-                  const r = parseFloat(rateInput) || 0;
-                  if (d > 0 && r > 0) setFareInput((d * r).toFixed(2));
-                }}
-                style={styles.input}
-                keyboardType="decimal-pad"
-                placeholder="0.0"
-                placeholderTextColor="#475569"
-              />
-
-              <Text style={styles.inputLabel}>Rate per km (R)</Text>
-              <TextInput
-                value={rateInput}
-                onChangeText={v => {
-                  setRateInput(v);
-                  const d = parseFloat(distInput) || 0;
-                  const r = parseFloat(v) || 0;
-                  if (d > 0 && r > 0) setFareInput((d * r).toFixed(2));
-                }}
-                style={styles.input}
-                keyboardType="decimal-pad"
-                placeholder="0.0"
-                placeholderTextColor="#475569"
-              />
-
+            
+            
               <Text style={styles.inputLabel}>Total Fare (R)</Text>
               <TextInput
                 value={fareInput}
