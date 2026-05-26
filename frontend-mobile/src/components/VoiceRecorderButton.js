@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
  *   isRecording: boolean (optional, for external control)
  *   style: object (optional)
  */
-export default function VoiceRecorderButton({ onRecordingComplete, style }) {
+export default function VoiceRecorderButton({ onRecordingComplete, style, buttonStyle, iconColor = '#fff', size = 24 }) {
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState(null);
@@ -62,12 +62,13 @@ export default function VoiceRecorderButton({ onRecordingComplete, style }) {
           justifyContent: 'center',
           minWidth: 50,
           minHeight: 50,
+          ...buttonStyle,
         }}
       >
-        <Ionicons 
-          name={isRecording ? 'stop' : 'mic'} 
-          size={24} 
-          color="#fff" 
+        <Ionicons
+          name={isRecording ? 'stop' : 'mic'}
+          size={size}
+          color={iconColor}
         />
       </TouchableOpacity>
       {error && <Text style={{ color: 'red', marginTop: 8, fontSize: 12 }}>{error}</Text>}

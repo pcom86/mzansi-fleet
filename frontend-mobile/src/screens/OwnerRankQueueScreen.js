@@ -43,10 +43,11 @@ export default function OwnerRankQueueScreen({ navigation }) {
   const s = useMemo(() => createStyles(c), [c]);
   const insets = useSafeAreaInsets();
 
-  const ownerIds = useMemo(() => {
-    return [user?.tenantId, user?.id, user?.userId].filter(Boolean);
-  }, [user]);
-
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(null);
@@ -58,19 +59,22 @@ export default function OwnerRankQueueScreen({ navigation }) {
     setSelectedRoutes(prev => ({ ...prev, [rankId]: routeKey }));
   }
 
+  const dateStr = selectedDate.toISOString().split('T')[0];
+  const isToday = dateStr === new Date().toISOString().split('T')[0];
+
+  function shiftDate(days) {
+    setLoading(true);
+    setSelectedDate(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + days);
+      return d;
+    });
+  }
+
   const load = useCallback(async () => {
-    if (!ownerIds.length) return;
     try {
-      let result = null;
-      // Try each owner ID until we find one with vehicles
-      for (const oid of ownerIds) {
-        const resp = await client.get(`/DailyTaxiQueue/owner/${oid}/rank-queues`);
-        if (resp.data?.totalVehicles > 0 || resp.data?.totalRanks > 0) {
-          result = resp.data;
-          break;
-        }
-        if (!result) result = resp.data; // keep first response as fallback
-      }
+      const resp = await client.get(`/DailyTaxiQueue/owner/rank-queues?date=${dateStr}`);
+      const result = resp.data;
       setData(result);
       const expanded = {};
       (result?.ranks || []).forEach(r => { expanded[r.rank.id] = true; });
@@ -81,7 +85,7 @@ export default function OwnerRankQueueScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [ownerIds.join(',')]);
+  }, [dateStr]);
 
   useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -126,6 +130,27 @@ export default function OwnerRankQueueScreen({ navigation }) {
         </TouchableOpacity>
         <Text style={s.headerTitle}>Rank Queues</Text>
         <View style={{ width: 36 }} />
+      </View>
+
+      {/* Date Navigator */}
+      <View style={s.dateNav}>
+        <TouchableOpacity onPress={() => shiftDate(-1)} style={s.dateNavBtn}>
+          <Ionicons name="chevron-back" size={20} color={c.text} />
+        </TouchableOpacity>
+        <View style={s.dateNavCenter}>
+          <Ionicons name="calendar-outline" size={14} color={c.primary} />
+          <Text style={s.dateNavTxt}>
+            {isToday ? 'Today' : selectedDate.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short' })}
+          </Text>
+          {!isToday && (
+            <TouchableOpacity onPress={() => { setLoading(true); setSelectedDate(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }); }}>
+              <Text style={s.dateNavBack}></Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity onPress={() => shiftDate(1)} style={s.dateNavBtn}>
+          <Ionicons name="chevron-forward" size={20} color={c.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -372,6 +397,17 @@ function createStyles(c) {
     },
     summaryNum: { fontSize: 22, fontWeight: '800', color: c.text },
     summaryLabel: { fontSize: 11, color: c.textMuted, marginTop: 2 },
+
+    // Date navigator
+    dateNav: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 8, paddingVertical: 8,
+      backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    dateNavBtn: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+    dateNavCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    dateNavTxt: { fontSize: 14, fontWeight: '700', color: c.text },
+    dateNavBack: { fontSize: 11, color: c.primary, marginLeft: 4 },
 
     // Tabs
     tabRow: { flexDirection: 'row', backgroundColor: c.surface2, borderRadius: 10, padding: 3, marginBottom: 16 },

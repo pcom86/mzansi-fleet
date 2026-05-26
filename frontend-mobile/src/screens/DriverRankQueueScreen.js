@@ -192,164 +192,308 @@ export default function DriverRankQueueScreen({ navigation, route }) {
     navigation.navigate('DriverTripDetails', { queueEntryId: item.id });
   }
 
-  // ── Loading state ──
-  if (loading) {
-    return (
-      <View style={[st.root, st.center, { paddingTop: insets.top }]}>
-        <View style={st.loadingIconWrap}>
-          <ActivityIndicator size="large" color={GOLD} />
-        </View>
-        <Text style={st.loadingTxt}>Loading queue…</Text>
-      </View>
-    );
-  }
-
+  // ── Derived counts ──
   const waitingCnt = queue.filter(i => norm(i.status) === 'waiting').length;
   const dispatchedCnt = queue.filter(i => norm(i.status) === 'dispatched').length;
   const completedCnt = queue.filter(i => norm(i.status) === 'completed').length;
   const isToday = date === isoDate(new Date());
+  const myPos = myEntry?.queuePosition ?? null;
+  const aheadOfMe = myPos != null ? queue.filter(i => !i.isMine && norm(i.status) === 'waiting' && i.queuePosition < myPos).length : 0;
+  const totalEarnings = dispatchedTrips.reduce((s, t) => s + (t.fareAmount || t.totalAmount || 0), 0);
+  const activeTripsCount = dispatchedTrips.filter(t => t.status !== 'Completed' && t.status !== 'Cancelled').length;
+
+  // ── Loading ──
+  if (loading) {
+    return (
+      <View style={[st.root, st.center, { paddingTop: insets.top }]}>
+        <View style={st.loadingRing}>
+          <ActivityIndicator size="large" color={GOLD} />
+        </View>
+        <Text style={st.loadingTitle}>Rank Queue</Text>
+        <Text style={st.loadingTxt}>Fetching your queue position…</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[st.root, { paddingTop: insets.top }]}>
 
-      {/* ── Header ── */}
-      <View style={st.hdr}>
-        <TouchableOpacity style={st.hdrBack} onPress={() => navigation.goBack()} hitSlop={8}>
+      {/* ════════════════ HEADER BAND ════════════════ */}
+      <View style={st.hdrBand}>
+        <TouchableOpacity style={st.hdrBack} onPress={() => navigation.goBack()} hitSlop={10}>
           <Ionicons name="arrow-back" size={20} color={TEXT} />
         </TouchableOpacity>
+
         <View style={{ flex: 1 }}>
           <Text style={st.hdrTitle}>Rank Queue</Text>
-          <Text style={st.hdrSub} numberOfLines={1}>{data?.rankName || 'Your Assigned Rank'}</Text>
+          {data?.rankName ? (
+            <Text style={st.hdrRank} numberOfLines={1}>{data.rankName}</Text>
+          ) : null}
         </View>
+
+        {/* Tab pills */}
+        <View style={st.hdrTabs}>
+          {[
+            { key: 'queue', label: 'Queue', cnt: queue.length },
+            { key: 'dispatched', label: 'My Trips', cnt: dispatchedTrips.length },
+          ].map(t => {
+            const on = activeTab === t.key;
+            return (
+              <TouchableOpacity
+                key={t.key}
+                style={[st.hdrTab, on && st.hdrTabOn]}
+                onPress={() => setActiveTab(t.key)}
+                activeOpacity={0.8}
+              >
+                <Text style={[st.hdrTabTxt, on && st.hdrTabTxtOn]}>{t.label}</Text>
+                {t.cnt > 0 && (
+                  <View style={[st.hdrTabBubble, on && st.hdrTabBubbleOn]}>
+                    <Text style={[st.hdrTabBubbleTxt, on && st.hdrTabBubbleTxtOn]}>{t.cnt}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         <TouchableOpacity
           style={st.hdrRefresh}
           onPress={async () => { setRefreshing(true); await load(); setRefreshing(false); }}
-          hitSlop={8}
+          hitSlop={10}
         >
           {refreshing
             ? <ActivityIndicator size="small" color={GOLD} />
-            : <Ionicons name="refresh" size={20} color={TEXT2} />}
+            : <Ionicons name="refresh-outline" size={19} color={TEXT2} />}
         </TouchableOpacity>
       </View>
 
-      {/* ── Tabs ── */}
-      <View style={st.tabBar}>
-        {[
-          { key: 'queue', icon: 'list-outline', label: 'Queue', cnt: queue.length },
-          { key: 'dispatched', icon: 'car-sport-outline', label: 'My Trips', cnt: dispatchedTrips.length },
-        ].map(t => {
-          const on = activeTab === t.key;
-          return (
-            <TouchableOpacity key={t.key} style={[st.tabItem, on && st.tabItemOn]} onPress={() => setActiveTab(t.key)} activeOpacity={0.8}>
-              <Ionicons name={t.icon} size={16} color={on ? '#000' : TEXT2} />
-              <Text style={[st.tabLabel, on && st.tabLabelOn]}>{t.label}</Text>
-              {t.cnt > 0 && (
-                <View style={[st.tabBubble, on && st.tabBubbleOn]}>
-                  <Text style={[st.tabBubbleTxt, on && st.tabBubbleTxtOn]}>{t.cnt}</Text>
+      {/* ════════════════ HERO SECTION ════════════════ */}
+      {activeTab === 'queue' && (
+        canCompleteTrip ? (
+          /* ── DISPATCHED HERO ── */
+          <View style={st.heroDispatched}>
+            {/* Top stripe */}
+            <View style={st.heroDispatchedStripe} />
+            <View style={st.heroDispatchedInner}>
+              {/* Live badge row */}
+              <View style={st.heroLiveBadgeRow}>
+                <View style={st.heroPulseWrap}>
+                  <Animated.View style={[st.heroPulseRing, { opacity: pulseAnim }]} />
+                  <View style={st.heroPulseDot} />
                 </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+                <Text style={st.heroLiveLabel}>LIVE  ·  EN ROUTE</Text>
+                <View style={st.heroLiveBadge}><Text style={st.heroLiveBadgeTxt}>ACTIVE</Text></View>
+              </View>
 
-      {/* ── Date picker row ── */}
-      <View style={st.dateRow}>
-        <TouchableOpacity style={st.dateArrow} onPress={() => changeDate(-1)}>
-          <Ionicons name="chevron-back" size={18} color={TEXT2} />
+              {/* Vehicle + route */}
+              <View style={st.heroDispatchedMain}>
+                <Text style={st.heroDispatchedReg}>
+                  {myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration || '—'}
+                </Text>
+                {(myDispatchedTrip?.routeName || data?.routeName) ? (
+                  <View style={st.heroRouteRow}>
+                    <Ionicons name="navigate" size={13} color="#22c55e" />
+                    <Text style={st.heroRouteTxt} numberOfLines={1}>
+                      {myDispatchedTrip?.routeName || data?.routeName}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Info pills */}
+              <View style={st.heroPillRow}>
+                {myDispatchedTrip?.fareAmount > 0 && (
+                  <View style={[st.heroPill, { borderColor: '#22c55e55' }]}>
+                    <Ionicons name="cash-outline" size={12} color="#22c55e" />
+                    <Text style={[st.heroPillTxt, { color: '#22c55e' }]}>R{Number(myDispatchedTrip.fareAmount).toFixed(2)}</Text>
+                  </View>
+                )}
+                {(myDispatchedTrip?.passengerCount ?? 0) > 0 && (
+                  <View style={st.heroPill}>
+                    <Ionicons name="people-outline" size={12} color={TEXT2} />
+                    <Text style={st.heroPillTxt}>{myDispatchedTrip.passengerCount} pax</Text>
+                  </View>
+                )}
+                {myDispatchedTrip?.departedAt && (
+                  <View style={st.heroPill}>
+                    <Ionicons name="time-outline" size={12} color={TEXT2} />
+                    <Text style={st.heroPillTxt}>{fmtTime(myDispatchedTrip.departedAt)}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Action buttons */}
+              <View style={st.heroDispatchedBtns}>
+                <TouchableOpacity
+                  style={st.heroDispatchedBtnSecondary}
+                  onPress={() => openDetails(myDispatchedTrip)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="receipt-outline" size={16} color={GOLD} />
+                  <Text style={[st.heroDispatchedBtnTxt, { color: GOLD }]}>View Details</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={st.heroDispatchedBtnPrimary}
+                  onPress={handleCompleteTrip}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                  <Text style={st.heroDispatchedBtnPrimaryTxt}>Complete Trip</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ) : myEntry ? (
+          /* ── WAITING IN QUEUE HERO ── */
+          <View style={st.heroWaiting}>
+            <View style={st.heroWaitingRow}>
+              <View style={st.heroWaitingLeft}>
+                <Text style={st.heroWaitingLabel}>YOUR POSITION</Text>
+                <Text style={st.heroWaitingPos}>#{myPos}</Text>
+                <Text style={st.heroWaitingAhead}>
+                  {aheadOfMe === 0 ? 'Next up!' : `${aheadOfMe} vehicle${aheadOfMe > 1 ? 's' : ''} ahead`}
+                </Text>
+              </View>
+              <View style={st.heroWaitingDivider} />
+              <View style={st.heroWaitingRight}>
+                <View style={st.heroWaitingPill}>
+                  <Ionicons name="car-outline" size={12} color={GOLD} />
+                  <Text style={st.heroWaitingPillTxt} numberOfLines={1}>
+                    {myEntry.vehicleRegistration || '—'}
+                  </Text>
+                </View>
+                {myEntry.routeName ? (
+                  <View style={[st.heroWaitingPill, { marginTop: 6 }]}>
+                    <Ionicons name="navigate-outline" size={12} color={TEXT2} />
+                    <Text style={[st.heroWaitingPillTxt, { color: TEXT2 }]} numberOfLines={1}>
+                      {myEntry.routeName}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={[st.heroWaitingPill, { marginTop: 6, borderColor: '#f59e0b55' }]}>
+                  <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#f59e0b' }} />
+                  <Text style={[st.heroWaitingPillTxt, { color: '#f59e0b' }]}>
+                    {(myEntry.status || 'Waiting').toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Queue position progress strip */}
+            {queue.length > 0 && (
+              <View style={st.heroWaitingStrip}>
+                {queue.slice(0, Math.min(12, queue.length)).map((q, i) => {
+                  const qMine = q.isMine;
+                  const qDone = norm(q.status) === 'completed';
+                  const qRoute = norm(q.status) === 'dispatched';
+                  return (
+                    <View
+                      key={q.id || i}
+                      style={[
+                        st.heroStripPip,
+                        qMine && { backgroundColor: GOLD, width: 14, borderRadius: 4 },
+                        qRoute && { backgroundColor: '#22c55e' },
+                        qDone && { backgroundColor: '#334155', opacity: 0.4 },
+                      ]}
+                    />
+                  );
+                })}
+                {queue.length > 12 && (
+                  <Text style={st.heroStripMore}>+{queue.length - 12}</Text>
+                )}
+              </View>
+            )}
+          </View>
+        ) : (
+          /* ── NOT IN QUEUE HERO ── */
+          <View style={st.heroEmpty}>
+            <View style={st.heroEmptyIcon}>
+              <Ionicons name="hourglass-outline" size={22} color={TEXT2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={st.heroEmptyTitle}>Not in queue today</Text>
+              <Text style={st.heroEmptyTxt}>Contact your marshal to join the queue</Text>
+            </View>
+          </View>
+        )
+      )}
+
+      {/* ════════════════ CONTROL ROW (date + stats) ════════════════ */}
+      <View style={st.controlRow}>
+        {/* Date picker */}
+        <TouchableOpacity style={st.dateArrow} onPress={() => changeDate(-1)} hitSlop={6}>
+          <Ionicons name="chevron-back" size={16} color={TEXT2} />
         </TouchableOpacity>
-        <View style={st.datePill}>
-          <Ionicons name="calendar-outline" size={13} color={GOLD} />
+        <TouchableOpacity style={st.datePill} activeOpacity={0.7} onPress={() => {}}>
+          <Ionicons name="calendar-outline" size={12} color={GOLD} />
           <Text style={st.dateTxt}>{fmtDateLabel(date)}</Text>
           {isToday && <View style={st.dateLiveDot} />}
-        </View>
-        <TouchableOpacity style={st.dateArrow} onPress={() => changeDate(1)}>
-          <Ionicons name="chevron-forward" size={18} color={TEXT2} />
         </TouchableOpacity>
+        <TouchableOpacity style={st.dateArrow} onPress={() => changeDate(1)} hitSlop={6}>
+          <Ionicons name="chevron-forward" size={16} color={TEXT2} />
+        </TouchableOpacity>
+
+        {activeTab === 'queue' && queue.length > 0 && (
+          <>
+            <View style={st.controlDivider} />
+            <View style={st.statMini}>
+              <Text style={[st.statMiniNum, { color: '#f59e0b' }]}>{waitingCnt}</Text>
+              <Text style={st.statMiniLbl}>wait</Text>
+            </View>
+            <View style={st.statMini}>
+              <Text style={[st.statMiniNum, { color: '#22c55e' }]}>{dispatchedCnt}</Text>
+              <Text style={st.statMiniLbl}>route</Text>
+            </View>
+            <View style={st.statMini}>
+              <Text style={[st.statMiniNum, { color: TEXT2 }]}>{completedCnt}</Text>
+              <Text style={st.statMiniLbl}>done</Text>
+            </View>
+          </>
+        )}
+
+        {activeTab === 'dispatched' && (
+          <>
+            <View style={st.controlDivider} />
+            <View style={st.statMini}>
+              <Text style={[st.statMiniNum, { color: GOLD }]}>{dispatchedTrips.length}</Text>
+              <Text style={st.statMiniLbl}>trips</Text>
+            </View>
+            {totalEarnings > 0 && (
+              <View style={st.statMini}>
+                <Text style={[st.statMiniNum, { color: '#22c55e', fontSize: 12 }]}>R{totalEarnings.toFixed(0)}</Text>
+                <Text style={st.statMiniLbl}>earned</Text>
+              </View>
+            )}
+          </>
+        )}
       </View>
 
-      {/* ── Stats bar (queue tab) ── */}
-      {activeTab === 'queue' && queue.length > 0 && (
-        <View style={st.statsBar}>
-          <View style={st.statItem}>
-            <Text style={[st.statNum, { color: '#f59e0b' }]}>{waitingCnt}</Text>
-            <Text style={st.statLabel}>Waiting</Text>
-          </View>
-          <View style={st.statDivider} />
-          <View style={st.statItem}>
-            <Text style={[st.statNum, { color: '#22c55e' }]}>{dispatchedCnt}</Text>
-            <Text style={st.statLabel}>En Route</Text>
-          </View>
-          <View style={st.statDivider} />
-          <View style={st.statItem}>
-            <Text style={[st.statNum, { color: TEXT2 }]}>{completedCnt}</Text>
-            <Text style={st.statLabel}>Done</Text>
-          </View>
-        </View>
-      )}
-
-      {/* ── Active trip banner ── */}
-      {canCompleteTrip && (
-        <View style={st.liveCard}>
-          <View style={st.liveStripe} />
-          <View style={{ flex: 1 }}>
-            <View style={st.liveHeader}>
-              <View style={st.liveDotWrap}>
-                <Animated.View style={[st.livePulse, { opacity: pulseAnim }]} />
-                <View style={st.liveDot} />
-              </View>
-              <Text style={st.liveLabel}>LIVE · EN ROUTE</Text>
-              <View style={st.liveStatusBadge}>
-                <Text style={st.liveStatusTxt}>ACTIVE</Text>
-              </View>
-            </View>
-            <View style={st.liveInfo}>
-              <View style={st.liveInfoItem}>
-                <Ionicons name="car-outline" size={13} color={GOLD} />
-                <Text style={st.liveInfoTxt}>{myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration || '—'}</Text>
-              </View>
-              {(myDispatchedTrip?.routeName || data?.routeName) && (
-                <View style={st.liveInfoItem}>
-                  <Ionicons name="navigate-outline" size={13} color={TEXT2} />
-                  <Text style={st.liveInfoTxt}>{myDispatchedTrip?.routeName || data?.routeName}</Text>
-                </View>
-              )}
-              {myDispatchedTrip?.fareAmount > 0 && (
-                <View style={st.liveInfoItem}>
-                  <Ionicons name="cash-outline" size={13} color="#22c55e" />
-                  <Text style={[st.liveInfoTxt, { color: '#22c55e' }]}>R{Number(myDispatchedTrip.fareAmount).toFixed(2)}</Text>
-                </View>
-              )}
-            </View>
-            <View style={st.liveBtnRow}>
-              <TouchableOpacity style={st.liveBtnSecondary} onPress={() => openDetails(myDispatchedTrip)} activeOpacity={0.8}>
-                <Ionicons name="document-text-outline" size={15} color={GOLD} />
-                <Text style={[st.liveBtnTxt, { color: GOLD }]}>View Details</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={st.liveBtnComplete} onPress={handleCompleteTrip} activeOpacity={0.85}>
-                <Ionicons name="checkmark-circle" size={15} color="#fff" />
-                <Text style={st.liveBtnCompleteTxt}>Complete Trip</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* ── Filter chips (queue tab only) ── */}
+      {/* ════════════════ FILTER CHIPS (queue tab) ════════════════ */}
       {activeTab === 'queue' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.filterScroll} contentContainerStyle={st.filterRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={st.filterScroll}
+          contentContainerStyle={st.filterRow}
+        >
           {[
-            { key: 'all', label: 'All', cnt: queue.length },
+            { key: 'all', label: 'All', cnt: queue.length, color: GOLD },
             { key: 'waiting', label: 'Waiting', cnt: waitingCnt, color: '#f59e0b' },
             { key: 'dispatched', label: 'En Route', cnt: dispatchedCnt, color: '#22c55e' },
-            { key: 'completed', label: 'Completed', cnt: completedCnt, color: TEXT2 },
+            { key: 'completed', label: 'Done', cnt: completedCnt, color: '#64748b' },
           ].map(f => {
             const on = filter === f.key;
             return (
-              <TouchableOpacity key={f.key} style={[st.chip, on && { backgroundColor: f.color || GOLD, borderColor: f.color || GOLD }]} onPress={() => setFilter(f.key)}>
-                <Text style={[st.chipTxt, on && st.chipTxtOn]}>{f.label}</Text>
-                <View style={[st.chipBubble, on && { backgroundColor: 'rgba(0,0,0,0.2)' }]}>
-                  <Text style={[st.chipBubbleTxt, on && { color: '#fff' }]}>{f.cnt}</Text>
+              <TouchableOpacity
+                key={f.key}
+                style={[st.chip, on && { backgroundColor: f.color + '22', borderColor: f.color + '88' }]}
+                onPress={() => setFilter(f.key)}
+                activeOpacity={0.75}
+              >
+                {on && <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: f.color }} />}
+                <Text style={[st.chipTxt, on && { color: f.color }]}>{f.label}</Text>
+                <View style={[st.chipBubble, on && { backgroundColor: f.color + '33' }]}>
+                  <Text style={[st.chipBubbleTxt, on && { color: f.color }]}>{f.cnt}</Text>
                 </View>
               </TouchableOpacity>
             );
@@ -357,203 +501,294 @@ export default function DriverRankQueueScreen({ navigation, route }) {
         </ScrollView>
       )}
 
-      {/* ── Content ── */}
+      {/* ════════════════ CONTENT ════════════════ */}
       <ScrollView
         style={st.scroll}
         contentContainerStyle={st.scrollInner}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={GOLD} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }}
+            tintColor={GOLD}
+          />
+        }
       >
         {activeTab === 'queue' ? (
           /* ══ QUEUE TAB ══ */
-          <>
-            {filtered.length === 0 ? (
-              <View style={st.empty}>
-                <View style={st.emptyCircle}>
-                  <Ionicons name="car-outline" size={28} color={MUTED} />
-                </View>
-                <Text style={st.emptyTitle}>No vehicles in queue</Text>
-                <Text style={st.emptySub}>{data?.message || 'Queue is empty for this date'}</Text>
+          filtered.length === 0 ? (
+            <View style={st.empty}>
+              <View style={st.emptyCircle}>
+                <Ionicons name="car-outline" size={30} color={MUTED} />
               </View>
-            ) : (
-              filtered.map((item, idx) => {
-                const sc = statusColor(item.status);
-                const isMine = item.isMine;
-                const statusNorm = norm(item.status);
-                const hasTripDetails = Boolean(item.tripId);
-                const isEnRoute = statusNorm === 'dispatched';
-                return (
+              <Text style={st.emptyTitle}>Queue is empty</Text>
+              <Text style={st.emptySub}>{data?.message || `No vehicles queued for ${fmtDateLabel(date).toLowerCase()}`}</Text>
+            </View>
+          ) : (
+            filtered.map((item, idx) => {
+              const sc = statusColor(item.status);
+              const isMine = item.isMine;
+              const isEnRoute = norm(item.status) === 'dispatched';
+              const isDone = norm(item.status) === 'completed';
+              const hasTripDetails = Boolean(item.tripId);
+              const isLast = idx === filtered.length - 1;
+              return (
+                <View key={item.id || idx} style={st.qRow}>
+                  {/* Left timeline column */}
+                  <View style={st.qTimelineCol}>
+                    <View style={[
+                      st.qPosBubble,
+                      isMine && st.qPosBubbleMine,
+                      isEnRoute && !isMine && st.qPosBubbleRoute,
+                      isDone && st.qPosBubbleDone,
+                    ]}>
+                      {isDone ? (
+                        <Ionicons name="checkmark" size={13} color="#475569" />
+                      ) : isEnRoute ? (
+                        <Ionicons name="navigate" size={13} color="#22c55e" />
+                      ) : (
+                        <Text style={[st.qPosNum, { color: isMine ? '#000' : TEXT2 }]}>
+                          {item.queuePosition}
+                        </Text>
+                      )}
+                    </View>
+                    {!isLast && (
+                      <View style={[st.qConnector, isDone && { opacity: 0.3 }]} />
+                    )}
+                  </View>
+
+                  {/* Card */}
                   <TouchableOpacity
-                    key={item.id || idx}
-                    style={[st.qCard, isMine && { borderColor: GOLD + '80' }]}
+                    style={[
+                      st.qCard,
+                      isMine && st.qCardMine,
+                      isDone && st.qCardDone,
+                      isEnRoute && !isMine && st.qCardRoute,
+                    ]}
                     activeOpacity={hasTripDetails ? 0.75 : 1}
                     onPress={hasTripDetails ? () => openDetails(item) : undefined}
                   >
-                    {/* Left accent */}
-                    <View style={[st.qAccent, { backgroundColor: isMine ? GOLD : sc }]} />
+                    {isMine && (
+                      <View style={st.youBanner}>
+                        <Ionicons name="star" size={8} color="#000" />
+                        <Text style={st.youBannerTxt}>YOUR VEHICLE</Text>
+                      </View>
+                    )}
 
-                    {/* Position badge */}
-                    <View style={[st.qPosBadge, { backgroundColor: isMine ? GOLD : SURFACE2 }]}>
-                      <Text style={[st.qPosNum, { color: isMine ? '#000' : sc }]}>#{item.queuePosition}</Text>
+                    <View style={st.qTopRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[st.qReg, isDone && { color: '#475569' }]}>
+                          {item.vehicleRegistration || '—'}
+                        </Text>
+                        <Text style={st.qDriver} numberOfLines={1}>{item.driverName || 'No driver'}</Text>
+                      </View>
+                      <View style={[st.qStatusBadge, { backgroundColor: sc + '1a', borderColor: sc + '55' }]}>
+                        <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: isDone ? '#475569' : sc, marginRight: 4 }} />
+                        <Text style={[st.qStatusTxt, { color: isDone ? '#475569' : sc }]}>
+                          {isEnRoute ? 'EN ROUTE' : isDone ? 'DONE' : (item.status || 'WAITING').toUpperCase()}
+                        </Text>
+                      </View>
                     </View>
 
-                    {/* Body */}
-                    <View style={st.qBody}>
-                      <View style={st.qTopRow}>
-                        <View style={{ flex: 1 }}>
-                          <View style={st.qRegRow}>
-                            <Text style={st.qReg}>{item.vehicleRegistration || '—'}</Text>
-                            {isMine && <View style={st.youBadge}><Text style={st.youTxt}>YOU</Text></View>}
-                          </View>
-                          <Text style={st.qDriver} numberOfLines={1}>
-                            <Ionicons name="person-outline" size={11} color={MUTED} /> {item.driverName || 'No driver assigned'}
-                          </Text>
-                        </View>
-                        <View style={[st.qStatusBadge, { backgroundColor: sc + '22', borderColor: sc + '55' }]}>
-                          <Text style={[st.qStatusTxt, { color: sc }]}>
-                            {isEnRoute ? 'EN ROUTE' : (item.status || '—').toUpperCase()}
-                          </Text>
-                        </View>
+                    {item.routeName && (
+                      <View style={[st.qRouteRow, isEnRoute && { borderColor: '#22c55e33', backgroundColor: '#22c55e08' }]}>
+                        <Ionicons name="navigate-outline" size={11} color={isEnRoute ? '#22c55e' : MUTED} />
+                        <Text style={[st.qRouteTxt, isEnRoute && { color: '#22c55e' }]} numberOfLines={1}>
+                          {item.routeName}
+                        </Text>
                       </View>
+                    )}
 
-                      {/* Meta row */}
-                      <View style={st.qMetaRow}>
-                        {item.routeName && (
-                          <View style={st.qMeta}>
-                            <Ionicons name="navigate-outline" size={11} color={MUTED} />
-                            <Text style={st.qMetaTxt} numberOfLines={1}>{item.routeName}</Text>
-                          </View>
-                        )}
-                        {item.passengerCount > 0 && (
-                          <View style={st.qMeta}>
-                            <Ionicons name="people-outline" size={11} color={MUTED} />
-                            <Text style={st.qMetaTxt}>{item.passengerCount} pax</Text>
-                          </View>
-                        )}
-                        {item.fareAmount > 0 && (
-                          <View style={st.qMeta}>
-                            <Ionicons name="cash-outline" size={11} color="#22c55e" />
-                            <Text style={[st.qMetaTxt, { color: '#22c55e' }]}>R{Number(item.fareAmount).toFixed(2)}</Text>
-                          </View>
-                        )}
-                        {item.departedAt && (
-                          <View style={st.qMeta}>
-                            <Ionicons name="time-outline" size={11} color={MUTED} />
-                            <Text style={st.qMetaTxt}>{fmtTime(item.departedAt)}</Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {hasTripDetails && (
-                        <View style={st.qHint}>
-                          <Ionicons name="chevron-forward" size={12} color={MUTED} />
-                          <Text style={st.qHintTxt}>View trip details & passengers</Text>
+                    <View style={st.qMetaRow}>
+                      {item.passengerCount > 0 && (
+                        <View style={st.qMeta}>
+                          <Ionicons name="people-outline" size={10} color={MUTED} />
+                          <Text style={st.qMetaTxt}>{item.passengerCount} pax</Text>
+                        </View>
+                      )}
+                      {item.fareAmount > 0 && (
+                        <View style={[st.qMeta, { borderColor: '#22c55e44' }]}>
+                          <Ionicons name="cash-outline" size={10} color="#22c55e" />
+                          <Text style={[st.qMetaTxt, { color: '#22c55e' }]}>R{Number(item.fareAmount).toFixed(2)}</Text>
+                        </View>
+                      )}
+                      {item.departedAt && (
+                        <View style={st.qMeta}>
+                          <Ionicons name="time-outline" size={10} color={MUTED} />
+                          <Text style={st.qMetaTxt}>{fmtTime(item.departedAt)}</Text>
                         </View>
                       )}
                     </View>
+
+                    {hasTripDetails && (
+                      <View style={st.qTapHint}>
+                        <Ionicons name="receipt-outline" size={10} color={GOLD} />
+                        <Text style={st.qTapHintTxt}>View trip details</Text>
+                        <Ionicons name="chevron-forward" size={12} color={GOLD + '80'} style={{ marginLeft: 'auto' }} />
+                      </View>
+                    )}
                   </TouchableOpacity>
-                );
-              })
-            )}
-          </>
+                </View>
+              );
+            })
+          )
         ) : (
           /* ══ MY TRIPS TAB ══ */
           dispatchedTrips.length === 0 ? (
             <View style={st.empty}>
               <View style={st.emptyCircle}>
-                <Ionicons name="car-sport-outline" size={28} color={MUTED} />
+                <Ionicons name="car-sport-outline" size={30} color={MUTED} />
               </View>
               <Text style={st.emptyTitle}>No trips yet</Text>
-              <Text style={st.emptySub}>Your dispatched trips for {fmtDateLabel(date).toLowerCase()} will appear here</Text>
+              <Text style={st.emptySub}>
+                Your dispatched trips for {fmtDateLabel(date).toLowerCase()} will appear here
+              </Text>
             </View>
           ) : (
-            dispatchedTrips.map((trip, idx) => {
-              const sc = statusColor(trip.status || 'Dispatched');
-              const isActive = trip.status !== 'Completed' && trip.status !== 'Cancelled';
-              const displayStatus = (trip.status === 'Dispatched' || trip.status === 'Departed') ? 'EN ROUTE' : (trip.status || 'Active');
-              const fare = trip.fareAmount || trip.totalAmount || 0;
-              return (
-                <TouchableOpacity
-                  key={trip.id || idx}
-                  style={st.tripCard}
-                  onPress={() => openDetails({ id: trip.id, tripId: trip.id })}
-                  activeOpacity={0.8}
-                >
-                  <View style={[st.tripAccent, { backgroundColor: sc }]} />
-                  <View style={st.tripBody}>
-                    <View style={st.tripTopRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={st.tripReg}>{trip.vehicleRegistration || trip.vehicle?.registration || '—'}</Text>
-                        {trip.route?.routeName && (
-                          <Text style={st.tripRoute} numberOfLines={1}>
-                            <Ionicons name="navigate-outline" size={11} color={MUTED} /> {trip.route.routeName}
-                          </Text>
-                        )}
-                      </View>
-                      <View style={[st.tripStatusBadge, { backgroundColor: sc + '22', borderColor: sc + '55' }]}>
-                        <Text style={[st.tripStatusTxt, { color: sc }]}>{displayStatus}</Text>
-                      </View>
+            <>
+              {/* Earnings summary bar */}
+              {totalEarnings > 0 && (
+                <View style={st.earningsBar}>
+                  <View style={st.earningsBarLeft}>
+                    <Text style={st.earningsBarLabel}>Today's Earnings</Text>
+                    <Text style={st.earningsBarAmount}>R {totalEarnings.toFixed(2)}</Text>
+                  </View>
+                  <View style={st.earningsBarRight}>
+                    <View style={st.earningsStat}>
+                      <Text style={st.earningsStatNum}>{dispatchedTrips.length}</Text>
+                      <Text style={st.earningsStatLbl}>trips</Text>
                     </View>
-
-                    <View style={st.tripMetaRow}>
-                      {(trip.passengerCount ?? 0) > 0 && (
-                        <View style={st.tripMeta}>
-                          <Ionicons name="people-outline" size={12} color={MUTED} />
-                          <Text style={st.tripMetaTxt}>{trip.passengerCount} pax</Text>
-                        </View>
-                      )}
-                      {fare > 0 && (
-                        <View style={st.tripMeta}>
-                          <Ionicons name="cash-outline" size={12} color="#22c55e" />
-                          <Text style={[st.tripMetaTxt, { color: '#22c55e' }]}>R{Number(fare).toFixed(2)}</Text>
-                        </View>
-                      )}
-                      {trip.departedAt && (
-                        <View style={st.tripMeta}>
-                          <Ionicons name="time-outline" size={12} color={MUTED} />
-                          <Text style={st.tripMetaTxt}>{fmtTime(trip.departedAt)}</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {isActive && (
-                      <View style={st.tripCta}>
-                        <Ionicons name="open-outline" size={12} color={GOLD} />
-                        <Text style={[st.qHintTxt, { color: GOLD }]}>Tap to view details</Text>
+                    {activeTripsCount > 0 && (
+                      <View style={[st.earningsStat, { marginLeft: 16 }]}>
+                        <Text style={[st.earningsStatNum, { color: '#22c55e' }]}>{activeTripsCount}</Text>
+                        <Text style={st.earningsStatLbl}>active</Text>
                       </View>
                     )}
                   </View>
-                </TouchableOpacity>
-              );
-            })
+                </View>
+              )}
+
+              {dispatchedTrips.map((trip, idx) => {
+                const sc = statusColor(trip.status || 'Dispatched');
+                const isActive = trip.status !== 'Completed' && trip.status !== 'Cancelled';
+                const isEnRoute = trip.status === 'Dispatched' || trip.status === 'Departed';
+                const displayStatus = isEnRoute ? 'EN ROUTE' : (trip.status || 'Active');
+                const fare = trip.fareAmount || trip.totalAmount || 0;
+                const from = trip.departureStation || trip.origin || null;
+                const to = trip.destinationStation || trip.destination || trip.route?.destinationStation || null;
+                const depTime = fmtTime(trip.departedAt || trip.departureTime);
+                return (
+                  <TouchableOpacity
+                    key={trip.id || idx}
+                    style={[st.tripCard, isActive && { borderColor: sc + '55' }]}
+                    onPress={() => openDetails({ id: trip.id, tripId: trip.id })}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[st.tripStripe, { backgroundColor: sc }]} />
+
+                    <View style={st.tripBody}>
+                      {/* Header row */}
+                      <View style={st.tripHeaderRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={st.tripReg}>
+                            {trip.vehicleRegistration || trip.vehicle?.registration || '—'}
+                          </Text>
+                          {trip.route?.routeName && (
+                            <Text style={st.tripRouteName} numberOfLines={1}>{trip.route.routeName}</Text>
+                          )}
+                        </View>
+                        <View style={st.tripHeaderRight}>
+                          {depTime !== '—' && <Text style={st.tripTimeDisplay}>{depTime}</Text>}
+                          <View style={[st.tripStatusBadge, { backgroundColor: sc + '1a', borderColor: sc + '55', marginTop: 3 }]}>
+                            {isEnRoute && <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: sc, marginRight: 4 }} />}
+                            <Text style={[st.tripStatusTxt, { color: sc }]}>{displayStatus}</Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Journey visualization */}
+                      {(from || to) && (
+                        <View style={st.tripJourney}>
+                          <View style={st.tripJourneyLine}>
+                            <View style={st.tripJourneyOrigin} />
+                            <View style={st.tripJourneyConnector} />
+                            <View style={st.tripJourneyDest} />
+                          </View>
+                          <View style={st.tripJourneyLabels}>
+                            <Text style={[st.tripJourneyStation, { color: TEXT }]} numberOfLines={1}>
+                              {from || 'Departure'}
+                            </Text>
+                            <Text style={[st.tripJourneyStation, { color: TEXT2 }]} numberOfLines={1}>
+                              {to || 'Destination'}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Meta row */}
+                      <View style={st.tripMetaRow}>
+                        {fare > 0 && (
+                          <View style={[st.tripMeta, { borderColor: '#22c55e44' }]}>
+                            <Ionicons name="cash-outline" size={11} color="#22c55e" />
+                            <Text style={[st.tripMetaTxt, { color: '#22c55e' }]}>R{Number(fare).toFixed(2)}</Text>
+                          </View>
+                        )}
+                        {(trip.passengerCount ?? 0) > 0 && (
+                          <View style={st.tripMeta}>
+                            <Ionicons name="people-outline" size={11} color={MUTED} />
+                            <Text style={st.tripMetaTxt}>{trip.passengerCount} pax</Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }} />
+                        <Ionicons name="chevron-forward" size={14} color={GOLD + '80'} />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </>
           )
         )}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* ── Complete Trip Bottom Sheet ── */}
-      <Modal visible={completeVisible} transparent animationType="slide" onRequestClose={() => { if (!completing) setCompleteVisible(false); }}>
+      {/* ════════════════ COMPLETE TRIP BOTTOM SHEET ════════════════ */}
+      <Modal
+        visible={completeVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { if (!completing) setCompleteVisible(false); }}
+      >
         <View style={st.ctOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { if (!completing) setCompleteVisible(false); }} />
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => { if (!completing) setCompleteVisible(false); }}
+          />
           <View style={st.ctSheet}>
             <View style={st.ctHandle} />
 
-            {/* Title */}
-            <View style={st.ctTitleRow}>
-              <View style={st.ctTitleIcon}>
-                <Ionicons name="checkmark-circle" size={26} color="#22c55e" />
+            {/* Header */}
+            <View style={st.ctHeaderRow}>
+              <View style={st.ctHeaderIcon}>
+                <Ionicons name="checkmark-circle" size={28} color="#22c55e" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={st.ctTitle}>Complete Trip</Text>
-                <Text style={st.ctRouteSub} numberOfLines={1}>
-                  {myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration || '—'} · {myDispatchedTrip?.routeName || data?.routeName || 'En route'}
+                <Text style={st.ctSub} numberOfLines={1}>
+                  {myDispatchedTrip?.vehicleRegistration || data?.vehicleRegistration || '—'}
+                  {(myDispatchedTrip?.routeName || data?.routeName)
+                    ? `  ·  ${myDispatchedTrip?.routeName || data?.routeName}`
+                    : ''}
                 </Text>
               </View>
             </View>
 
-            {/* Fare input */}
-            <Text style={st.ctFieldLabel}>Total Fare Collected</Text>
+            {/* Fare */}
+            <Text style={st.ctLabel}>Total Fare Collected</Text>
             <View style={st.ctFareRow}>
-              <View style={st.ctFareCurrencyBox}>
-                <Text style={st.ctFareCurrency}>R</Text>
+              <View style={st.ctCurrencyBox}>
+                <Text style={st.ctCurrency}>R</Text>
               </View>
               <TextInput
                 style={st.ctFareInput}
@@ -566,10 +801,13 @@ export default function DriverRankQueueScreen({ navigation, route }) {
             </View>
 
             {/* Notes */}
-            <Text style={[st.ctFieldLabel, { marginTop: 14 }]}>Notes <Text style={{ color: MUTED, fontWeight: '400' }}>(optional)</Text></Text>
+            <Text style={[st.ctLabel, { marginTop: 14 }]}>
+              Notes{'  '}
+              <Text style={{ fontWeight: '400', color: MUTED }}>(optional)</Text>
+            </Text>
             <TextInput
               style={st.ctNotesInput}
-              placeholder="Add completion notes…"
+              placeholder="Add notes about this trip…"
               placeholderTextColor={MUTED}
               value={completeNotes}
               onChangeText={setCompleteNotes}
@@ -579,16 +817,26 @@ export default function DriverRankQueueScreen({ navigation, route }) {
 
             {/* Buttons */}
             <View style={st.ctBtnRow}>
-              <TouchableOpacity style={st.ctCancelBtn} onPress={() => setCompleteVisible(false)} disabled={completing}>
+              <TouchableOpacity
+                style={st.ctCancelBtn}
+                onPress={() => setCompleteVisible(false)}
+                disabled={completing}
+              >
                 <Text style={st.ctCancelTxt}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[st.ctConfirmBtn, completing && { opacity: 0.7 }]} onPress={confirmCompleteTrip} disabled={completing}>
+              <TouchableOpacity
+                style={[st.ctConfirmBtn, completing && { opacity: 0.65 }]}
+                onPress={confirmCompleteTrip}
+                disabled={completing}
+              >
                 {completing
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <>
-                      <Ionicons name="checkmark-circle" size={17} color="#fff" />
+                  : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" />
                       <Text style={st.ctConfirmTxt}>Complete Trip</Text>
-                    </>}
+                    </>
+                  )}
               </TouchableOpacity>
             </View>
           </View>
@@ -598,133 +846,337 @@ export default function DriverRankQueueScreen({ navigation, route }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  STYLES
+// ═══════════════════════════════════════════════════════════════
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
   center: { alignItems: 'center', justifyContent: 'center' },
-  loadingIconWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center', marginBottom: 12, borderWidth: 1, borderColor: BORDER },
-  loadingTxt: { color: TEXT2, fontSize: 13, fontWeight: '600' },
 
-  // ── Header ──
-  hdr: { flexDirection: 'row', alignItems: 'center', backgroundColor: SURFACE, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: BORDER, gap: 10 },
-  hdrBack: { width: 36, height: 36, borderRadius: 10, backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center' },
-  hdrTitle: { fontSize: 18, fontWeight: '900', color: TEXT },
-  hdrSub: { fontSize: 11, fontWeight: '700', color: GOLD, marginTop: 1 },
-  hdrRefresh: { width: 36, height: 36, borderRadius: 10, backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center' },
+  // ── Loading ──
+  loadingRing: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+  },
+  loadingTitle: { fontSize: 20, fontWeight: '900', color: TEXT, marginBottom: 4 },
+  loadingTxt: { color: TEXT2, fontSize: 13, fontWeight: '500' },
 
-  // ── Tab bar ──
-  tabBar: { flexDirection: 'row', backgroundColor: SURFACE, paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
-  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 22, backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER },
-  tabItemOn: { backgroundColor: GOLD, borderColor: GOLD },
-  tabLabel: { fontSize: 13, fontWeight: '700', color: TEXT2 },
-  tabLabelOn: { color: '#000' },
-  tabBubble: { backgroundColor: BORDER, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 },
-  tabBubbleOn: { backgroundColor: 'rgba(0,0,0,0.2)' },
-  tabBubbleTxt: { fontSize: 10, fontWeight: '800', color: TEXT2 },
-  tabBubbleTxtOn: { color: '#000' },
+  // ── Header band ──
+  hdrBand: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SURFACE, paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: BORDER, gap: 10,
+  },
+  hdrBack: {
+    width: 34, height: 34, borderRadius: 10,
+    backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: BORDER,
+  },
+  hdrTitle: { fontSize: 15, fontWeight: '900', color: TEXT, letterSpacing: 0.2 },
+  hdrRank: { fontSize: 10, fontWeight: '700', color: GOLD, marginTop: 1, letterSpacing: 0.4 },
+  hdrTabs: { flexDirection: 'row', gap: 6 },
+  hdrTab: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18,
+    backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER,
+  },
+  hdrTabOn: { backgroundColor: GOLD, borderColor: GOLD },
+  hdrTabTxt: { fontSize: 11, fontWeight: '800', color: TEXT2 },
+  hdrTabTxtOn: { color: '#000' },
+  hdrTabBubble: {
+    backgroundColor: BORDER, borderRadius: 8,
+    paddingHorizontal: 5, paddingVertical: 1,
+  },
+  hdrTabBubbleOn: { backgroundColor: 'rgba(0,0,0,0.18)' },
+  hdrTabBubbleTxt: { fontSize: 9, fontWeight: '900', color: TEXT2 },
+  hdrTabBubbleTxtOn: { color: '#000' },
+  hdrRefresh: {
+    width: 34, height: 34, borderRadius: 10,
+    backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: BORDER,
+  },
 
-  // ── Date row ──
-  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, backgroundColor: SURFACE, borderBottomWidth: 1, borderBottomColor: BORDER },
-  dateArrow: { padding: 10 },
-  datePill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: SURFACE2, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: BORDER },
-  dateTxt: { fontSize: 13, fontWeight: '700', color: TEXT },
-  dateLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' },
+  // ── Hero: dispatched ──
+  heroDispatched: { backgroundColor: '#071a0f', borderBottomWidth: 1, borderBottomColor: '#22c55e30' },
+  heroDispatchedStripe: { height: 3, backgroundColor: '#22c55e' },
+  heroDispatchedInner: { padding: 16 },
+  heroLiveBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  heroPulseWrap: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+  heroPulseRing: {
+    position: 'absolute', width: 18, height: 18, borderRadius: 9,
+    backgroundColor: '#22c55e',
+  },
+  heroPulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e', zIndex: 1 },
+  heroLiveLabel: { flex: 1, fontSize: 10, fontWeight: '900', color: '#22c55e', letterSpacing: 1 },
+  heroLiveBadge: {
+    backgroundColor: '#22c55e22', borderRadius: 20, paddingHorizontal: 9, paddingVertical: 3,
+    borderWidth: 1, borderColor: '#22c55e55',
+  },
+  heroLiveBadgeTxt: { fontSize: 9, fontWeight: '900', color: '#22c55e', letterSpacing: 0.8 },
+  heroDispatchedMain: { marginBottom: 12 },
+  heroDispatchedReg: { fontSize: 26, fontWeight: '900', color: TEXT, letterSpacing: 0.5 },
+  heroRouteRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+  heroRouteTxt: { fontSize: 13, fontWeight: '700', color: '#22c55e' },
+  heroPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  heroPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: SURFACE2, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: BORDER,
+  },
+  heroPillTxt: { fontSize: 12, fontWeight: '700', color: TEXT2 },
+  heroDispatchedBtns: { flexDirection: 'row', gap: 10 },
+  heroDispatchedBtnSecondary: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 12, borderRadius: 14,
+    backgroundColor: SURFACE2, borderWidth: 1, borderColor: GOLD + '55',
+  },
+  heroDispatchedBtnTxt: { fontSize: 13, fontWeight: '800' },
+  heroDispatchedBtnPrimary: {
+    flex: 1.4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 12, borderRadius: 14, backgroundColor: '#16a34a',
+  },
+  heroDispatchedBtnPrimaryTxt: { fontSize: 13, fontWeight: '900', color: '#fff' },
 
-  // ── Stats bar ──
-  statsBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: SURFACE, borderBottomWidth: 1, borderBottomColor: BORDER, paddingVertical: 10 },
-  statItem: { flex: 1, alignItems: 'center' },
-  statNum: { fontSize: 20, fontWeight: '900' },
-  statLabel: { fontSize: 10, fontWeight: '700', color: TEXT2, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 },
-  statDivider: { width: 1, height: 28, backgroundColor: BORDER },
+  // ── Hero: waiting in queue ──
+  heroWaiting: {
+    backgroundColor: '#0d1a2e', borderBottomWidth: 1, borderBottomColor: GOLD + '30',
+    paddingVertical: 16, paddingHorizontal: 20,
+  },
+  heroWaitingRow: { flexDirection: 'row', alignItems: 'center' },
+  heroWaitingStrip: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 12, flexWrap: 'wrap' },
+  heroStripPip: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#f59e0b' },
+  heroStripMore: { fontSize: 10, color: TEXT2, fontWeight: '700', marginLeft: 4 },
+  heroWaitingLeft: { alignItems: 'center', minWidth: 90 },
+  heroWaitingLabel: { fontSize: 9, fontWeight: '900', color: GOLD, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 },
+  heroWaitingPos: { fontSize: 52, fontWeight: '900', color: GOLD, lineHeight: 58 },
+  heroWaitingAhead: { fontSize: 11, fontWeight: '700', color: TEXT2, marginTop: 2 },
+  heroWaitingDivider: { width: 1, height: 60, backgroundColor: BORDER, marginHorizontal: 18 },
+  heroWaitingRight: { flex: 1 },
+  heroWaitingPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: SURFACE2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: BORDER, alignSelf: 'flex-start',
+  },
+  heroWaitingPillTxt: { fontSize: 12, fontWeight: '700', color: TEXT, flexShrink: 1 },
 
-  // ── Live active trip card ──
-  liveCard: { flexDirection: 'row', backgroundColor: SURFACE, borderBottomWidth: 1, borderBottomColor: '#22c55e40', overflow: 'hidden' },
-  liveStripe: { width: 4, backgroundColor: '#22c55e' },
-  liveHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6 },
-  liveDotWrap: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
-  livePulse: { position: 'absolute', width: 18, height: 18, borderRadius: 9, backgroundColor: '#22c55e' },
-  liveDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#22c55e', zIndex: 1 },
-  liveLabel: { flex: 1, fontSize: 10, fontWeight: '900', color: '#22c55e', letterSpacing: 0.8 },
-  liveStatusBadge: { backgroundColor: '#22c55e22', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: '#22c55e55' },
-  liveStatusTxt: { fontSize: 9, fontWeight: '900', color: '#22c55e', letterSpacing: 0.5 },
-  liveInfo: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 14, paddingBottom: 8 },
-  liveInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: SURFACE2, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1, borderColor: BORDER },
-  liveInfoTxt: { fontSize: 11, fontWeight: '700', color: TEXT2 },
-  liveBtnRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 14 },
-  liveBtnSecondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: GOLD + '60', backgroundColor: SURFACE2 },
-  liveBtnTxt: { fontSize: 13, fontWeight: '800' },
-  liveBtnComplete: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: '#16a34a' },
-  liveBtnCompleteTxt: { fontSize: 13, fontWeight: '900', color: '#fff' },
+  // ── Hero: not in queue ──
+  heroEmpty: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: SURFACE, borderBottomWidth: 1, borderBottomColor: BORDER,
+    paddingVertical: 14, paddingHorizontal: 16,
+  },
+  heroEmptyIcon: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  heroEmptyTitle: { fontSize: 14, fontWeight: '800', color: TEXT },
+  heroEmptyTxt: { fontSize: 12, color: TEXT2, marginTop: 2 },
+
+  // ── Control row (date + stats) ──
+  controlRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SURFACE, borderBottomWidth: 1, borderBottomColor: BORDER,
+    paddingHorizontal: 8, paddingVertical: 9, gap: 2,
+  },
+  dateArrow: { padding: 8 },
+  datePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: SURFACE2, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 5,
+    borderWidth: 1, borderColor: BORDER,
+  },
+  dateTxt: { fontSize: 12, fontWeight: '700', color: TEXT },
+  dateLiveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#22c55e' },
+  controlDivider: { width: 1, height: 22, backgroundColor: BORDER, marginHorizontal: 8 },
+  statMini: { alignItems: 'center', paddingHorizontal: 6 },
+  statMiniNum: { fontSize: 16, fontWeight: '900', color: TEXT },
+  statMiniLbl: { fontSize: 9, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   // ── Filter chips ──
   filterScroll: { backgroundColor: SURFACE, borderBottomWidth: 1, borderBottomColor: BORDER },
-  filterRow: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 8, gap: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER },
+  filterRow: { flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 9, gap: 7 },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 11, paddingVertical: 6, borderRadius: 18,
+    backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER,
+  },
   chipTxt: { fontSize: 12, fontWeight: '700', color: TEXT2 },
-  chipTxtOn: { color: '#000' },
-  chipBubble: { backgroundColor: BORDER, borderRadius: 10, paddingHorizontal: 5, paddingVertical: 1 },
+  chipBubble: { backgroundColor: BORDER, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
   chipBubbleTxt: { fontSize: 10, fontWeight: '800', color: TEXT2 },
 
   // ── Scroll ──
   scroll: { flex: 1 },
-  scrollInner: { padding: 14, paddingBottom: 40 },
+  scrollInner: { padding: 14 },
+
+  // ── Queue row + timeline ──
+  qRow: { flexDirection: 'row', marginBottom: 10 },
+  qTimelineCol: { width: 44, alignItems: 'center', paddingTop: 4 },
+  qPosBubble: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: SURFACE2, borderWidth: 1.5, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qPosBubbleMine: { backgroundColor: GOLD, borderColor: GOLD },
+  qPosBubbleRoute: { backgroundColor: 'rgba(34,197,94,0.12)', borderColor: '#22c55e55' },
+  qPosBubbleDone: { opacity: 0.35 },
+  qConnector: { width: 2, flex: 1, backgroundColor: BORDER, minHeight: 8, marginTop: 3 },
 
   // ── Queue card ──
-  qCard: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: SURFACE, borderRadius: 16, marginBottom: 10, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
-  qAccent: { width: 4 },
-  qPosBadge: { width: 44, alignItems: 'center', justifyContent: 'center', paddingVertical: 16 },
-  qPosNum: { fontSize: 12, fontWeight: '900' },
-  qBody: { flex: 1, paddingVertical: 12, paddingRight: 14, paddingLeft: 4 },
+  qCard: {
+    flex: 1, backgroundColor: SURFACE, borderRadius: 16,
+    borderWidth: 1, borderColor: BORDER, padding: 12, marginLeft: 6,
+  },
+  qCardMine: {
+    borderColor: GOLD + '60', backgroundColor: '#130f00',
+    shadowColor: GOLD, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.15, shadowRadius: 10,
+  },
+  qCardDone: { opacity: 0.45 },
+  qCardRoute: { borderColor: '#22c55e33' },
+
+  youBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: GOLD, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2,
+    alignSelf: 'flex-start', marginBottom: 8,
+  },
+  youBannerTxt: { fontSize: 8, fontWeight: '900', color: '#000', letterSpacing: 0.6 },
+
+  qPosNum: { fontSize: 13, fontWeight: '900', color: TEXT2 },
   qTopRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
-  qRegRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
-  qReg: { fontSize: 15, fontWeight: '900', color: TEXT },
-  youBadge: { backgroundColor: GOLD, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  youTxt: { fontSize: 9, fontWeight: '900', color: '#000', letterSpacing: 0.5 },
-  qDriver: { fontSize: 12, color: TEXT2, fontWeight: '500' },
-  qStatusBadge: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, marginTop: 2 },
-  qStatusTxt: { fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
-  qMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  qMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: SURFACE2, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: BORDER },
-  qMetaTxt: { fontSize: 11, fontWeight: '700', color: TEXT2 },
-  qHint: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
-  qHintTxt: { fontSize: 11, color: MUTED },
+  qReg: { fontSize: 15, fontWeight: '900', color: TEXT, letterSpacing: 0.3 },
+  qDriver: { fontSize: 11, color: TEXT2, marginTop: 1 },
+  qStatusBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, marginTop: 2,
+  },
+  qStatusTxt: { fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  qRouteRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: SURFACE2, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5,
+    borderWidth: 1, borderColor: BORDER, marginBottom: 8, alignSelf: 'flex-start',
+  },
+  qRouteTxt: { fontSize: 11, fontWeight: '700', color: MUTED },
+  qMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  qMeta: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: SURFACE2, borderRadius: 18, paddingHorizontal: 7, paddingVertical: 3,
+    borderWidth: 1, borderColor: BORDER,
+  },
+  qMetaTxt: { fontSize: 10, fontWeight: '700', color: TEXT2 },
+  qTapHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8,
+    paddingTop: 8, borderTopWidth: 1, borderTopColor: BORDER,
+  },
+  qTapHintTxt: { fontSize: 11, color: GOLD, fontWeight: '600', flex: 1 },
+
+  // ── My Trips: earnings bar ──
+  earningsBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#071a0f', borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: '#22c55e30', marginBottom: 14,
+  },
+  earningsBarLeft: { flex: 1 },
+  earningsBarLabel: { fontSize: 10, fontWeight: '800', color: '#22c55e', textTransform: 'uppercase', letterSpacing: 0.8 },
+  earningsBarAmount: { fontSize: 28, fontWeight: '900', color: '#22c55e', marginTop: 2 },
+  earningsBarRight: { flexDirection: 'row', alignItems: 'center' },
+  earningsStat: { alignItems: 'center' },
+  earningsStatNum: { fontSize: 22, fontWeight: '900', color: TEXT },
+  earningsStatLbl: { fontSize: 10, fontWeight: '700', color: TEXT2, textTransform: 'uppercase' },
 
   // ── Trip card (My Trips tab) ──
-  tripCard: { flexDirection: 'row', backgroundColor: SURFACE, borderRadius: 16, marginBottom: 10, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
-  tripAccent: { width: 4 },
+  tripCard: {
+    flexDirection: 'row', alignItems: 'stretch',
+    backgroundColor: SURFACE, borderRadius: 16, marginBottom: 10,
+    borderWidth: 1, borderColor: BORDER, overflow: 'hidden',
+  },
+  tripStripe: { width: 3 },
   tripBody: { flex: 1, padding: 14 },
-  tripTopRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
-  tripReg: { fontSize: 15, fontWeight: '900', color: TEXT, marginBottom: 2 },
-  tripRoute: { fontSize: 12, color: TEXT2 },
-  tripStatusBadge: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
-  tripStatusTxt: { fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
-  tripMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tripMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: SURFACE2, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: BORDER },
+  tripHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+  tripHeaderRight: { alignItems: 'flex-end' },
+  tripTimeDisplay: { fontSize: 18, fontWeight: '900', color: TEXT },
+  tripReg: { fontSize: 15, fontWeight: '900', color: TEXT, letterSpacing: 0.3 },
+  tripRouteName: { fontSize: 11, color: TEXT2, marginTop: 1 },
+  tripStatusBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  tripStatusTxt: { fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+
+  tripJourney: {
+    flexDirection: 'row', gap: 10, marginBottom: 12, alignItems: 'stretch',
+    backgroundColor: SURFACE2, borderRadius: 10, padding: 10,
+    borderWidth: 1, borderColor: BORDER,
+  },
+  tripJourneyLine: { alignItems: 'center', width: 14, justifyContent: 'space-between', paddingVertical: 2 },
+  tripJourneyOrigin: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' },
+  tripJourneyConnector: { width: 2, flex: 1, backgroundColor: BORDER, marginVertical: 2, minHeight: 14 },
+  tripJourneyDest: { width: 7, height: 7, borderRadius: 2, backgroundColor: '#ef4444' },
+  tripJourneyLabels: { flex: 1, justifyContent: 'space-between' },
+  tripJourneyStation: { fontSize: 12, fontWeight: '700' },
+
+  tripMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
+  tripMeta: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: SURFACE2, borderRadius: 18, paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: BORDER,
+  },
   tripMetaTxt: { fontSize: 11, fontWeight: '700', color: TEXT2 },
-  tripCta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
 
   // ── Empty state ──
-  empty: { alignItems: 'center', paddingTop: 60 },
-  emptyCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  emptyTitle: { fontSize: 16, fontWeight: '800', color: TEXT, marginBottom: 6 },
-  emptySub: { fontSize: 13, color: TEXT2, textAlign: 'center', lineHeight: 18, paddingHorizontal: 32 },
+  empty: { alignItems: 'center', paddingTop: 64, paddingBottom: 20 },
+  emptyCircle: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+  },
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: TEXT, marginBottom: 6 },
+  emptySub: { fontSize: 13, color: TEXT2, textAlign: 'center', lineHeight: 20, paddingHorizontal: 36 },
 
   // ── Complete trip bottom sheet ──
-  ctOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  ctSheet: { backgroundColor: SURFACE, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 36, borderTopWidth: 1, borderColor: BORDER },
-  ctHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: SURFACE2, alignSelf: 'center', marginBottom: 20 },
-  ctTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 },
-  ctTitleIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center' },
+  ctOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+  ctSheet: {
+    backgroundColor: '#0d1624', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    padding: 20, paddingBottom: 36,
+    borderTopWidth: 1, borderColor: '#1e2d45',
+    shadowColor: '#000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 24,
+  },
+  ctHandle: { width: 44, height: 4, borderRadius: 2, backgroundColor: '#1e2d45', alignSelf: 'center', marginBottom: 22 },
+  ctHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
+  ctHeaderIcon: {
+    width: 50, height: 50, borderRadius: 25,
+    backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: '#22c55e33',
+  },
   ctTitle: { fontSize: 18, fontWeight: '900', color: TEXT },
-  ctRouteSub: { fontSize: 12, color: MUTED, marginTop: 2, fontWeight: '600' },
-  ctFieldLabel: { fontSize: 11, fontWeight: '800', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
-  ctFareRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: SURFACE2, borderRadius: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 4, overflow: 'hidden' },
-  ctFareCurrencyBox: { paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#1e293b', justifyContent: 'center', borderRightWidth: 1, borderColor: BORDER },
-  ctFareCurrency: { fontSize: 18, fontWeight: '900', color: '#22c55e' },
-  ctFareInput: { flex: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 22, fontWeight: '900', color: TEXT },
-  ctNotesInput: { backgroundColor: SURFACE2, borderRadius: 14, padding: 14, fontSize: 14, color: TEXT, borderWidth: 1, borderColor: BORDER, marginBottom: 20, minHeight: 60, textAlignVertical: 'top' },
+  ctSub: { fontSize: 12, color: MUTED, marginTop: 3, fontWeight: '600' },
+  ctLabel: { fontSize: 10, fontWeight: '900', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  ctFareRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SURFACE2, borderRadius: 16,
+    borderWidth: 1, borderColor: BORDER, marginBottom: 4, overflow: 'hidden',
+  },
+  ctCurrencyBox: {
+    paddingHorizontal: 18, paddingVertical: 14,
+    backgroundColor: '#162035', justifyContent: 'center',
+    borderRightWidth: 1, borderRightColor: BORDER,
+  },
+  ctCurrency: { fontSize: 20, fontWeight: '900', color: '#22c55e' },
+  ctFareInput: { flex: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 24, fontWeight: '900', color: TEXT },
+  ctNotesInput: {
+    backgroundColor: SURFACE2, borderRadius: 14, padding: 14,
+    fontSize: 14, color: TEXT, borderWidth: 1, borderColor: BORDER,
+    marginBottom: 20, minHeight: 60, textAlignVertical: 'top',
+  },
   ctBtnRow: { flexDirection: 'row', gap: 10 },
-  ctCancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER },
+  ctCancelBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 14,
+    alignItems: 'center', backgroundColor: SURFACE2,
+    borderWidth: 1, borderColor: BORDER,
+  },
   ctCancelTxt: { color: TEXT2, fontWeight: '700', fontSize: 15 },
-  ctConfirmBtn: { flex: 2, flexDirection: 'row', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#16a34a' },
+  ctConfirmBtn: {
+    flex: 1.8, flexDirection: 'row', paddingVertical: 14, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#16a34a',
+  },
   ctConfirmTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
 });

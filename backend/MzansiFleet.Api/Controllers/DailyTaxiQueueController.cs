@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using MzansiFleet.Repository;
 using MzansiFleet.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -1582,13 +1584,34 @@ namespace MzansiFleet.Api.Controllers
         public bool FromBooking { get; set; }
     }
 
-        // GET: api/DailyTaxiQueue/owner/{tenantId}/rank-queues?date=2026-03-20
-        [HttpGet("owner/{tenantId}/rank-queues")]
-        public async Task<ActionResult> GetOwnerRankQueues(Guid tenantId, [FromQuery] DateTime? date)
+        // GET: api/DailyTaxiQueue/owner/rank-queues?date=2026-03-20
+        [HttpGet("owner/rank-queues")]
+        [Authorize]
+        public async Task<ActionResult> GetOwnerRankQueues([FromQuery] DateTime? date)
         {
+            Guid? tenantId = null;
             try
             {
                 var targetDate = DateTime.SpecifyKind((date ?? DateTime.UtcNow).Date, DateTimeKind.Utc);
+
+                // Get tenant ID from logged-in user
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim))
+                {
+                    return Unauthorized(new { message = "User not authenticated" });
+                }
+
+                var user = await _context.Users.FindAsync(Guid.Parse(userIdClaim));
+                if (user == null)
+                {
+                    return Unauthorized(new { message = "User not found" });
+                }
+
+                tenantId = user.TenantId;
+                if (!tenantId.HasValue)
+                {
+                    return BadRequest(new { message = "User is not associated with any tenant" });
+                }
 
                 // 1. Get all vehicles owned by this tenant
                 var ownerVehicleIds = await _context.Vehicles

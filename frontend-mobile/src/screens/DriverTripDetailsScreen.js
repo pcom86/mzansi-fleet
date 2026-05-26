@@ -1,86 +1,75 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  RefreshControl,
-  ActivityIndicator,
-  Alert,
-  Modal,
-  TextInput,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  RefreshControl, ActivityIndicator, Alert, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { useAuth } from '../context/AuthContext';
-import { useAppTheme } from '../theme';
 import client from '../api/client';
 import { getQueueTripDetails, completeQueueTrip } from '../api/queueManagement';
 
-function formatCurrency(amount) {
-  return new Intl.NumberFormat('en-ZA', {
-    style: 'currency',
-    currency: 'ZAR',
-  }).format(amount || 0);
+const GOLD = '#D4AF37';
+const BG = '#080c14';
+const SURFACE = '#0d1624';
+const SURFACE2 = '#162035';
+const BORDER = '#1e2d45';
+const MUTED = '#475569';
+const TEXT = '#f1f5f9';
+const TEXT2 = '#64748b';
+
+function fmtCurrency(amount) {
+  return `R ${Number(amount || 0).toFixed(2)}`;
 }
 
-function formatDateTime(dateStr) {
-  if (!dateStr) return 'N/A';
+function fmtDateTime(dateStr) {
+  if (!dateStr) return '—';
   const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleString('en-ZA', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  if (Number.isNaN(d.getTime())) return String(dateStr);
+  return d.toLocaleString('en-ZA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 function getStatusColor(status) {
   switch ((status || '').toLowerCase()) {
-    case 'dispatched':
-    case 'departed':
-      return '#22c55e';
-    case 'loading':
-      return '#f59e0b';
-    case 'intransit':
-      return '#3b82f6';
-    case 'completed':
-      return '#16a34a';
-    case 'cancelled':
-      return '#ef4444';
-    default:
-      return '#94a3b8';
+    case 'dispatched': case 'departed': return '#22c55e';
+    case 'loading': return '#f59e0b';
+    case 'intransit': return '#3b82f6';
+    case 'completed': return '#16a34a';
+    case 'cancelled': return '#ef4444';
+    default: return '#94a3b8';
   }
+}
+
+function getStatusLabel(status) {
+  const s = (status || '').toLowerCase();
+  if (s === 'dispatched' || s === 'departed') return 'EN ROUTE';
+  if (s === 'intransit') return 'IN TRANSIT';
+  if (s === 'completed') return 'COMPLETED';
+  if (s === 'cancelled') return 'CANCELLED';
+  return (status || 'UNKNOWN').toUpperCase();
 }
 
 export default function DriverTripDetailsScreen({ navigation, route }) {
   const { user } = useAuth();
-  const { theme } = useAppTheme();
-  const c = theme.colors;
-  const s = useMemo(() => createStyles(c), [c]);
   const insets = useSafeAreaInsets();
 
   const { queueEntryId, tripId, driverProfileId } = route.params || {};
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tripData, setTripData] = useState(null);
-  const [completeModalVisible, setCompleteModalVisible] = useState(false);
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [completionFare, setCompletionFare] = useState('');
   const [completionNotes, setCompletionNotes] = useState('');
   const [completing, setCompleting] = useState(false);
 
   const loadTripDetails = useCallback(async () => {
     if (!queueEntryId && !tripId) return;
-    
     try {
       if (tripId) {
-        // Load directly from TaxiRankTrips details endpoint
         const resp = await client.get(`/TaxiRankTrips/${tripId}/details`);
         const d = resp.data;
-        // Map vehicle from trip object into queueEntry for screen compatibility
         setTripData({
           queueEntry: {
             vehicle: d.trip?.vehicle,
@@ -99,8 +88,7 @@ export default function DriverTripDetailsScreen({ navigation, route }) {
         setTripData(data);
       }
     } catch (error) {
-      const message = error?.response?.data?.message || error?.message || 'Failed to load trip details';
-      Alert.alert('Error', message);
+      Alert.alert('Error', error?.response?.data?.message || error?.message || 'Failed to load trip details');
     }
   }, [queueEntryId, tripId]);
 
@@ -114,301 +102,478 @@ export default function DriverTripDetailsScreen({ navigation, route }) {
     return () => { active = false; };
   }, [loadTripDetails]);
 
-  useFocusEffect(useCallback(() => {
-    loadTripDetails();
-  }, [loadTripDetails]));
+  useFocusEffect(useCallback(() => { loadTripDetails(); }, [loadTripDetails]));
 
   async function handleCompleteTrip() {
     if (!tripData?.trip?.id) return;
-
     try {
       setCompleting(true);
-      
-      // Get current location
-      let completionData = {
+      const completionData = {
         Notes: completionNotes,
         CompletedByDriverId: driverProfileId || user?.driverProfile?.id || user?.id,
         CompletedAt: new Date().toISOString(),
+        TotalAmount: completionFare ? parseFloat(completionFare) : undefined,
       };
-
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status === 'granted') {
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (perm.status === 'granted') {
         try {
-          const position = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
-          if (position?.coords) {
-            completionData.Latitude = position.coords.latitude;
-            completionData.Longitude = position.coords.longitude;
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+          if (pos?.coords) {
+            completionData.Latitude = pos.coords.latitude;
+            completionData.Longitude = pos.coords.longitude;
           }
-        } catch (locationError) {
-          console.log('Location capture failed:', locationError);
-        }
+        } catch {}
       }
-
       if (tripId) {
         await client.put(`/TaxiRankTrips/${tripData.trip.id}/complete`, completionData);
       } else {
         await completeQueueTrip(queueEntryId, completionData);
       }
-      
-      Alert.alert(
-        'Trip Completed',
-        'Trip has been completed successfully.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setCompleteModalVisible(false);
-              setCompletionNotes('');
-              navigation.goBack();
-            },
-          },
-        ]
-      );
+      Alert.alert('Trip Completed', 'Trip has been completed successfully.', [{
+        text: 'OK', onPress: () => { setSheetVisible(false); setCompletionNotes(''); setCompletionFare(''); navigation.goBack(); },
+      }]);
     } catch (error) {
-      const message = error?.response?.data?.message || error?.message || 'Failed to complete trip';
-      Alert.alert('Error', message);
+      Alert.alert('Error', error?.response?.data?.message || error?.message || 'Failed to complete trip');
     } finally {
       setCompleting(false);
     }
   }
 
-  function renderPassenger(passenger, index) {
-    return (
-      <View key={passenger.id || index} style={s.passengerCard}>
-        <View style={s.passengerHeader}>
-          <Text style={s.passengerName}>{passenger.passengerName || 'Unknown'}</Text>
-          <Text style={s.passengerAmount}>{formatCurrency(passenger.amount)}</Text>
-        </View>
-        <View style={s.passengerDetails}>
-          <Text style={s.passengerPhone}>{passenger.passengerPhone || 'No phone'}</Text>
-          <Text style={s.passengerRoute}>
-            {passenger.departureStation} → {passenger.arrivalStation}
-          </Text>
-        </View>
-        <View style={s.passengerFooter}>
-          <View style={s.paymentMethod}>
-            <Ionicons 
-              name={passenger.paymentMethod === 'Card' ? 'card' : 'cash'} 
-              size={14} 
-              color={c.textMuted} 
-            />
-            <Text style={s.paymentText}>{passenger.paymentMethod || 'Cash'}</Text>
-          </View>
-          {passenger.seatNumber && (
-            <Text style={s.seatNumber}>Seat {passenger.seatNumber}</Text>
-          )}
-        </View>
-      </View>
-    );
-  }
-
-  function renderCost(cost, index) {
-    return (
-      <View key={cost.id || index} style={s.costCard}>
-        <View style={s.costHeader}>
-          <Text style={s.costCategory}>{cost.category}</Text>
-          <Text style={s.costAmount}>{formatCurrency(cost.amount)}</Text>
-        </View>
-        <Text style={s.costDescription}>{cost.description}</Text>
-        {cost.receiptNumber && (
-          <Text style={s.receiptNumber}>Receipt: {cost.receiptNumber}</Text>
-        )}
-      </View>
-    );
-  }
-
+  // ── Loading ──
   if (loading) {
     return (
-      <View style={[s.container, s.centered]}>
-        <ActivityIndicator size="large" color={c.primary} />
-        <Text style={s.loadingText}>Loading trip details...</Text>
+      <View style={[st.root, st.center, { paddingTop: insets.top }]}>
+        <View style={st.loadingRing}>
+          <ActivityIndicator size="large" color={GOLD} />
+        </View>
+        <Text style={st.loadingTitle}>Trip Details</Text>
+        <Text style={st.loadingTxt}>Loading trip information…</Text>
       </View>
     );
   }
 
   if (!tripData) {
     return (
-      <View style={[s.container, s.centered]}>
-        <Ionicons name="document-text" size={48} color={c.textMuted} />
-        <Text style={s.errorText}>Trip details not available</Text>
+      <View style={[st.root, st.center, { paddingTop: insets.top }]}>
+        <View style={st.emptyCircle}>
+          <Ionicons name="document-text-outline" size={28} color={MUTED} />
+        </View>
+        <Text style={st.emptyTitle}>Trip not found</Text>
+        <Text style={st.emptySub}>The trip details could not be loaded.</Text>
+        <TouchableOpacity style={st.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={16} color={GOLD} />
+          <Text style={st.backBtnTxt}>Go back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   const { queueEntry, trip, passengers, costs, summary } = tripData;
+  const vehicle = trip?.vehicle || queueEntry?.vehicle;
+  const sc = getStatusColor(trip?.status);
+  const isActive = trip?.status !== 'Completed' && trip?.status !== 'Cancelled';
+  const canComplete = isActive && user?.role !== 'Owner';
 
   return (
-    <View style={[s.container, { paddingTop: insets.top }]}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backButton}>
-          <Ionicons name="arrow-back" size={24} color={c.text} />
+    <View style={[st.root, { paddingTop: insets.top }]}>
+
+      {/* ── Header ── */}
+      <View style={st.hdr}>
+        <TouchableOpacity style={st.hdrBack} onPress={() => navigation.goBack()} hitSlop={10}>
+          <Ionicons name="arrow-back" size={20} color={TEXT} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Trip Details</Text>
-        <View style={s.headerRight} />
+        <View style={{ flex: 1 }}>
+          <Text style={st.hdrTitle}>Trip Details</Text>
+          {trip?.taxiRank?.name && (
+            <Text style={st.hdrSub} numberOfLines={1}>{trip.taxiRank.name}</Text>
+          )}
+        </View>
+        <TouchableOpacity
+          style={st.hdrRefresh}
+          onPress={async () => { setRefreshing(true); await loadTripDetails(); setRefreshing(false); }}
+          hitSlop={10}
+        >
+          {refreshing
+            ? <ActivityIndicator size="small" color={GOLD} />
+            : <Ionicons name="refresh-outline" size={19} color={TEXT2} />}
+        </TouchableOpacity>
       </View>
 
       <ScrollView
-        style={s.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadTripDetails} />
-        }
+        style={st.scroll}
+        contentContainerStyle={st.scrollInner}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadTripDetails} tintColor={GOLD} />}
       >
-        {/* Trip Status Card */}
-        <View style={s.card}>
-          <View style={s.statusRow}>
-            <Text style={s.sectionTitle}>Trip Status</Text>
-            <View style={[s.statusBadge, { backgroundColor: getStatusColor(trip.status) }]}>
-              <Text style={s.statusText}>{trip.status}</Text>
+        {/* ══ ROUTE HERO ══ */}
+        <View style={[st.routeHero, { borderBottomColor: sc + '40' }]}>
+          <View style={[st.routeHeroStripe, { backgroundColor: sc }]} />
+          <View style={st.routeHeroInner}>
+            {/* Status + time row */}
+            <View style={st.heroTopRow}>
+              <View style={[st.heroBadge, { backgroundColor: sc + '22', borderColor: sc + '55' }]}>
+                <Text style={[st.heroBadgeTxt, { color: sc }]}>{getStatusLabel(trip?.status)}</Text>
+              </View>
+              {trip?.departureTime && (
+                <View style={st.heroTimePill}>
+                  <Ionicons name="time-outline" size={12} color={TEXT2} />
+                  <Text style={st.heroTimeTxt}>{fmtDateTime(trip.departureTime)}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Route visualiser */}
+            <View style={st.heroRouteBlock}>
+              <View style={st.heroRouteLeft}>
+                <View style={[st.heroRouteDot, { backgroundColor: '#22c55e' }]} />
+                <View style={st.heroRouteLine} />
+                <View style={[st.heroRouteSquare, { backgroundColor: '#ef4444' }]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={st.heroStation}>{trip?.departureStation || '—'}</Text>
+                <Text style={[st.heroStation, { marginTop: 12, color: TEXT2 }]}>{trip?.destinationStation || '—'}</Text>
+              </View>
+            </View>
+
+            {/* Timing pills */}
+            <View style={st.heroPillRow}>
+              {trip?.departureTime && (
+                <View style={st.heroPill}>
+                  <Ionicons name="log-out-outline" size={12} color="#22c55e" />
+                  <Text style={[st.heroPillTxt, { color: '#22c55e' }]}>
+                    Dep {fmtDateTime(trip.departureTime)}
+                  </Text>
+                </View>
+              )}
+              {trip?.arrivalTime && (
+                <View style={st.heroPill}>
+                  <Ionicons name="log-in-outline" size={12} color={GOLD} />
+                  <Text style={[st.heroPillTxt, { color: GOLD }]}>
+                    Arr {fmtDateTime(trip.arrivalTime)}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
-          <Text style={s.routeInfo}>
-            {trip.departureStation} → {trip.destinationStation}
-          </Text>
-          <Text style={s.timeInfo}>Departed: {formatDateTime(trip.departureTime)}</Text>
-          {trip.arrivalTime && (
-            <Text style={s.timeInfo}>Arrival: {formatDateTime(trip.arrivalTime)}</Text>
-          )}
         </View>
 
-        {/* Vehicle & Driver Information */}
-        <View style={s.card}>
-          <Text style={s.sectionTitle}>Vehicle</Text>
-          <Text style={s.vehicleInfo}>
-            {(trip.vehicle || queueEntry?.vehicle)?.make} {(trip.vehicle || queueEntry?.vehicle)?.model}
-          </Text>
-          <Text style={s.vehicleReg}>
-            {(trip.vehicle || queueEntry?.vehicle)?.registration}
-          </Text>
-          <Text style={s.vehicleType}>
-            {(trip.vehicle || queueEntry?.vehicle)?.type}{(trip.vehicle || queueEntry?.vehicle)?.capacity ? ` • ${(trip.vehicle || queueEntry?.vehicle).capacity} seats` : ''}
-          </Text>
-        </View>
+        {/* ══ FINANCIAL SUMMARY ══ */}
+        {(summary?.totalEarnings > 0 || summary?.netEarnings !== undefined) && (
+          <View style={st.finCard}>
+            <View style={st.finCardTop}>
+              <Text style={st.finLabel}>NET EARNINGS</Text>
+              <Text style={st.finNet}>R {Number(summary?.netEarnings || 0).toFixed(2)}</Text>
+            </View>
+            <View style={st.finDivider} />
+            <View style={st.finBreakdown}>
+              <View style={st.finItem}>
+                <Text style={st.finItemLabel}>Total</Text>
+                <Text style={[st.finItemVal, { color: '#22c55e' }]}>
+                  R {Number(summary?.totalEarnings || 0).toFixed(2)}
+                </Text>
+              </View>
+              <View style={st.finItemDivider} />
+              <View style={st.finItem}>
+                <Ionicons name="cash-outline" size={11} color={MUTED} />
+                <Text style={st.finItemLabel}>Cash</Text>
+                <Text style={st.finItemVal}>R {Number(summary?.cashEarnings || 0).toFixed(2)}</Text>
+              </View>
+              <View style={st.finItemDivider} />
+              <View style={st.finItem}>
+                <Ionicons name="card-outline" size={11} color={MUTED} />
+                <Text style={st.finItemLabel}>Card</Text>
+                <Text style={st.finItemVal}>R {Number(summary?.cardEarnings || 0).toFixed(2)}</Text>
+              </View>
+              {(summary?.totalCosts ?? 0) > 0 && (
+                <>
+                  <View style={st.finItemDivider} />
+                  <View style={st.finItem}>
+                    <Ionicons name="remove-circle-outline" size={11} color="#ef4444" />
+                    <Text style={st.finItemLabel}>Costs</Text>
+                    <Text style={[st.finItemVal, { color: '#ef4444' }]}>
+                      - R {Number(summary.totalCosts).toFixed(2)}
+                    </Text>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        )}
 
-        {/* Driver & Marshal */}
-        {(trip.driver || trip.marshal) && (
-          <View style={s.card}>
-            <Text style={s.sectionTitle}>Driver & Marshal</Text>
+        {/* ══ VEHICLE ══ */}
+        {vehicle && (
+          <View style={st.sectionCard}>
+            <View style={st.sectionHeader}>
+              <View style={st.sectionIconWrap}>
+                <Ionicons name="car-outline" size={16} color={GOLD} />
+              </View>
+              <Text style={st.sectionTitle}>Vehicle</Text>
+            </View>
+            <View style={st.vehicleRow}>
+              <Text style={st.vehicleReg}>{vehicle.registration || '—'}</Text>
+              {(vehicle.make || vehicle.model) && (
+                <Text style={st.vehicleDesc}>
+                  {[vehicle.make, vehicle.model].filter(Boolean).join(' ')}
+                </Text>
+              )}
+            </View>
+            <View style={st.vehiclePills}>
+              {vehicle.type && (
+                <View style={st.infoPill}>
+                  <Text style={st.infoPillTxt}>{vehicle.type}</Text>
+                </View>
+              )}
+              {vehicle.capacity && (
+                <View style={st.infoPill}>
+                  <Ionicons name="people-outline" size={11} color={TEXT2} />
+                  <Text style={st.infoPillTxt}>{vehicle.capacity} seats</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* ══ DRIVER & MARSHAL ══ */}
+        {(trip?.driver || trip?.marshal) && (
+          <View style={st.sectionCard}>
+            <View style={st.sectionHeader}>
+              <View style={st.sectionIconWrap}>
+                <Ionicons name="person-outline" size={16} color={GOLD} />
+              </View>
+              <Text style={st.sectionTitle}>People</Text>
+            </View>
             {trip.driver && (
-              <Text style={s.queueInfo}>Driver: {trip.driver.name}{trip.driver.phone ? ` (${trip.driver.phone})` : ''}</Text>
+              <View style={st.personRow}>
+                <View style={st.personAvatar}>
+                  <Ionicons name="person" size={14} color={TEXT2} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={st.personName}>{trip.driver.name || '—'}</Text>
+                  <Text style={st.personRole}>Driver{trip.driver.phone ? `  ·  ${trip.driver.phone}` : ''}</Text>
+                </View>
+              </View>
             )}
             {trip.marshal && (
-              <Text style={s.queueInfo}>Marshal: {trip.marshal.fullName || trip.marshal.name}{trip.marshal.phoneNumber ? ` (${trip.marshal.phoneNumber})` : ''}</Text>
-            )}
-            {trip.taxiRank && (
-              <Text style={s.queueInfo}>Rank: {trip.taxiRank.name}</Text>
+              <View style={[st.personRow, trip.driver && { marginTop: 10 }]}>
+                <View style={[st.personAvatar, { backgroundColor: GOLD + '22' }]}>
+                  <Ionicons name="shield-checkmark-outline" size={14} color={GOLD} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={st.personName}>{trip.marshal.fullName || trip.marshal.name || '—'}</Text>
+                  <Text style={st.personRole}>
+                    Marshal{trip.marshal.phoneNumber ? `  ·  ${trip.marshal.phoneNumber}` : ''}
+                  </Text>
+                </View>
+              </View>
             )}
           </View>
         )}
 
-        {/* Queue Information - only show if we have queue data */}
+        {/* ══ QUEUE INFO ══ */}
         {queueEntry?.queuePosition && (
-          <View style={s.card}>
-            <Text style={s.sectionTitle}>Queue Information</Text>
-            <Text style={s.queueInfo}>Position: #{queueEntry.queuePosition}</Text>
-            <Text style={s.queueInfo}>Joined: {formatDateTime(queueEntry.joinedAt)}</Text>
-            <Text style={s.queueInfo}>Departed: {formatDateTime(queueEntry.departedAt)}</Text>
+          <View style={st.sectionCard}>
+            <View style={st.sectionHeader}>
+              <View style={st.sectionIconWrap}>
+                <Ionicons name="list-outline" size={16} color={GOLD} />
+              </View>
+              <Text style={st.sectionTitle}>Queue Info</Text>
+            </View>
+            <View style={st.infoGrid}>
+              <View style={st.infoGridItem}>
+                <Text style={st.infoGridNum}>#{queueEntry.queuePosition}</Text>
+                <Text style={st.infoGridLbl}>Position</Text>
+              </View>
+              {queueEntry.joinedAt && (
+                <View style={st.infoGridItem}>
+                  <Text style={st.infoGridNum}>{fmtDateTime(queueEntry.joinedAt)}</Text>
+                  <Text style={st.infoGridLbl}>Joined</Text>
+                </View>
+              )}
+              {queueEntry.departedAt && (
+                <View style={st.infoGridItem}>
+                  <Text style={st.infoGridNum}>{fmtDateTime(queueEntry.departedAt)}</Text>
+                  <Text style={st.infoGridLbl}>Departed</Text>
+                </View>
+              )}
+            </View>
           </View>
         )}
 
-        {/* Passenger List */}
-        <View style={s.card}>
-          <Text style={s.sectionTitle}>Passengers ({passengers.length})</Text>
+        {/* ══ PASSENGERS ══ */}
+        <View style={st.sectionCard}>
+          <View style={st.sectionHeader}>
+            <View style={st.sectionIconWrap}>
+              <Ionicons name="people-outline" size={16} color={GOLD} />
+            </View>
+            <Text style={st.sectionTitle}>Passengers</Text>
+            <View style={st.sectionBubble}>
+              <Text style={st.sectionBubbleTxt}>{passengers.length}</Text>
+            </View>
+          </View>
           {passengers.length === 0 ? (
-            <Text style={s.emptyText}>No passengers on this trip</Text>
+            <Text style={st.emptyInline}>No passengers recorded for this trip</Text>
           ) : (
-            passengers.map(renderPassenger)
+            passengers.map((pax, idx) => (
+              <View key={pax.id || idx} style={[st.paxRow, idx > 0 && { borderTopWidth: 1, borderTopColor: BORDER, marginTop: 10, paddingTop: 10 }]}>
+                <View style={{ flex: 1 }}>
+                  <View style={st.paxNameRow}>
+                    <Text style={st.paxName}>{pax.passengerName || 'Unknown'}</Text>
+                    {pax.amount > 0 && (
+                      <Text style={st.paxFare}>R {Number(pax.amount).toFixed(2)}</Text>
+                    )}
+                  </View>
+                  <View style={st.paxMeta}>
+                    {pax.passengerPhone && (
+                      <View style={st.paxPill}>
+                        <Ionicons name="call-outline" size={11} color={MUTED} />
+                        <Text style={st.paxPillTxt}>{pax.passengerPhone}</Text>
+                      </View>
+                    )}
+                    {(pax.departureStation || pax.arrivalStation) && (
+                      <View style={st.paxPill}>
+                        <Ionicons name="navigate-outline" size={11} color={MUTED} />
+                        <Text style={st.paxPillTxt} numberOfLines={1}>
+                          {[pax.departureStation, pax.arrivalStation].filter(Boolean).join(' → ')}
+                        </Text>
+                      </View>
+                    )}
+                    {pax.paymentMethod && (
+                      <View style={st.paxPill}>
+                        <Ionicons name={pax.paymentMethod === 'Card' ? 'card-outline' : 'cash-outline'} size={11} color={MUTED} />
+                        <Text style={st.paxPillTxt}>{pax.paymentMethod}</Text>
+                      </View>
+                    )}
+                    {pax.seatNumber && (
+                      <View style={st.paxPill}>
+                        <Text style={st.paxPillTxt}>Seat {pax.seatNumber}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+            ))
           )}
         </View>
 
-        {/* Trip Costs */}
+        {/* ══ COSTS ══ */}
         {costs.length > 0 && (
-          <View style={s.card}>
-            <Text style={s.sectionTitle}>Trip Costs ({costs.length})</Text>
-            {costs.map(renderCost)}
+          <View style={st.sectionCard}>
+            <View style={st.sectionHeader}>
+              <View style={[st.sectionIconWrap, { backgroundColor: '#ef444422' }]}>
+                <Ionicons name="remove-circle-outline" size={16} color="#ef4444" />
+              </View>
+              <Text style={st.sectionTitle}>Trip Costs</Text>
+              <View style={[st.sectionBubble, { backgroundColor: '#ef444422', borderColor: '#ef444444' }]}>
+                <Text style={[st.sectionBubbleTxt, { color: '#ef4444' }]}>{costs.length}</Text>
+              </View>
+            </View>
+            {costs.map((cost, idx) => (
+              <View key={cost.id || idx} style={[st.costRow, idx > 0 && { borderTopWidth: 1, borderTopColor: BORDER, marginTop: 10, paddingTop: 10 }]}>
+                <View style={{ flex: 1 }}>
+                  <View style={st.costNameRow}>
+                    <Text style={st.costCat}>{cost.category || '—'}</Text>
+                    <Text style={st.costAmt}>- R {Number(cost.amount || 0).toFixed(2)}</Text>
+                  </View>
+                  {cost.description && (
+                    <Text style={st.costDesc}>{cost.description}</Text>
+                  )}
+                  {cost.receiptNumber && (
+                    <Text style={st.costReceipt}>Receipt: {cost.receiptNumber}</Text>
+                  )}
+                </View>
+              </View>
+            ))}
           </View>
         )}
 
-        {/* Financial Summary */}
-        <View style={s.card}>
-          <Text style={s.sectionTitle}>Financial Summary</Text>
-          <View style={s.summaryRow}>
-            <Text style={s.summaryLabel}>Total Earnings:</Text>
-            <Text style={s.summaryValue}>{formatCurrency(summary.totalEarnings)}</Text>
-          </View>
-          <View style={s.summaryRow}>
-            <Text style={s.summaryLabel}>Cash:</Text>
-            <Text style={s.summaryValue}>{formatCurrency(summary.cashEarnings)}</Text>
-          </View>
-          <View style={s.summaryRow}>
-            <Text style={s.summaryLabel}>Card:</Text>
-            <Text style={s.summaryValue}>{formatCurrency(summary.cardEarnings)}</Text>
-          </View>
-          <View style={s.summaryRow}>
-            <Text style={s.summaryLabel}>Total Costs:</Text>
-            <Text style={s.summaryValue}>{formatCurrency(summary.totalCosts)}</Text>
-          </View>
-          <View style={[s.summaryRow, s.summaryTotal]}>
-            <Text style={s.summaryLabel}>Net Earnings:</Text>
-            <Text style={s.summaryValue}>{formatCurrency(summary.netEarnings)}</Text>
-          </View>
-        </View>
-
-        {/* Complete Trip Button – only for drivers, not owners */}
-        {trip.status !== 'Completed' && trip.status !== 'Cancelled' && user?.role !== 'Owner' && (
+        {/* ══ COMPLETE TRIP BUTTON ══ */}
+        {canComplete && (
           <TouchableOpacity
-            style={s.completeButton}
-            onPress={() => setCompleteModalVisible(true)}
+            style={st.completeBtn}
+            onPress={() => setSheetVisible(true)}
+            activeOpacity={0.85}
           >
             <Ionicons name="checkmark-circle" size={20} color="#fff" />
-            <Text style={s.completeButtonText}>Complete Trip</Text>
+            <Text style={st.completeBtnTxt}>Complete Trip</Text>
           </TouchableOpacity>
         )}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Completion Modal */}
+      {/* ══ COMPLETE TRIP BOTTOM SHEET ══ */}
       <Modal
-        visible={completeModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setCompleteModalVisible(false)}
+        visible={sheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { if (!completing) setSheetVisible(false); }}
       >
-        <View style={s.modalOverlay}>
-          <View style={s.modalContent}>
-            <Text style={s.modalTitle}>Complete Trip</Text>
-            <Text style={s.modalSubtitle}>
-              Are you sure you want to complete this trip? This action cannot be undone.
+        <View style={st.ctOverlay}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { if (!completing) setSheetVisible(false); }} />
+          <View style={st.ctSheet}>
+            <View style={st.ctHandle} />
+
+            <View style={st.ctHeaderRow}>
+              <View style={st.ctHeaderIcon}>
+                <Ionicons name="checkmark-circle" size={28} color="#22c55e" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={st.ctTitle}>Complete Trip</Text>
+                <Text style={st.ctSub} numberOfLines={1}>
+                  {vehicle?.registration || '—'}
+                  {trip?.departureStation ? `  ·  ${trip.departureStation}` : ''}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={st.ctLabel}>Total Fare Collected</Text>
+            <View style={st.ctFareRow}>
+              <View style={st.ctCurrencyBox}>
+                <Text style={st.ctCurrency}>R</Text>
+              </View>
+              <TextInput
+                style={st.ctFareInput}
+                placeholder="0.00"
+                placeholderTextColor={MUTED}
+                value={completionFare}
+                onChangeText={setCompletionFare}
+                keyboardType="decimal-pad"
+              />
+            </View>
+
+            <Text style={[st.ctLabel, { marginTop: 14 }]}>
+              Notes{'  '}<Text style={{ fontWeight: '400', color: MUTED }}>(optional)</Text>
             </Text>
-            
             <TextInput
-              style={s.notesInput}
-              placeholder="Add completion notes (optional)"
+              style={st.ctNotesInput}
+              placeholder="Add completion notes…"
+              placeholderTextColor={MUTED}
               value={completionNotes}
               onChangeText={setCompletionNotes}
               multiline
-              numberOfLines={3}
+              numberOfLines={2}
             />
 
-            <View style={s.modalButtons}>
+            <View style={st.ctBtnRow}>
               <TouchableOpacity
-                style={[s.modalButton, s.cancelButton]}
-                onPress={() => setCompleteModalVisible(false)}
+                style={st.ctCancelBtn}
+                onPress={() => setSheetVisible(false)}
                 disabled={completing}
               >
-                <Text style={s.cancelButtonText}>Cancel</Text>
+                <Text style={st.ctCancelTxt}>Cancel</Text>
               </TouchableOpacity>
-              
               <TouchableOpacity
-                style={[s.modalButton, s.confirmButton]}
+                style={[st.ctConfirmBtn, completing && { opacity: 0.65 }]}
                 onPress={handleCompleteTrip}
                 disabled={completing}
               >
-                {completing ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={s.confirmButtonText}>Complete</Text>
-                )}
+                {completing
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                      <Text style={st.ctConfirmTxt}>Complete Trip</Text>
+                    </>
+                  )}
               </TouchableOpacity>
             </View>
           </View>
@@ -418,308 +583,211 @@ export default function DriverTripDetailsScreen({ navigation, route }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+const st = StyleSheet.create({
+  root: { flex: 1, backgroundColor: BG },
+  center: { alignItems: 'center', justifyContent: 'center' },
+
+  loadingRing: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  loadingTitle: { fontSize: 20, fontWeight: '900', color: TEXT, marginBottom: 4 },
+  loadingTxt: { color: TEXT2, fontSize: 13, fontWeight: '500' },
+
+  emptyCircle: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: TEXT, marginBottom: 6 },
+  emptySub: { fontSize: 13, color: TEXT2, textAlign: 'center', lineHeight: 20, paddingHorizontal: 36, marginBottom: 20 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: GOLD + '60', backgroundColor: SURFACE },
+  backBtnTxt: { fontSize: 13, fontWeight: '700', color: GOLD },
+
+  hdr: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SURFACE, paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: BORDER, gap: 10,
   },
-  backButton: {
-    padding: 8,
+  hdrBack: {
+    width: 34, height: 34, borderRadius: 10,
+    backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: BORDER,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginLeft: 8,
-    flex: 1,
+  hdrTitle: { fontSize: 17, fontWeight: '900', color: TEXT },
+  hdrSub: { fontSize: 10, fontWeight: '700', color: GOLD, marginTop: 1, letterSpacing: 0.4 },
+  hdrRefresh: {
+    width: 34, height: 34, borderRadius: 10,
+    backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: BORDER,
   },
-  headerRight: {
-    width: 40,
+
+  scroll: { flex: 1 },
+  scrollInner: { padding: 14 },
+
+  // ── Route hero ──
+  routeHero: {
+    backgroundColor: SURFACE, borderRadius: 18, marginBottom: 12,
+    borderWidth: 1, borderColor: BORDER, overflow: 'hidden',
   },
-  content: {
-    flex: 1,
-    padding: 16,
+  routeHeroStripe: { height: 3 },
+  routeHeroInner: { padding: 16 },
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  heroBadge: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  heroBadgeTxt: { fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  heroTimePill: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heroTimeTxt: { fontSize: 12, fontWeight: '600', color: TEXT2 },
+  heroRouteBlock: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  heroRouteLeft: { alignItems: 'center', paddingTop: 4 },
+  heroRouteDot: { width: 9, height: 9, borderRadius: 5 },
+  heroRouteLine: { width: 2, flex: 1, backgroundColor: BORDER, marginVertical: 4 },
+  heroRouteSquare: { width: 8, height: 8, borderRadius: 2 },
+  heroStation: { fontSize: 16, fontWeight: '800', color: TEXT, lineHeight: 20 },
+  heroPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  heroPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: SURFACE2, borderRadius: 18, paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: BORDER,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
+  heroPillTxt: { fontSize: 11, fontWeight: '700', color: TEXT2 },
+
+  // ── Financial card ──
+  finCard: {
+    backgroundColor: '#071a0f', borderRadius: 18, marginBottom: 12,
+    borderWidth: 1, borderColor: '#22c55e30', overflow: 'hidden',
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
+  finCardTop: { padding: 16, paddingBottom: 12 },
+  finLabel: { fontSize: 10, fontWeight: '900', color: '#22c55e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
+  finNet: { fontSize: 34, fontWeight: '900', color: '#22c55e' },
+  finDivider: { height: 1, backgroundColor: '#22c55e20', marginHorizontal: 16 },
+  finBreakdown: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 0 },
+  finItem: { alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, gap: 3 },
+  finItemLabel: { fontSize: 10, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5 },
+  finItemVal: { fontSize: 14, fontWeight: '900', color: TEXT },
+  finItemDivider: { width: 1, backgroundColor: BORDER, alignSelf: 'stretch', marginVertical: 6 },
+
+  // ── Section card ──
+  sectionCard: {
+    backgroundColor: SURFACE, borderRadius: 18, marginBottom: 12,
+    borderWidth: 1, borderColor: BORDER, padding: 16,
   },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  sectionIconWrap: {
+    width: 30, height: 30, borderRadius: 10,
+    backgroundColor: GOLD + '1a', alignItems: 'center', justifyContent: 'center',
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+  sectionTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: TEXT },
+  sectionBubble: {
+    backgroundColor: GOLD + '22', borderRadius: 10,
+    paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: GOLD + '44',
   },
-  statusText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
+  sectionBubbleTxt: { fontSize: 11, fontWeight: '900', color: GOLD },
+
+  // ── Vehicle ──
+  vehicleRow: { marginBottom: 10 },
+  vehicleReg: { fontSize: 22, fontWeight: '900', color: TEXT, letterSpacing: 0.4 },
+  vehicleDesc: { fontSize: 13, color: TEXT2, marginTop: 2 },
+  vehiclePills: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  infoPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: SURFACE2, borderRadius: 18, paddingHorizontal: 9, paddingVertical: 4,
+    borderWidth: 1, borderColor: BORDER,
   },
-  routeInfo: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.text,
-    marginBottom: 4,
+  infoPillTxt: { fontSize: 11, fontWeight: '700', color: TEXT2 },
+
+  // ── People ──
+  personRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  personAvatar: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
   },
-  timeInfo: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginBottom: 2,
+  personName: { fontSize: 14, fontWeight: '800', color: TEXT },
+  personRole: { fontSize: 12, color: TEXT2, marginTop: 1 },
+
+  // ── Queue info grid ──
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  infoGridItem: {
+    flex: 1, minWidth: 80, backgroundColor: SURFACE2, borderRadius: 12,
+    padding: 10, borderWidth: 1, borderColor: BORDER, alignItems: 'center',
   },
-  vehicleInfo: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.text,
-    marginBottom: 2,
+  infoGridNum: { fontSize: 13, fontWeight: '900', color: TEXT, textAlign: 'center' },
+  infoGridLbl: { fontSize: 10, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
+
+  // ── Passengers ──
+  paxRow: {},
+  paxNameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 },
+  paxName: { fontSize: 14, fontWeight: '800', color: TEXT },
+  paxFare: { fontSize: 14, fontWeight: '900', color: '#22c55e' },
+  paxMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  paxPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: SURFACE2, borderRadius: 18, paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: BORDER,
   },
-  vehicleReg: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginBottom: 2,
+  paxPillTxt: { fontSize: 11, fontWeight: '700', color: TEXT2 },
+  emptyInline: { fontSize: 13, color: TEXT2, textAlign: 'center', paddingVertical: 8 },
+
+  // ── Costs ──
+  costRow: {},
+  costNameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  costCat: { fontSize: 14, fontWeight: '800', color: TEXT },
+  costAmt: { fontSize: 14, fontWeight: '900', color: '#ef4444' },
+  costDesc: { fontSize: 12, color: TEXT2 },
+  costReceipt: { fontSize: 11, color: MUTED, marginTop: 2 },
+
+  // ── Complete button ──
+  completeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#16a34a', borderRadius: 16, paddingVertical: 16, marginTop: 4,
   },
-  vehicleType: {
-    fontSize: 14,
-    color: colors.textMuted,
+  completeBtnTxt: { fontSize: 16, fontWeight: '900', color: '#fff' },
+
+  // ── Bottom sheet ──
+  ctOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+  ctSheet: {
+    backgroundColor: '#0d1624', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    padding: 20, paddingBottom: 36,
+    borderTopWidth: 1, borderColor: '#1e2d45',
+    shadowColor: '#000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 24,
   },
-  queueInfo: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginBottom: 2,
+  ctHandle: { width: 44, height: 4, borderRadius: 2, backgroundColor: '#1e2d45', alignSelf: 'center', marginBottom: 22 },
+  ctHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
+  ctHeaderIcon: {
+    width: 50, height: 50, borderRadius: 25,
+    backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: '#22c55e33',
   },
-  passengerCard: {
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
+  ctTitle: { fontSize: 18, fontWeight: '900', color: TEXT },
+  ctSub: { fontSize: 12, color: MUTED, marginTop: 3, fontWeight: '600' },
+  ctLabel: { fontSize: 10, fontWeight: '900', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  ctFareRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SURFACE2, borderRadius: 16,
+    borderWidth: 1, borderColor: BORDER, marginBottom: 4, overflow: 'hidden',
   },
-  passengerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+  ctCurrencyBox: {
+    paddingHorizontal: 18, paddingVertical: 14,
+    backgroundColor: '#162035', justifyContent: 'center',
+    borderRightWidth: 1, borderRightColor: BORDER,
   },
-  passengerName: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: colors.text,
+  ctCurrency: { fontSize: 20, fontWeight: '900', color: '#22c55e' },
+  ctFareInput: { flex: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 24, fontWeight: '900', color: TEXT },
+  ctNotesInput: {
+    backgroundColor: SURFACE2, borderRadius: 14, padding: 14,
+    fontSize: 14, color: TEXT, borderWidth: 1, borderColor: BORDER,
+    marginBottom: 20, minHeight: 60, textAlignVertical: 'top',
   },
-  passengerAmount: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.primary,
+  ctBtnRow: { flexDirection: 'row', gap: 10 },
+  ctCancelBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 14,
+    alignItems: 'center', backgroundColor: SURFACE2, borderWidth: 1, borderColor: BORDER,
   },
-  passengerDetails: {
-    marginBottom: 8,
+  ctCancelTxt: { color: TEXT2, fontWeight: '700', fontSize: 15 },
+  ctConfirmBtn: {
+    flex: 1.8, flexDirection: 'row', paddingVertical: 14, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#16a34a',
   },
-  passengerPhone: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginBottom: 2,
-  },
-  passengerRoute: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  passengerFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  paymentMethod: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  paymentText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginLeft: 4,
-  },
-  seatNumber: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  costCard: {
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  costHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  costCategory: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text,
-  },
-  costAmount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.danger,
-  },
-  costDescription: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginBottom: 2,
-  },
-  receiptNumber: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  summaryTotal: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 8,
-    marginTop: 4,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text,
-  },
-  completeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.success,
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 8,
-    marginBottom: 32,
-  },
-  completeButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: colors.textMuted,
-    fontStyle: 'italic',
-  },
-  loadingText: {
-    marginTop: 16,
-    color: colors.textMuted,
-  },
-  errorText: {
-    marginTop: 16,
-    color: colors.danger,
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginBottom: 20,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  notesInput: {
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 20,
-    minHeight: 80,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cancelButtonText: {
-    color: colors.text,
-    fontWeight: '500',
-  },
-  confirmButton: {
-    backgroundColor: colors.success,
-  },
-  confirmButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  ctConfirmTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
 });

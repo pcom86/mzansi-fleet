@@ -52,6 +52,7 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
 
   const [activeView, setActiveView] = useState('queue');
   const [showFilters, setShowFilters] = useState(true);
+  const [statusFilter, setStatusFilter] = useState(null);
 
   // Add modal
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -562,9 +563,12 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   // ── Derived data ──────────────────────────────────────────────────────
 
   const filteredQueue = useMemo(() => {
-    if (!selectedRouteId) return queue.filter(q => normalizeQueueStatus(q.status) !== 'removed');
-    return queue.filter(q => (q.routeId === selectedRouteId || !q.routeId) && normalizeQueueStatus(q.status) !== 'removed');
-  }, [queue, selectedRouteId]);
+    let q = selectedRouteId
+      ? queue.filter(i => (i.routeId === selectedRouteId || !i.routeId))
+      : queue;
+    if (statusFilter) return q.filter(i => i.status === statusFilter);
+    return q.filter(i => normalizeQueueStatus(i.status) !== 'removed');
+  }, [queue, selectedRouteId, statusFilter]);
 
   const activeQueue = filteredQueue.filter(q => normalizeQueueStatus(q.status) === 'waiting');
   const dispatchedQueue = filteredQueue.filter(q => normalizeQueueStatus(q.status) === 'dispatched');
@@ -1134,40 +1138,8 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
   }
 
   function QueueView() {
-    const renderHistorySection = (title, items, allItems, accentColor, emptyMessage, statusKey) => (
-      <>
-        <View style={styles.listHeader}>
-          <View style={[styles.listHeaderDot, { backgroundColor: accentColor }]} />
-          <Text style={[styles.listHeaderTxt, { color: c.text }]}>
-            {title} ({items.length})
-          </Text>
-          {items.length !== allItems.length ? (
-            <Text style={[styles.dfCountSub, { marginLeft: 6 }]}>of {allItems.length}</Text>
-          ) : null}
-        </View>
-
-        {allItems.length === 0 ? (
-          <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', paddingVertical: 12 }}>
-            {emptyMessage}
-          </Text>
-        ) : items.length === 0 ? (
-          <Text style={{ fontSize: 13, color: c.textMuted, textAlign: 'center', paddingVertical: 12 }}>
-            No {statusKey} vehicles match filters
-          </Text>
-        ) : (
-          items.map(entry => (
-            <DispatchedCard
-              key={entry.id}
-              entry={entry}
-              c={c}
-              styles={styles}
-              onPress={() => handleViewTripDetail(entry)}
-              variant={statusKey}
-            />
-          ))
-        )}
-      </>
-    );
+    const waitingItems = filteredQueue.filter(q => normalizeQueueStatus(q.status) === 'waiting');
+    const nonWaitingItems = filteredQueue.filter(q => normalizeQueueStatus(q.status) !== 'waiting');
 
     return (
       <ScrollView
@@ -1175,37 +1147,28 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
       >
-        {activeQueue.length === 0 && isToday ? (
-          <View style={styles.emptyState}>
-            <View style={[styles.emptyIcon, { backgroundColor: c.primary + '15' }]}>
-              <Ionicons name="car-outline" size={40} color={c.primary} />
+        {filteredQueue.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80 }}>
+            <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+              <Ionicons name="car-outline" size={36} color="#94a3b8" />
             </View>
-            <Text style={[styles.emptyTitle, { color: c.text }]}>Queue is Empty</Text>
-            <Text style={[styles.emptySubtitle, { color: c.textMuted }]}>
-              No vehicles waiting. Tap below to add one.
-            </Text>
-            <TouchableOpacity
-              style={[styles.emptyBtn, { backgroundColor: c.primary }]}
-              onPress={() => setAddModalVisible(true)}
-            >
-              <Ionicons name="add" size={18} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.emptyBtnTxt}>Add Vehicle</Text>
-            </TouchableOpacity>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: c.text }}>No vehicles in queue</Text>
+            <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 6 }}>Tap + to add a vehicle</Text>
           </View>
-        ) : activeQueue.length > 0 ? (
+        ) : waitingItems.length > 0 ? (
           <>
             <View style={styles.listHeader}>
               <View style={[styles.listHeaderDot, { backgroundColor: '#f59e0b' }]} />
               <Text style={[styles.listHeaderTxt, { color: c.text }]}>
-                Waiting ({activeQueue.length})
+                Waiting ({waitingItems.length})
               </Text>
             </View>
-            {activeQueue.map((entry, idx) => (
+            {waitingItems.map((entry, idx) => (
               <QueueCard
                 key={entry.id}
                 entry={entry}
                 isFirst={idx === 0}
-                isLast={idx === activeQueue.length - 1}
+                isLast={idx === waitingItems.length - 1}
                 c={c}
                 styles={styles}
                 onDispatch={() => { 
@@ -1226,128 +1189,24 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
           </>
         ) : null}
 
-        {/* ── Trip history filter card ── */}
-        <View style={[styles.dfCard, { backgroundColor: c.surface, borderColor: c.border }]}>
-          {/* Header strip */}
-          <View style={styles.dfHeader}>
-            <View style={styles.dfHeaderLeft}>
-              <View style={styles.dfHeaderIcon}>
-                <Ionicons name="checkmark-done" size={14} color="#fff" />
-              </View>
-              <Text style={styles.dfHeaderTitle}>Trip History</Text>
-              <View style={styles.dfCountBadge}>
-                <Text style={styles.dfCountTxt}>{filteredDispatched.length + filteredCompleted.length}</Text>
-              </View>
-              {(filteredDispatched.length + filteredCompleted.length) !== (dispatchedQueue.length + completedQueue.length) ? (
-                <Text style={styles.dfCountSub}>of {dispatchedQueue.length + completedQueue.length}</Text>
-              ) : null}
+        {nonWaitingItems.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <View style={styles.listHeader}>
+              <View style={[styles.listHeaderDot, { backgroundColor: '#22c55e' }]} />
+              <Text style={[styles.listHeaderTxt, { color: c.text }]}>Other ({nonWaitingItems.length})</Text>
             </View>
-            {(dispatchFilterReg || dispatchFilterBy) ? (
-              <TouchableOpacity
-                onPress={() => { setDispatchFilterReg(''); setDispatchFilterBy(''); }}
-                style={styles.dfResetBtn}
-              >
-                <Ionicons name="refresh" size={12} color="#fff" />
-                <Text style={styles.dfResetTxt}>Reset</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          {/* Date navigation row */}
-          <View style={[styles.dfDateRow, { borderBottomColor: c.border }]}>
-            <TouchableOpacity onPress={() => shiftDate(-1)} style={[styles.dfDateArrow, { backgroundColor: c.background }]}>
-              <Ionicons name="chevron-back" size={15} color={c.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                if (Platform.OS === 'web') {
-                  const input = window.prompt('Enter date (YYYY-MM-DD):', queueDate);
-                  if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
-                    const today = new Date().toISOString().split('T')[0];
-                    if (input <= today) setQueueDate(input);
-                  }
-                } else {
-                  setShowDatePicker(true);
-                }
-              }}
-              style={[styles.dfDatePill, { backgroundColor: isToday ? '#22c55e15' : c.primary + '10' }]}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="calendar" size={13} color={isToday ? '#22c55e' : c.primary} />
-              <Text style={[styles.dfDateTxt, { color: isToday ? '#22c55e' : c.primary }]}>{queueDateLabel}</Text>
-              {!isToday ? (
-                <TouchableOpacity
-                  onPress={(e) => { e.stopPropagation(); setQueueDate(new Date().toISOString().split('T')[0]); }}
-                  style={[styles.dfTodayBtn, { backgroundColor: c.primary }]}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Text style={styles.dfTodayBtnTxt}>Today</Text>
-                </TouchableOpacity>
-              ) : null}
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => shiftDate(1)}
-              style={[styles.dfDateArrow, { backgroundColor: c.background }]}
-              disabled={isToday}
-            >
-              <Ionicons name="chevron-forward" size={15} color={isToday ? c.border : c.primary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Native date picker (mobile only) */}
-          {showDatePicker ? (
-            <DateTimePicker
-              value={new Date(queueDate + 'T00:00:00')}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              maximumDate={new Date()}
-              onChange={(event, selectedDate) => {
-                setShowDatePicker(Platform.OS === 'ios');
-                if (selectedDate) {
-                  setQueueDate(selectedDate.toISOString().split('T')[0]);
-                }
-              }}
-            />
-          ) : null}
-
-          {/* Search inputs */}
-          <View style={styles.dfSearchArea}>
-            <View style={[styles.dfSearchField, { backgroundColor: c.background, borderColor: c.border }]}>
-              <Ionicons name="car-sport-outline" size={14} color={dispatchFilterReg ? c.primary : c.textMuted} />
-              <TextInput
-                style={[styles.dfSearchInput, { color: c.text }]}
-                placeholder="Search registration..."
-                placeholderTextColor={c.textMuted}
-                value={dispatchFilterReg}
-                onChangeText={setDispatchFilterReg}
-                autoCapitalize="characters"
+            {nonWaitingItems.map(entry => (
+              <DispatchedCard
+                key={entry.id}
+                entry={entry}
+                c={c}
+                styles={styles}
+                onPress={() => handleViewTripDetail(entry)}
+                variant="dispatched"
               />
-              {dispatchFilterReg ? (
-                <TouchableOpacity onPress={() => setDispatchFilterReg('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="close-circle" size={16} color={c.textMuted} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-            <View style={[styles.dfSearchField, { backgroundColor: c.background, borderColor: c.border }]}>
-              <Ionicons name="shield-outline" size={14} color={dispatchFilterBy ? '#8b5cf6' : c.textMuted} />
-              <TextInput
-                style={[styles.dfSearchInput, { color: c.text }]}
-                placeholder="Search marshal / admin..."
-                placeholderTextColor={c.textMuted}
-                value={dispatchFilterBy}
-                onChangeText={setDispatchFilterBy}
-              />
-              {dispatchFilterBy ? (
-                <TouchableOpacity onPress={() => setDispatchFilterBy('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="close-circle" size={16} color={c.textMuted} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
+            ))}
           </View>
-        </View>
-
-        {renderHistorySection('Dispatched Queue', filteredDispatched, dispatchedQueue, '#22c55e', 'No dispatched vehicles for this date', 'dispatched')}
-        {renderHistorySection('Completed Queue', filteredCompleted, completedQueue, '#16a34a', 'No completed vehicles for this date', 'completed')}
+        )}
       </ScrollView>
     );
   }
@@ -1518,6 +1377,32 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
     );
   }
 
+  function TripsView() {
+    const allTrips = [...filteredDispatched, ...filteredCompleted].sort(
+      (a, b) => new Date(b.departedAt || b.updatedAt || 0) - new Date(a.departedAt || a.updatedAt || 0),
+    );
+    if (allTrips.length === 0) {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.border, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+            <Ionicons name="car-outline" size={32} color={c.textMuted} />
+          </View>
+          <Text style={{ fontSize: 17, fontWeight: '800', color: c.text }}>No trips yet</Text>
+          <Text style={{ fontSize: 13, color: c.textMuted, marginTop: 6 }}>Dispatched trips will appear here</Text>
+        </View>
+      );
+    }
+    return (
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}>
+        {allTrips.map(entry => (
+          <DispatchedCard key={entry.id} entry={entry} c={c} styles={styles}
+            onPress={() => handleViewTripDetail(entry)} variant="dispatched" />
+        ))}
+      </ScrollView>
+    );
+  }
+
   // ── Loading / Empty states ────────────────────────────────────────────
 
   if (loading) {
@@ -1543,118 +1428,123 @@ export default function QueueManagementScreen({ navigation, route: navRoute }) {
 
   return (
     <View key={refreshKey} style={[styles.root, { backgroundColor: c.background }]}>
-      <StatusBar barStyle={theme.mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={c.background} />
+      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
 
       {/* ── Header ── */}
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) + 4, backgroundColor: c.surface }]}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBack}>
-            <Ionicons name="chevron-back" size={22} color={c.primary} />
+      <View style={{ paddingTop: Math.max(insets.top, 16) + 4, backgroundColor: '#0f172a', paddingHorizontal: 16, paddingBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 12, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: c.text }]}>Queue</Text>
-            <Text style={[styles.headerSubtitle, { color: c.textMuted }]}>{rank.name}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: '#fff', letterSpacing: 0.2 }}>Trip Management</Text>
+            <Text style={{ fontSize: 13, color: '#D4AF37', marginTop: 1 }} numberOfLines={1}>{rank.name}</Text>
           </View>
-          <TouchableOpacity onPress={() => setShowFilters(!showFilters)} style={[styles.headerAction, showFilters && { backgroundColor: c.primary + '15' }]}>
-            <Ionicons name="options-outline" size={18} color={showFilters ? c.primary : c.textMuted} />
-          </TouchableOpacity>
           <VoiceRecorderButton
             onRecordingComplete={handleVoiceCommand}
             processing={voiceProcessing}
-            buttonStyle={[styles.headerAction, { backgroundColor: '#22c55e15' }]}
-            iconColor="#22c55e"
-            size={18}
+            buttonStyle={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#22c55e', alignItems: 'center', justifyContent: 'center' }}
+            iconColor="#fff"
+            size={22}
           />
         </View>
-
-        {/* ── Stats Strip ── */}
-        {stats && (
-          <View style={styles.statsStrip}>
-            <StatPill icon="time-outline" label="Waiting" value={stats.loading ?? 0} color="#f59e0b" c={c} styles={styles} />
-            <StatPill icon="checkmark-circle" label="Gone" value={stats.dispatched ?? 0} color="#22c55e" c={c} styles={styles} />
-            <StatPill icon="people" label="Pax" value={stats.totalPassengers ?? 0} color="#3b82f6" c={c} styles={styles} />
-            <StatPill icon="hourglass" label="Wait" value={`${stats.averageWaitMinutes ?? 0}m`} color="#8b5cf6" c={c} styles={styles} />
-          </View>
-        )}
       </View>
 
       {/* ── Tabs ── */}
-      <View style={[styles.tabs, { backgroundColor: c.surface, borderBottomColor: c.border }]}>
+      <View style={{ backgroundColor: '#0f172a', paddingHorizontal: 12, paddingBottom: 12, flexDirection: 'row', gap: 8 }}>
         {[
-          { key: 'overview', icon: 'grid-outline', label: 'Overview' },
-          { key: 'queue', icon: 'list-outline', label: 'Queue' },
-          { key: 'bookings', icon: 'receipt-outline', label: 'Bookings' },
-          { key: 'analytics', icon: 'stats-chart-outline', label: 'Analytics' },
+          { key: 'queue', label: 'Queues', cnt: queue.filter(q => normalizeQueueStatus(q.status) !== 'removed').length },
+          { key: 'bookings', label: 'Bookings', cnt: rankBookings.length },
+          { key: 'trips', label: 'Trips', cnt: queue.filter(q => normalizeQueueStatus(q.status) === 'dispatched').length + queue.filter(q => normalizeQueueStatus(q.status) === 'completed').length },
         ].map(tab => {
           const active = activeView === tab.key;
           return (
             <TouchableOpacity
               key={tab.key}
-              style={[styles.tab, active && styles.tabActive]}
+              style={{ flex: 1, paddingVertical: 9, borderRadius: 22, backgroundColor: active ? '#D4AF37' : '#1e293b', alignItems: 'center', justifyContent: 'center' }}
               onPress={() => setActiveView(tab.key)}
             >
-              <Ionicons name={tab.icon} size={18} color={active ? c.primary : c.textMuted} />
-              <Text style={[styles.tabLabel, active && { color: c.primary, fontWeight: '700' }]}>{tab.label}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#000' : '#64748b' }}>
+                {tab.label} ({tab.cnt})
+              </Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* ── Route Filter ── */}
-      {showFilters && (
-        <View style={[styles.filterBar, { backgroundColor: c.background, borderBottomColor: c.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
-            <TouchableOpacity
-              style={[styles.filterChip, !selectedRouteId && styles.filterChipActive]}
-              onPress={() => setSelectedRouteId(null)}
-            >
-              <Text style={[styles.filterChipTxt, !selectedRouteId && styles.filterChipTxtActive]}>All</Text>
-              <View style={[styles.filterBadge, !selectedRouteId && { backgroundColor: c.primary }]}>
-                <Text style={[styles.filterBadgeTxt, !selectedRouteId && { color: '#fff' }]}>
-                  {queue.filter(q => q.status !== 'Removed' && q.status !== 'Dispatched').length}
-                </Text>
-              </View>
-            </TouchableOpacity>
-            {routes.filter(r => r.isActive !== false).map(r => {
-              const count = queue.filter(q => q.routeId === r.id && q.status !== 'Removed' && q.status !== 'Dispatched').length;
-              const on = selectedRouteId === r.id;
-              return (
-                <TouchableOpacity key={r.id} style={[styles.filterChip, on && styles.filterChipActive]} onPress={() => setSelectedRouteId(r.id)}>
-                  <Text style={[styles.filterChipTxt, on && styles.filterChipTxtActive]} numberOfLines={1}>
-                    {r.routeName || r.destinationStation}
-                  </Text>
-                  {count > 0 && (
-                    <View style={[styles.filterBadge, on && { backgroundColor: '#fff' }]}>
-                      <Text style={[styles.filterBadgeTxt, on && { color: c.primary }]}>{count}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+      {/* ── Date Navigation ── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, backgroundColor: c.background, borderBottomWidth: 1, borderBottomColor: c.border }}>
+        <TouchableOpacity onPress={() => shiftDate(-1)} style={{ padding: 8 }}>
+          <Ionicons name="chevron-back" size={18} color={c.textMuted} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            if (Platform.OS === 'web') {
+              const input = window.prompt('Enter date (YYYY-MM-DD):', queueDate);
+              if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
+                const today = new Date().toISOString().split('T')[0];
+                if (input <= today) setQueueDate(input);
+              }
+            } else {
+              setShowDatePicker(true);
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={{ fontSize: 15, fontWeight: '700', color: c.text, paddingHorizontal: 16 }}>{queueDateLabel}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => shiftDate(1)} style={{ padding: 8 }} disabled={isToday}>
+          <Ionicons name="chevron-forward" size={18} color={isToday ? c.border : c.textMuted} />
+        </TouchableOpacity>
+      </View>
 
       {/* ── Voice Command Tip ── */}
-      <View style={[styles.voiceTip, { backgroundColor: '#22c55e10', borderBottomColor: '#22c55e20' }]}>
-        <Ionicons name="mic-outline" size={16} color="#22c55e" />
-        <Text style={[styles.voiceTipText, { color: '#22c55e' }]}>
-          Try: "Add vehicle ABC 123 to queue" · "Dispatch first vehicle" · "Remove vehicle XYZ 789"
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, backgroundColor: '#f0fdf4', borderBottomWidth: 1, borderBottomColor: '#bbf7d0' }}>
+        <Ionicons name="mic-outline" size={14} color="#16a34a" />
+        <Text style={{ flex: 1, fontSize: 12, color: '#16a34a', fontWeight: '600', marginLeft: 7 }} numberOfLines={1}>
+          Try: "Add vehicle ABC 123 to queue" · "Dispatch first vehicle" · "Complete trip XYZ 789"
         </Text>
       </View>
 
+      {/* ── Status Filter Chips ── */}
+      {activeView === 'queue' && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={{ backgroundColor: c.background, borderBottomWidth: 1, borderBottomColor: c.border }}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 7, flexDirection: 'row', alignItems: 'center' }}>
+          {[
+            { key: null, label: 'All', cnt: queue.length },
+            { key: 'Waiting', label: 'Waiting', cnt: queue.filter(q => q.status === 'Waiting').length },
+            { key: 'Loading', label: 'Loading', cnt: queue.filter(q => q.status === 'Loading').length },
+            { key: 'Dispatched', label: 'Dispatched', cnt: queue.filter(q => q.status === 'Dispatched').length },
+            { key: 'Removed', label: 'Removed', cnt: queue.filter(q => q.status === 'Removed').length },
+          ].map(f => {
+            const on = statusFilter === f.key;
+            return (
+              <TouchableOpacity
+                key={String(f.key)}
+                style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 18, backgroundColor: on ? '#D4AF37' : 'transparent', borderWidth: 1, borderColor: on ? '#D4AF37' : c.border }}
+                onPress={() => setStatusFilter(f.key)}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: on ? '#000' : c.textMuted }}>
+                  {f.label} {f.cnt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
       {/* ── Content ── */}
       <View style={styles.content}>
-        {activeView === 'overview' && <OverviewView />}
         {activeView === 'queue' && <QueueView />}
         {activeView === 'bookings' && <BookingsView />}
-        {activeView === 'analytics' && <AnalyticsView />}
+        {activeView === 'trips' && <TripsView />}
       </View>
 
       {/* ── FAB ── */}
       <View style={[styles.fabWrap, { bottom: Math.max(insets.bottom, 12) + 12 }]}>
-        <TouchableOpacity style={[styles.fab, { backgroundColor: c.primary }]} onPress={() => setAddModalVisible(true)} activeOpacity={0.85}>
-          <Ionicons name="add" size={26} color="#fff" />
+        <TouchableOpacity style={[styles.fab, { backgroundColor: '#D4AF37' }]} onPress={() => setAddModalVisible(true)} activeOpacity={0.85}>
+          <Ionicons name="add" size={26} color="#000" />
         </TouchableOpacity>
       </View>
 

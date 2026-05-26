@@ -9,7 +9,7 @@ var api = builder.AddExecutable("api", "dotnet", "../MzansiFleet.Api",
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
     .WithEnvironment("ASPNETCORE_URLS", "http://0.0.0.0:5000");
 
-var mobileFrontend = builder.AddExecutable("mobile-frontend", "npm.cmd", "../../frontend-mobile", "run", "web")
+var mobileFrontend = builder.AddExecutable("mobile-frontend", "npm.cmd", "../../frontend-mobile", "run", "web:reset")
     .WithEnvironment("PORT", "19006")
     .WaitFor(api);
 
