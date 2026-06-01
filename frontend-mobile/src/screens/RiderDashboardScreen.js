@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  StyleSheet, RefreshControl, Image, Animated, Share, Alert, Linking, Platform,
+  StyleSheet, RefreshControl, Image, Animated, Share, Alert, Linking, Platform, AppState,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -54,12 +55,19 @@ export default function RiderDashboardScreen({ navigation }) {
       // Only show trips that are InProgress - exclude Completed and Cancelled
       const inProgress = trips.find(t => {
         const state = t.state ?? t.State;
-        return state === 'InProgress' && state !== 'Completed' && state !== 'Cancelled';
+        return state === 'InProgress';
       }) ?? null;
       setActiveTrip(inProgress);
       // Detect dispatched queue booking — vehicle is currently on a trip
       const queueBks = Array.isArray(queueBkResp) ? queueBkResp : (queueBkResp?.data || []);
-      const dispatched = queueBks.find(b => b.status === 'Confirmed' && b.queueStatus === 'Dispatched') ?? null;
+      console.log('[RiderDashboard] queueBks count:', queueBks.length,
+        'raw statuses:', queueBks.map(b => ({ id: b.id ?? b.Id, status: b.status ?? b.Status, queueStatus: b.queueStatus ?? b.QueueStatus })));
+      const dispatched = queueBks.find(b => {
+        const status = (b.status ?? b.Status ?? '').toString();
+        const queueStatus = (b.queueStatus ?? b.QueueStatus ?? '').toString();
+        return status === 'Confirmed' && queueStatus === 'Dispatched';
+      }) ?? null;
+      console.log('[RiderDashboard] dispatched activeQueueTrip:', dispatched ? dispatched.id ?? dispatched.Id : null);
       setActiveQueueTrip(dispatched);
     } catch (err) {
       console.warn('RiderDashboard load error:', err?.message);
@@ -69,42 +77,75 @@ export default function RiderDashboardScreen({ navigation }) {
     }
   }, [userId]);
 
-  // Poll for active trip state changes every 15 s while one is in progress
+  // Poll for active trip state changes every 8 s while one is in progress
   useEffect(() => {
     if (activeTrip) {
       tripPollRef.current = setInterval(async () => {
         try {
           const trips = await getMyTripRequests(userId);
           const arr = Array.isArray(trips) ? trips : [];
-          // Only show trips that are InProgress - exclude Completed and Cancelled
           const inProgress = arr.find(t => {
             const state = t.state ?? t.State;
-            return state === 'InProgress' && state !== 'Completed' && state !== 'Cancelled';
+            return state === 'InProgress';
           }) ?? null;
           setActiveTrip(inProgress);
           if (!inProgress) clearInterval(tripPollRef.current);
         } catch {}
-      }, 15000);
+      }, 8000);
     } else {
       clearInterval(tripPollRef.current);
     }
     return () => clearInterval(tripPollRef.current);
   }, [!!activeTrip, userId]);
 
-  // Poll for dispatched queue booking every 30 s
+  // Poll for dispatched queue booking every 8 s
   useEffect(() => {
     if (!activeQueueTrip || !userId) { clearInterval(queuePollRef.current); return; }
     queuePollRef.current = setInterval(async () => {
       try {
         const resp = await fetchUserQueueBookings(userId);
         const bks = Array.isArray(resp) ? resp : (resp?.data || []);
-        const dispatched = bks.find(b => b.status === 'Confirmed' && b.queueStatus === 'Dispatched') ?? null;
+        console.log('[RiderDashboard] poll queueBks count:', bks.length,
+          'statuses:', bks.map(b => ({ id: b.id ?? b.Id, status: b.status ?? b.Status, queueStatus: b.queueStatus ?? b.QueueStatus })));
+        const dispatched = bks.find(b => {
+          const status = (b.status ?? b.Status ?? '').toString();
+          const queueStatus = (b.queueStatus ?? b.QueueStatus ?? '').toString();
+          return status === 'Confirmed' && queueStatus === 'Dispatched';
+        }) ?? null;
+        console.log('[RiderDashboard] poll dispatched:', dispatched ? dispatched.id ?? dispatched.Id : null);
         setActiveQueueTrip(dispatched);
         if (!dispatched) clearInterval(queuePollRef.current);
-      } catch {}
-    }, 30000);
+      } catch (e) {
+        console.warn('[RiderDashboard] poll error:', e?.message);
+      }
+    }, 8000);
     return () => clearInterval(queuePollRef.current);
   }, [!!activeQueueTrip, userId]);
+
+  // Re-check immediately when screen comes into focus
+  useFocusEffect(useCallback(() => {
+    if (userId) loadData(true);
+  }, [userId, loadData]));
+
+  // Re-check when app returns from background
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active' && userId) loadData(true);
+    });
+    return () => sub?.remove();
+  }, [userId, loadData]);
+
+  // Safety net: if activeQueueTrip somehow has a completed/cancelled status, clear it immediately
+  useEffect(() => {
+    if (activeQueueTrip) {
+      const status = (activeQueueTrip.status ?? activeQueueTrip.Status ?? '').toString();
+      const queueStatus = (activeQueueTrip.queueStatus ?? activeQueueTrip.QueueStatus ?? '').toString();
+      if (status === 'Completed' || status === 'Cancelled' || queueStatus === 'Completed' || queueStatus === 'Cancelled') {
+        console.warn('[RiderDashboard] Clearing stale activeQueueTrip — status:', status, 'queueStatus:', queueStatus);
+        setActiveQueueTrip(null);
+      }
+    }
+  }, [activeQueueTrip]);
 
   // Pulse animation for live indicators
   useEffect(() => {

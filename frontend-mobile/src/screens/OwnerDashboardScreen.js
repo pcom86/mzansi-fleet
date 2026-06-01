@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Button, StyleSheet, Alert, ActivityIndicator, FlatList, TouchableOpacity, ScrollView, Dimensions, Platform } from 'react-native';
+import { View, Text, Button, StyleSheet, Alert, ActivityIndicator, FlatList, TouchableOpacity, ScrollView, RefreshControl, Dimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +35,7 @@ import { getAllVehicles } from '../api/vehicles';
 import { approveMechanicalRequest, completeMechanicalRequest, declineMechanicalRequest, deleteMechanicalRequest, getMechanicalRequests } from '../api/maintenance';
 import { getUnreadCount } from '../api/messaging';
 import { getCurrentMonthRange, getOwnerAnalyticsDashboard } from '../api/analytics';
+import { useConnectivity } from '../context/ConnectivityContext';
 import { fetchDriverScoreboard } from '../api/driverBehavior';
 import client from '../api/client';
 import { useAppTheme } from '../theme';
@@ -89,6 +90,10 @@ export default function OwnerDashboardScreen({ navigation }) {
   const [reviews, setReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
 
+  // Today's earnings
+  const [todayEarnings, setTodayEarnings] = useState(null);
+  const [todayEarningsLoading, setTodayEarningsLoading] = useState(true);
+
   const monthRange = useMemo(() => getCurrentMonthRange(), []);
 
   async function logout() {
@@ -97,6 +102,8 @@ export default function OwnerDashboardScreen({ navigation }) {
   }
 
   const [tab, setTab] = useState('overview');
+  const [refreshing, setRefreshing] = useState(false);
+  const { isBackendReachable } = useConnectivity();
 
   useEffect(() => {
     navigation.setOptions({ title: 'Mzansi Fleet', headerShown: false });
@@ -256,11 +263,40 @@ export default function OwnerDashboardScreen({ navigation }) {
     }
   }, [user?.tenantId]);
 
+  const loadTodayEarnings = useCallback(async () => {
+    const tenantId = user?.tenantId;
+    if (!tenantId) { setTodayEarningsLoading(false); return; }
+    setTodayEarningsLoading(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const resp = await client.get(`/TaxiRankTrips/owner/daily?tenantId=${tenantId}&date=${today}`);
+      setTodayEarnings(resp.data?.totalEarnings ?? 0);
+    } catch { setTodayEarnings(0); }
+    finally { setTodayEarningsLoading(false); }
+  }, [user?.tenantId]);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadTodayEarnings(); }, [loadTodayEarnings]);
 
   useFocusEffect(useCallback(() => {
     load();
-  }, [load]));
+    loadTodayEarnings();
+  }, [load, loadTodayEarnings]));
+
+  const prevReachable = React.useRef(isBackendReachable);
+  useEffect(() => {
+    if (isBackendReachable && !prevReachable.current) {
+      load();
+      loadTodayEarnings();
+    }
+    prevReachable.current = isBackendReachable;
+  }, [isBackendReachable, load, loadTodayEarnings]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([load(), loadTodayEarnings()]);
+    setRefreshing(false);
+  }, [load, loadTodayEarnings]);
 
   function currency(value) {
     const num = Number(value) || 0;
@@ -521,7 +557,8 @@ export default function OwnerDashboardScreen({ navigation }) {
 
         {/* ── OVERVIEW ── */}
         {tab === 'overview' && (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
 
             {/* Hero profit card */}
             <View style={styles.heroCard}>
@@ -554,6 +591,26 @@ export default function OwnerDashboardScreen({ navigation }) {
                 </View>
               ))}
             </View>
+
+            {/* Today's Earnings Card */}
+            <TouchableOpacity
+              style={styles.earningsCard}
+              onPress={() => navigation.navigate('OwnerEarningsDetail')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.earningsCardLabel}>Today's Earnings</Text>
+                {todayEarningsLoading ? (
+                  <ActivityIndicator size="small" color="#fff" style={{ marginTop: 6 }} />
+                ) : (
+                  <Text style={styles.earningsCardValue}>{`R${(Number(todayEarnings) || 0).toFixed(2)}`}</Text>
+                )}
+                <Text style={styles.earningsCardSub}>Tap to view breakdown by vehicle</Text>
+              </View>
+              <View style={styles.earningsCardIcon}>
+                <Ionicons name="cash-outline" size={28} color="#fff" />
+              </View>
+            </TouchableOpacity>
 
             {/* Quick Actions */}
             <View style={styles.quickActions}>
@@ -1177,6 +1234,16 @@ function createStyles(c) {
     tabBadgeTxt: { color: '#fff', fontSize: 9, fontWeight: '800' },
 
     // ── Overview ──
+    earningsCard: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: '#10b981', borderRadius: 16, padding: 18, marginBottom: 16,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4,
+    },
+    earningsCardLabel: { fontSize: 12, color: '#ffffffcc', fontWeight: '600', marginBottom: 2 },
+    earningsCardValue: { fontSize: 26, fontWeight: '900', color: '#fff', marginBottom: 4 },
+    earningsCardSub: { fontSize: 11, color: '#ffffffaa' },
+    earningsCardIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#ffffff22', alignItems: 'center', justifyContent: 'center' },
+
     heroCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primary, borderRadius: 20, padding: 20, marginBottom: 16 },
     heroLabel: { fontSize: 12, color: '#ffffff99', fontWeight: '600', marginBottom: 4 },
     heroValue: { fontSize: 30, fontWeight: '900', color: '#fff' },

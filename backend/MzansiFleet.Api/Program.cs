@@ -464,6 +464,30 @@ if (!builder.Configuration.GetValue<bool>("SkipDatabase", false))
     ");
 
     logger.LogInformation("Schema patches applied successfully");
+
+    // Data fix: mark any QueueBookings as Completed where their QueueEntry is already Completed
+    // but the booking was never updated (old data before the backend fix)
+    try
+    {
+        var fixedCount = await dbContext.Database.ExecuteSqlRawAsync(@"
+            UPDATE ""QueueBookings""
+            SET ""Status"" = 'Completed'
+            WHERE ""Status"" = 'Confirmed'
+              AND EXISTS (
+                  SELECT 1 FROM ""DailyTaxiQueues""
+                  WHERE ""DailyTaxiQueues"".""Id"" = ""QueueBookings"".""QueueEntryId""
+                    AND ""DailyTaxiQueues"".""Status"" = 'Completed'
+              )
+        ");
+        if (fixedCount > 0)
+        {
+            logger.LogInformation($"Data fix applied: marked {fixedCount} old QueueBooking(s) as Completed");
+        }
+    }
+    catch (Exception fixEx)
+    {
+        logger.LogWarning(fixEx, "Failed to apply QueueBooking data fix");
+    }
 }
 catch (Exception ex)
 {

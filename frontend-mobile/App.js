@@ -41,6 +41,7 @@ import OwnerComposeMessageScreen from './src/screens/OwnerComposeMessageScreen';
 import OwnerMaintenanceRequestDetailsScreen from './src/screens/OwnerMaintenanceRequestDetailsScreen';
 import OwnerTendersScreen from './src/screens/OwnerTendersScreen';
 import OwnerRankQueueScreen from './src/screens/OwnerRankQueueScreen';
+import OwnerEarningsDetailScreen from './src/screens/OwnerEarningsDetailScreen';
 import RentalMarketplaceScreen from './src/screens/RentalMarketplaceScreen';
 import TaxiRankRoleSelectionScreen from './src/screens/TaxiRankRoleSelectionScreen';
 import TaxiRankRoutesScreen from './src/screens/TaxiRankRoutesScreen';
@@ -160,6 +161,7 @@ function AppNavigator() {
           <Stack.Screen name="OwnerMaintenanceRequestDetails" component={OwnerMaintenanceRequestDetailsScreen} />
           <Stack.Screen name="OwnerTenders" component={OwnerTendersScreen} />
           <Stack.Screen name="OwnerRankQueue" component={OwnerRankQueueScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="OwnerEarningsDetail" component={OwnerEarningsDetailScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RentalMarketplace" component={RentalMarketplaceScreen} />
           <Stack.Screen name="TaxiRankDashboard" component={TaxiRankDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TaxiRankDetails" component={TaxiRankDetailsScreen} />

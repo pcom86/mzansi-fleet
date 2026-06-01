@@ -1026,6 +1026,19 @@ namespace MzansiFleet.Api.Controllers
                 queueEntry.Status = "Completed";
                 queueEntry.UpdatedAt = completedAt;
 
+                // Mark associated rider bookings as Completed so the rider block disappears
+                var bookings = await _context.QueueBookings
+                    .Where(b => b.QueueEntryId == queueEntry.Id && b.Status == "Confirmed")
+                    .ToListAsync();
+                foreach (var bk in bookings)
+                {
+                    bk.Status = "Completed";
+                }
+                if (bookings.Count > 0)
+                {
+                    _logger.LogInformation($"[Queue] Marked {bookings.Count} booking(s) as Completed for queue entry {queueEntry.Id}");
+                }
+
                 // Mark vehicle as available after trip completion
                 var vehicle = await _context.Vehicles.FindAsync(queueEntry.VehicleId);
                 if (vehicle != null)

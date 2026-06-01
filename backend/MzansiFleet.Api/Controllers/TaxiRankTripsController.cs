@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -549,6 +550,93 @@ namespace MzansiFleet.Api.Controllers
             }
 
             return Ok(availableTrips);
+        }
+
+        // GET: api/TaxiRankTrips/owner/daily?tenantId=...&date=2026-05-28
+        [HttpGet("owner/daily")]
+        public async Task<ActionResult> GetOwnerDailyEarnings([FromQuery] Guid tenantId, [FromQuery] DateTime? date)
+        {
+            try
+            {
+                if (tenantId == Guid.Empty)
+                    return BadRequest(new { message = "tenantId is required" });
+
+                // Always use UTC kind — DepartureTime is stored as UTC via DateTime.UtcNow
+                var targetDate = DateTime.SpecifyKind(
+                    date.HasValue ? date.Value.Date : DateTime.UtcNow.Date,
+                    DateTimeKind.Utc);
+                var nextDay = targetDate.AddDays(1);
+
+                // Load tenant vehicles for display grouping
+                var vehicles = await _context.Vehicles
+                    .Where(v => v.TenantId == tenantId)
+                    .Select(v => new { v.Id, v.Registration, v.Make, v.Model, v.Year })
+                    .ToListAsync();
+
+                var vehicleIds = vehicles.Select(v => v.Id).ToList();
+
+                // Query 1: trips where the trip itself belongs to this tenant
+                var tripsByTenant = await _context.TaxiRankTrips
+                    .Where(t => t.TenantId == tenantId &&
+                                t.DepartureTime >= targetDate &&
+                                t.DepartureTime < nextDay)
+                    .OrderBy(t => t.DepartureTime)
+                    .ToListAsync();
+
+                // Query 2: trips linked to this tenant's vehicles (fallback for trips with wrong TenantId)
+                List<TaxiRankTrip> tripsByVehicle = new();
+                if (vehicleIds.Count > 0)
+                {
+                    var seenIds = new HashSet<Guid>(tripsByTenant.Select(t => t.Id));
+                    tripsByVehicle = await _context.TaxiRankTrips
+                        .Where(t => vehicleIds.Contains(t.VehicleId) &&
+                                    t.DepartureTime >= targetDate &&
+                                    t.DepartureTime < nextDay)
+                        .OrderBy(t => t.DepartureTime)
+                        .ToListAsync();
+                    tripsByVehicle = tripsByVehicle.Where(t => !seenIds.Contains(t.Id)).ToList();
+                }
+
+                var trips = tripsByTenant.Concat(tripsByVehicle).ToList();
+
+                var vehicleResults = vehicles.Select(v =>
+                {
+                    var vTrips = trips.Where(t => t.VehicleId == v.Id).ToList();
+                    return new
+                    {
+                        vehicle = new { v.Id, v.Registration, v.Make, v.Model, v.Year },
+                        trips = vTrips.Select(t => new
+                        {
+                            t.Id,
+                            t.DepartureStation,
+                            t.DestinationStation,
+                            t.DepartureTime,
+                            t.Status,
+                            t.PassengerCount,
+                            t.TotalAmount,
+                            t.TotalCosts,
+                            t.NetAmount
+                        }),
+                        totalEarnings = vTrips.Sum(t => t.TotalAmount),
+                        tripCount = vTrips.Count
+                    };
+                }).ToList();
+
+                var orphanTotal = trips.Where(t => !vehicleIds.Contains(t.VehicleId)).Sum(t => t.TotalAmount);
+
+                return Ok(new
+                {
+                    date = targetDate,
+                    tenantId,
+                    totalEarnings = vehicleResults.Sum(v => v.totalEarnings) + orphanTotal,
+                    vehicleCount = vehicles.Count,
+                    vehicles = vehicleResults
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message, inner = ex.InnerException?.Message });
+            }
         }
 
         // GET: api/TaxiRankTrips/today
@@ -1117,6 +1205,20 @@ namespace MzansiFleet.Api.Controllers
                         queueEntry.Status = "Completed";
                         queueEntry.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
                         _logger.LogInformation($"[TripCompletion] Updated queue entry {queueEntry.Id} status to Completed for trip {trip.Id}");
+
+                        // Also mark associated rider bookings as Completed so the rider block disappears
+                        var bookings = await _context.QueueBookings
+                            .Where(b => b.QueueEntryId == queueEntry.Id && b.Status == "Confirmed")
+                            .ToListAsync();
+                        foreach (var bk in bookings)
+                        {
+                            bk.Status = "Completed";
+                        }
+                        if (bookings.Count > 0)
+                        {
+                            _logger.LogInformation($"[TripCompletion] Marked {bookings.Count} booking(s) as Completed for queue entry {queueEntry.Id}");
+                        }
+
                         await _context.SaveChangesAsync();
                     }
                 }
